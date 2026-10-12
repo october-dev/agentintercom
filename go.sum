@@ -1,5 +1,5 @@
-github.com/a2aproject/a2a-go/v2 v2.5.0 h1:ZdcFoxv+nZTUV0i2ue5hES76YCANFPG9vjqd7vK8yWM=
-github.com/a2aproject/a2a-go/v2 v2.5.0/go.mod h1:NcRp/ZHxgMzDj12/BteIC2gOjljuEBKaGRfEdJ2lNSI=
+github.com/a2aproject/a2a-go/v2 v2.6.0 h1:QflB0gHxOP0o5quvA/h9EbYgfOsmRsSmFkeBYtKdwwk=
+github.com/a2aproject/a2a-go/v2 v2.6.0/go.mod h1:rvFIb0sBJl2qmJRYU2fQxI6hhIQksmGGMEhT/uRwWww=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
