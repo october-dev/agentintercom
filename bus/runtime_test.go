@@ -235,6 +235,35 @@ func TestMessageIdempotencyRejectsPayloadChanges(t *testing.T) {
 	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1, "idempotent retry created duplicate work: %#v, %v", reservation, err)
 }
 
+// Portable primitive behind a per-recipient fan-out adapter: each recipient is
+// its own send under its own key, so one refusal cannot undo another's commit.
+// It does not model a hosted stale generation or a lost aggregate response.
+func TestFanOutSendsAreIndependentAndRecipientScopedForDeduplication(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+	accepted := SendMessageInput{To: "reviewer", Mode: MessageRequest, Body: "Fan this out", IdempotencyKey: "fanout-7:reviewer"}
+	refused := SendMessageInput{To: "absent", Mode: MessageRequest, Body: "Fan this out", IdempotencyKey: "fanout-7:absent"}
+
+	sent, err := agents.runtime.SendMessage(ctx, agents.plannerToken, accepted)
+	requireNoError(t, err)
+	_, err = agents.runtime.SendMessage(ctx, agents.plannerToken, refused)
+	requireCode(t, err, CodePermissionDenied)
+
+	retry, err := agents.runtime.SendMessage(ctx, agents.plannerToken, accepted)
+	require(t, err == nil && retry.MessageID == sent.MessageID && retry.AcceptedAt == sent.AcceptedAt, "retry did not return the original receipt: %#v, %v", retry, err)
+	_, err = agents.runtime.SendMessage(ctx, agents.plannerToken, refused)
+	requireCode(t, err, CodePermissionDenied)
+
+	redirected := accepted
+	redirected.To = "absent"
+	_, err = agents.runtime.SendMessage(ctx, agents.plannerToken, redirected)
+	requireCode(t, err, CodeConflict)
+
+	reservation, err := agents.runtime.ReserveInbox(ctx, agents.reviewerToken, 10, 0)
+	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1 && reservation.Messages[0].ID == sent.MessageID, "fan-out did not deliver exactly one message: %#v, %v", reservation, err)
+}
+
 func TestResponsesRequireDeliveryButMayFinishAfterExpiry(t *testing.T) {
 	agents := setupAgents(t, ":memory:")
 	defer agents.runtime.Close()
