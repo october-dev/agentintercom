@@ -300,6 +300,7 @@ func TestMCPStdioManagedConnectionForwardsAuthorityDefinedFields(t *testing.T) {
 			"properties": map[string]any{
 				"target":   map[string]any{"type": "string"},
 				"metadata": map[string]any{"type": "object", "additionalProperties": true},
+				"encoded":  map[string]any{"type": []any{"string", "object"}},
 			},
 		},
 	}, func(_ context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -342,10 +343,10 @@ func TestMCPStdioManagedConnectionForwardsAuthorityDefinedFields(t *testing.T) {
 			"correlationId": "correlation-7",
 			"attempt":       map[string]any{"id": "attempt-2", "sequence": 2},
 			"labels":        []any{"a", "b"},
-			"encoded":       `{"stays":"a string"}`,
 			"absent":        nil,
 			"ratio":         1.5,
 		},
+		"encoded": `{"stays":"a string"}`,
 	}
 	result := callMCPBridgeTool(t, ctx, session, "record_outcome", arguments)
 	upstream := received.Load()
