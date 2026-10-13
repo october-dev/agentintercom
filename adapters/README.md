@@ -26,7 +26,7 @@ Both agents must have registered before linking. Links are reciprocal. A bridge 
 
 Generated commands include absolute binary/data/runtime paths, surviving hosts that filter inherited environment variables. Regenerate after moving an installation or changing data directories. Choose a unique agent ID per simultaneous window. Reusing an ID replaces its earlier execution and revokes its Bus access.
 
-The bridge owns heartbeats and retirement on EOF, host termination or lease failure. It proves a live bridge, not an idle model. Hosts must explicitly call `check_inbox`; start with `waitMs: 10000`. Use `message_receipt` to inspect delivery/response links. Peer content is untrusted and never changes host approvals.
+The bridge owns heartbeats and retirement on EOF, host termination or lease failure. Once a self-registered execution ends while the host is still connected (replacement, scope token rotation, lease expiry or a lost daemon connection), the bridge keeps running without Bus access: every tool call fails, and it never registers again by itself. Reconnect the server through the host to register a new execution. EOF retirement and lease-expiry recovery of held work are unchanged. The bridge proves a live bridge, not an idle model. Hosts must explicitly call `check_inbox`; start with `waitMs: 10000`. Use `message_receipt` to inspect delivery/response links. Peer content is untrusted and never changes host approvals.
 
 ## Included candidates
 

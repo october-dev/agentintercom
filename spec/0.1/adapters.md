@@ -10,7 +10,7 @@ An adapter connects one harness execution to October Bus without changing protoc
 4. Give the harness only its execution-bound agent credential, or keep it inside a tool bridge so the harness holds no Bus token.
 5. Configure the public HTTP or MCP endpoint.
 6. Renew the lease outside the model loop.
-7. Stop Bus access if execution authority is replaced. A managed launcher stops its child; a configuration-only adapter closes its bridge, not an unrelated editor process.
+7. Stop Bus access if execution authority is replaced. A managed launcher stops its child. A configuration-only adapter stops forwarding and never silently registers again; it may keep its host-facing transport open, and it never stops an unrelated editor process.
 8. Retire the execution during clean shutdown: revoke its authority and transactionally release its claims and inbox reservations. Merely marking it offline is insufficient.
 9. Allow lease expiry to recover authority and held work after an unclean shutdown.
 

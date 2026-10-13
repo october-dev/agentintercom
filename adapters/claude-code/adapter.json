@@ -26,7 +26,7 @@
     "Configuration reviewed against upstream documentation; this adapter revision has no named-harness certification",
     "Pull-only: queued work does not start a model turn",
     "One MCP configuration is one execution; duplicate agent IDs replace earlier executions",
-    "Claude Code restarts a stdio server that exits, so a replaced window re-registers on its next tool call and revokes the newer window; never reuse an agent ID across open windows (bridge fix tracked in https://github.com/october-dev/october-bus/issues/140)"
+    "When its execution ends (replacement, scope token rotation, lease expiry or a lost daemon connection) the server stays connected but every tool fails; reconnect it from /mcp or restart the window to register again"
   ],
   "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {

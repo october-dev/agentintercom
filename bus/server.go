@@ -371,7 +371,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 	type publishOutputToolInput struct {
 		StreamID    string            `json:"streamId"`
 		ContentType OutputContentType `json:"contentType"`
-		Value       any               `json:"value"`
+		Value       any               `json:"value" jsonschema:"text or JSON value to publish"`
 		Reference   *OutputReference  `json:"reference,omitempty"`
 	}
 	mcp.AddTool(server, &mcp.Tool{Name: "publish_output", Description: "Publish text or JSON to an authorized output stream."},
