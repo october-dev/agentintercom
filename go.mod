@@ -7,7 +7,7 @@ toolchain go1.27.0
 require (
 	github.com/a2aproject/a2a-go/v2 v2.6.0
 	github.com/google/jsonschema-go v0.4.3
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.60.0
 )
