@@ -49,6 +49,17 @@ An adapter MUST report only states it can prove. A generic process launcher MAY 
 
 An `offline` heartbeat MUST set `ready=false`.
 
+Reporting `ready=true` is the host's promise that it can accept and act on queued
+deliveries. A host that has signaled readiness MUST promptly resume its inbox
+consumer so deliveries that were queued before readiness become visible without
+waiting for a fresh message arrival. Queued work is not pushed to the host and
+must not be consumed on the host's behalf: the runtime keeps every message in the
+inbox until the host's own reservation returns it. The runtime wakes a blocked
+inbox reservation on the false→true ready edge so the host's in-flight wait
+re-checks promptly; the returned batch always belongs to the host's consumer. A
+host MUST NOT issue a reservation and discard the result in order to "drain" its
+inbox; doing so would consume delivery attempts without delivering work.
+
 Offline presence does not end the execution lease. Retirement is a separate idempotent operation that ends authority and releases claims and inbox reservations transactionally. A retired token MUST NOT renew its lease. A replaced token MUST NOT retire its successor. Managed sessions MUST serialize lifecycle writes with retirement and attempt cleanup when startup fails after successful registration.
 
 ### Capabilities

@@ -127,6 +127,6 @@ Operations time out after 30 seconds by default. Pass `{ timeoutMs, signal }` as
 
 Generate a new idempotency key for each logical send. Keys remain bound to their original message. Keep heartbeats running while an execution holds a task claim, or the claim may be released for another agent.
 
-`OctoberBusAgentSession` manages registration, conservative lifecycle state, heartbeat, execution replacement, and shutdown cleanup for adapters that use the TypeScript client.
+`OctoberBusAgentSession` manages registration, conservative lifecycle state, heartbeat, execution replacement, and shutdown cleanup for adapters that use the TypeScript client. It exposes a `wake` signal that fires on every false→true ready transition, so a host can observe its own readiness edge.
 
-`pollInbox` provides an abortable async iterator over repeated bounded inbox waits. `withClaimedTask` releases a claim when work or completion fails. Use both with a live agent session so the execution lease remains current while work is claimed.
+`pollInbox` provides an abortable async iterator over repeated bounded inbox waits. The server wakes a blocked `ReserveInbox` on the ready edge, so a host reporting ready promptly receives queued deliveries through its in-flight long-poll — no client-side wake wiring is needed. Every returned batch belongs to the host; `pollInbox` never pulls and discards. `withClaimedTask` releases a claim when work or completion fails. Use both with a live agent session so the execution lease remains current while work is claimed.

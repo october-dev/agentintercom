@@ -206,9 +206,14 @@ func (r *Runtime) Heartbeat(ctx context.Context, agentToken string, input Heartb
 	if err != nil {
 		return Agent{}, err
 	}
-	result, changed, err := r.store.Heartbeat(ctx, principal, input)
-	if err == nil && changed {
-		r.notifyScope(principal.ScopeID)
+	result, stateChanged, becameReady, err := r.store.Heartbeat(ctx, principal, input)
+	if err == nil {
+		if stateChanged {
+			r.notifyScope(principal.ScopeID)
+		}
+		if becameReady {
+			r.signals.notify(signalKey{scopeID: principal.ScopeID, consumerID: principal.AgentID})
+		}
 	}
 	return result, err
 }

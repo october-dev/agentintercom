@@ -407,50 +407,51 @@ func (s *Store) Agent(ctx context.Context, scopeID, agentID string) (Agent, erro
 	return agent, err
 }
 
-func (s *Store) Heartbeat(ctx context.Context, principal Principal, input HeartbeatInput) (Agent, bool, error) {
+func (s *Store) Heartbeat(ctx context.Context, principal Principal, input HeartbeatInput) (Agent, bool, bool, error) {
 	tx, err := s.beginTx(ctx)
 	if err != nil {
-		return Agent{}, false, err
+		return Agent{}, false, false, err
 	}
 	defer tx.Rollback()
 	now := nowMillis()
 	if err := requireCurrentExecution(ctx, tx, principal, now); err != nil {
-		return Agent{}, false, err
+		return Agent{}, false, false, err
 	}
 	var previousLifecycle AgentLifecycle
 	var previousReady int
 	if err := tx.QueryRowContext(ctx, `SELECT lifecycle,ready FROM agents WHERE scope_id=? AND agent_id=? AND execution_id=?`, principal.ScopeID, principal.AgentID, principal.ExecutionID).
 		Scan(&previousLifecycle, &previousReady); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Agent{}, false, Errorf(CodeUnauthenticated, "Agent execution has been replaced")
+			return Agent{}, false, false, Errorf(CodeUnauthenticated, "Agent execution has been replaced")
 		}
-		return Agent{}, false, err
+		return Agent{}, false, false, err
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE agents SET lifecycle=?,ready=?,lease_expires_at=?,updated_at=? WHERE scope_id=? AND agent_id=? AND execution_id=?`,
 		input.Lifecycle, input.Ready, now+input.LeaseMS, now, principal.ScopeID, principal.AgentID, principal.ExecutionID)
 	if err != nil {
-		return Agent{}, false, err
+		return Agent{}, false, false, err
 	}
 	changed, _ := result.RowsAffected()
 	if changed != 1 {
-		return Agent{}, false, Errorf(CodeUnauthenticated, "Agent execution has been replaced")
+		return Agent{}, false, false, Errorf(CodeUnauthenticated, "Agent execution has been replaced")
 	}
 	stateChanged := previousLifecycle != input.Lifecycle || (previousReady == 1) != input.Ready
+	becameReady := previousReady == 0 && input.Ready
 	if stateChanged {
 		if err := appendEvent(ctx, tx, principal.ScopeID, "agent.lifecycle_changed", principal.AgentID, eventAttributes(
 			"executionId", principal.ExecutionID, "lifecycle", string(input.Lifecycle), "ready", fmt.Sprintf("%t", input.Ready), "leaseExpiresAt", instant(now+input.LeaseMS),
 		), now); err != nil {
-			return Agent{}, false, err
+			return Agent{}, false, false, err
 		}
 	}
 	agent, err := scanAgent(tx.QueryRowContext(ctx, `SELECT `+agentColumns+` FROM agents WHERE scope_id=? AND agent_id=?`, principal.ScopeID, principal.AgentID))
 	if err != nil {
-		return Agent{}, false, err
+		return Agent{}, false, false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return Agent{}, false, err
+		return Agent{}, false, false, err
 	}
-	return agent, stateChanged, nil
+	return agent, stateChanged, becameReady, nil
 }
 
 func (s *Store) ListAgents(ctx context.Context, scopeID string) ([]Agent, error) {

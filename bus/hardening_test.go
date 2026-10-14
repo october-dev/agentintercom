@@ -46,7 +46,7 @@ func TestEveryProtectedAgentMutationFencesReplacedAndExpiredExecution(t *testing
 				},
 				"ask": func() error { _, err := s.AskHuman(ctx, p, AskHumanInput{Question: "stale"}); return err },
 				"heartbeat": func() error {
-					_, _, err := s.Heartbeat(ctx, p, HeartbeatInput{Lifecycle: LifecycleReady, Ready: true, LeaseMS: 300000})
+					_, _, _, err := s.Heartbeat(ctx, p, HeartbeatInput{Lifecycle: LifecycleReady, Ready: true, LeaseMS: 300000})
 					return err
 				},
 			}

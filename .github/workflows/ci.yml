@@ -122,6 +122,10 @@ jobs:
         working-directory: sdk/typescript
         env:
           OCTOBER_BUS_BINARY: /tmp/october-bus
+      - run: npm run test:ready-edge
+        working-directory: sdk/typescript
+        env:
+          OCTOBER_BUS_BINARY: /tmp/october-bus
 
   vulnerabilities:
     timeout-minutes: 10

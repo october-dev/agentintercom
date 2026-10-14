@@ -22,6 +22,7 @@ export interface AgentSessionOptions {
 export interface InboxPollingOptions {
   limit?: number
   waitMs?: number
+  /** Aborting this signal terminates the polling loop entirely. */
   signal?: AbortSignal
 }
 
@@ -61,6 +62,20 @@ export class OctoberBusAgentSession {
   private resolveDone!: () => void
   private closed = false
   private sessionError: unknown
+  private wakeController: AbortController = new AbortController()
+
+  /**
+   * A signal that fires on every false→true ready transition. The server wakes
+   * a blocked inbox reserve on the ready edge, so queued deliveries arrive
+   * through the host's in-flight long-poll without any client-side wiring.
+   * The signal is replaced after each transition; the replacement is installed
+   * BEFORE the previous signal aborts, so a listener that re-subscribes inside
+   * its abort callback (reading `session.wake` anew) always lands on a live
+   * signal. Callers should read `wake` per use rather than caching it.
+   */
+  get wake(): AbortSignal {
+    return this.wakeController.signal
+  }
 
   private constructor(options: AgentSessionOptions, registration: RegisterAgentResult) {
     this.registration = registration
@@ -144,8 +159,20 @@ export class OctoberBusAgentSession {
       const nextLifecycle = lifecycle ?? this.lifecycle
       const nextReady = ready ?? this.ready
       const agent = await this.client.heartbeat(nextLifecycle, nextReady, this.leaseMs, { signal: this.lifecycleAbort.signal })
+      // Only update state on success — failed writes preserve confirmed state.
+      const becameReady = nextReady && !this.ready
       this.lifecycle = nextLifecycle
       this.ready = nextReady
+      if (becameReady) {
+        // Install the replacement BEFORE aborting the previous signal.
+        // AbortController.abort() dispatches listeners synchronously; a host
+        // that re-subscribes inside its callback reads `session.wake` at that
+        // moment and must land on the new, live signal — otherwise the next
+        // readiness transition is missed.
+        const previous = this.wakeController
+        this.wakeController = new AbortController()
+        previous.abort()
+      }
       return agent
     })
     // Keep the queue drainable after a failed write so cleanup is never skipped.
@@ -179,18 +206,29 @@ export async function* pollInbox(
   if (!Number.isInteger(waitMs) || waitMs < 1 || waitMs > 25_000) {
     throw new Error('waitMs must be an integer between 1 and 25000')
   }
-  while (!options.signal?.aborted) {
+  const terminal = options.signal
+  // The server wakes the blocked reserve on the ready edge (Runtime.Heartbeat
+  // notifies the per-agent signal that ReserveInbox waits on), so a ready host
+  // receives its queued deliveries promptly without the client aborting the
+  // long-poll. Aborting the pull here would race the server's prompt response
+  // and orphan an already-committed reservation, so the in-flight pull is NOT
+  // cancelled on a ready edge — the server delivers through it.
+  while (!terminal?.aborted) {
     let messages: BusMessage[]
     try {
       messages = await client.pullInbox(limit, {
         waitMs,
-        ...(options.signal === undefined ? {} : { signal: options.signal })
+        ...(terminal === undefined ? {} : { signal: terminal })
       })
     } catch (error) {
-      if (options.signal?.aborted) return
+      if (terminal?.aborted) return // terminal abort: stop
       throw error
     }
+    // pullInbox has already committed any returned batch. Deliver it before
+    // honoring the terminal abort so an abort racing the response cannot drop
+    // mail.
     if (messages.length > 0) yield messages
+    if (terminal?.aborted) return
   }
 }
 

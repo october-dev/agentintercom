@@ -146,3 +146,76 @@ test('failed state writes do not become background state; queued writes remain o
   await Promise.all([ready, failed, background])
   assert.deepEqual(calls, ['starting', 'ready', 'working', 'ready'])
 })
+
+test('done stays pending until retirement settles and close reports no spurious error', async (t) => {
+  // Harsh's shutdown race: hold an explicit setState response; let the
+  // background timer enqueue behind it; call close(); release the explicit
+  // response; hold the offline retire response. At that point session.done
+  // must still be pending, close() must still be pending, and session.error
+  // must be undefined — a deliberate shutdown is not a session failure.
+  const explicitStarted = deferred()
+  const releaseExplicit = deferred()
+  const retireStarted = deferred()
+  const releaseRetire = deferred()
+  let beats = 0
+  mockRuntime(t, async (url, request) => {
+    if (url.endsWith('/agents')) return ok(registration)
+    if (url.endsWith('/retire')) {
+      retireStarted.resolve()
+      await releaseRetire.promise
+      return ok({ retired: true })
+    }
+    if (++beats === 1) return ok({ lifecycle: 'starting' }) // initial heartbeat
+    // First explicit setState: hold it so the background beat queues behind it.
+    explicitStarted.resolve()
+    await releaseExplicit.promise
+    return ok(JSON.parse(request.body))
+  })
+  const session = await OctoberBusAgentSession.start({ ...options, heartbeatIntervalMs: 5 })
+  t.after(() => session.close())
+  const explicit = session.setState('working', true)
+  await explicitStarted.promise
+  // Give the 5ms background timer room to fire and enqueue behind the explicit write.
+  await new Promise((resolve) => setTimeout(resolve, 25))
+  const closing = session.close()
+  releaseExplicit.resolve()
+  await explicit
+  // The queued background heartbeat now rejects with 'agent session is closed'
+  // (expected cancellation), and close proceeds to the held retire.
+  await retireStarted.promise
+  let doneSettled = false
+  void session.done.then(() => { doneSettled = true })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(doneSettled, false, 'done must stay pending while offline cleanup is held')
+  assert.equal(session.error, undefined, 'intentional close must not produce a spurious session error')
+  releaseRetire.resolve()
+  await Promise.all([closing, session.done])
+  assert.equal(doneSettled, true)
+  assert.equal(session.error, undefined)
+})
+
+test('wake re-subscription inside the abort callback observes every ready edge', async (t) => {
+  // Harsh's re-arming repro: a host that re-arms its listener inside the
+  // readiness callback must be notified on every false→true transition.
+  // The replacement controller is installed before the previous one aborts,
+  // so a callback reading session.wake mid-dispatch lands on a live signal.
+  mockRuntime(t, async (url, request) => {
+    if (url.endsWith('/agents')) return ok(registration)
+    if (url.endsWith('/retire')) return ok({ retired: true })
+    return ok(JSON.parse(request.body))
+  })
+  const session = await OctoberBusAgentSession.start(options)
+  t.after(() => session.close())
+  let observed = 0
+  const rearm = () => {
+    session.wake.addEventListener('abort', () => {
+      observed++
+      rearm()
+    }, { once: true })
+  }
+  rearm()
+  await session.setState('ready', true)
+  await session.setState('working', false)
+  await session.setState('ready', true)
+  assert.equal(observed, 2, 'every false→true transition must notify, including re-armed listeners')
+})

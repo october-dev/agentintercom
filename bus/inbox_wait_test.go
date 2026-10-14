@@ -284,3 +284,131 @@ func TestServerStopCancelsInboxWait(t *testing.T) {
 		t.Fatal("server stop did not cancel inbox wait")
 	}
 }
+
+// waitForSignalWaiter polls runtime.signals until the given per-agent key has
+// exactly one active waiter, or the deadline elapses.
+func waitForSignalWaiter(t *testing.T, runtime *Runtime, key signalKey, deadline time.Time) {
+	t.Helper()
+	for {
+		runtime.signals.mu.Lock()
+		signal := runtime.signals.channels[key]
+		waiting := signal != nil && signal.waiters == 1
+		runtime.signals.mu.Unlock()
+		if waiting {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waiter for %+v did not subscribe within deadline", key)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestReserveInboxDeliversRegardlessOfReadiness verifies the pull-only
+// delivery invariant: a reservation is admitted for a not-ready principal
+// exactly as for a ready one, so a harness that only pulls (check_inbox)
+// never starves on a false Ready. It also verifies the ready-edge wake is
+// preserved: a false->true heartbeat still wakes a waiter blocked on an
+// empty inbox promptly (the SDK wake mechanism).
+func TestReserveInboxDeliversRegardlessOfReadiness(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+
+	gated, err := agents.runtime.RegisterAgent(ctx, agents.scope.ScopeToken, RegisterAgentInput{
+		ID: "gated-reviewer", DisplayName: "Gated Reviewer", ConnectTo: []string{"planner"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// gated-reviewer is intentionally never heartbeated: its persisted ready
+	// stays false. Delivery must still succeed on pull.
+
+	// Enqueue while not ready: the pull (waitMs=0) must deliver immediately.
+	receipt, err := agents.runtime.SendMessage(ctx, agents.plannerToken, SendMessageInput{To: "gated-reviewer", Body: "Delivered before ready"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := agents.runtime.ReserveInbox(ctx, gated.AgentToken, 10, 0)
+	if err != nil || reservation == nil || len(reservation.Messages) != 1 || reservation.Messages[0].ID != receipt.MessageID {
+		t.Fatalf("not-ready pull did not deliver the queued message: %#v, %v", reservation, err)
+	}
+	messages, err := agents.runtime.CommitInbox(ctx, gated.AgentToken, reservation.ID)
+	if err != nil || len(messages) != 1 || messages[0].ID != receipt.MessageID {
+		t.Fatalf("not-ready reservation did not commit the exact message: %#v, %v", messages, err)
+	}
+	if _, err := agents.runtime.AcknowledgeMessages(ctx, gated.AgentToken, []string{receipt.MessageID}); err != nil {
+		t.Fatalf("not-ready commit did not acknowledge the message: %v", err)
+	}
+
+	// Now verify the ready-edge wake on a genuinely empty inbox: a waiter
+	// blocked with nothing to deliver must be woken by the false->true
+	// heartbeat (the SDK wake mechanism), so its reservation re-polls instead
+	// of sleeping out its full waitMs budget.
+	waitContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	outcome := make(chan struct {
+		reservation *InboxReservation
+		err         error
+	}, 1)
+	go func() {
+		reservation, err := agents.runtime.ReserveInbox(waitContext, gated.AgentToken, 10, 2000)
+		outcome <- struct {
+			reservation *InboxReservation
+			err         error
+		}{reservation: reservation, err: err}
+	}()
+
+	key := signalKey{scopeID: agents.scope.ScopeID, consumerID: "gated-reviewer"}
+	barrier := time.Now().Add(500 * time.Millisecond)
+	waitForSignalWaiter(t, agents.runtime, key, barrier)
+
+	// Signal readiness while the waiter is blocked on the empty inbox. The
+	// wake must interrupt the wait: the waiter's subscription is torn down and
+	// re-established, so it re-polls for work instead of sleeping to deadline.
+	if _, err := agents.runtime.Heartbeat(ctx, gated.AgentToken, HeartbeatInput{
+		Lifecycle: LifecycleReady, Ready: true, LeaseMS: 30000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reSubscribeDeadline := time.Now().Add(time.Second)
+	woke := false
+	dipped := false
+	for {
+		agents.runtime.signals.mu.Lock()
+		signal := agents.runtime.signals.channels[key]
+		waiting := 0
+		if signal != nil {
+			waiting = signal.waiters
+		}
+		agents.runtime.signals.mu.Unlock()
+		if waiting == 0 {
+			dipped = true
+		}
+		if dipped && waiting == 1 {
+			woke = true
+			break
+		}
+		if time.Now().After(reSubscribeDeadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if !woke {
+		t.Fatal("ready heartbeat did not interrupt the blocked reservation (no ready-edge wake)")
+	}
+	// The waiter is blocked on an empty inbox, so it keeps waiting to its
+	// deadline; the ready-edge wake is verified above by the re-poll it
+	// forced, not by an early return.
+	select {
+	case result := <-outcome:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.reservation != nil {
+			t.Fatalf("waiter unexpectedly returned a reservation on an empty inbox: %#v", result.reservation)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("blocked waiter did not return at its waitMs deadline")
+	}
+}
