@@ -278,11 +278,22 @@ If a harness cannot safely wake itself or prove that it is idle, it can implemen
 
 ## Harness integrations
 
-October Bus is harness-independent, not tied to Codex. This checkout includes candidates for **28 MCP hosts**, a **native Pi extension**, and a managed-launch path for **October Harness**. Start with Codex, Claude Code, Cursor, OpenCode, Gemini CLI or Copilot CLI; see the [full adapter list and setup](adapters/README.md). These are experimental integration paths, not 30 certified harnesses.
+October Bus is harness-independent, not tied to Codex. This checkout includes candidates for **28 MCP hosts**, a **native Pi extension**, and a managed-launch path for **October Harness**.
+
+These are **experimental integration paths**, not 30 certified harnesses. Tested versions, platforms, and verification records are tracked separately in the [compatibility documentation](compatibility/README.md).
+
+Follow the [shared setup](adapters/README.md#local-setup), then choose a harness below for its configuration and known limitations:
+
+| Integration | Harness setup guides |
+| --- | --- |
+| MCP — starting points | [Codex](adapters/codex/README.md), [Claude Code](adapters/claude-code/README.md), [Cursor](adapters/cursor/README.md), [OpenCode](adapters/opencode/README.md), [Gemini CLI](adapters/gemini-cli/README.md), [Copilot CLI](adapters/copilot-cli/README.md) |
+| More MCP hosts (A–G) | [Amp](adapters/amp/README.md), [Antigravity](adapters/antigravity/README.md), [Auggie](adapters/auggie/README.md), [Autohand](adapters/autohand/README.md), [Cline](adapters/cline/README.md), [Continue](adapters/continue/README.md), [Crush](adapters/crush/README.md), [DeepSeek](adapters/deepseek/README.md), [Factory Droid](adapters/factory-droid/README.md), [Freebuff CLI](adapters/freebuff/README.md), [Goose](adapters/goose/README.md), [Grok](adapters/grok/README.md) |
+| More MCP hosts (H–Q) | [Hermes](adapters/hermes/README.md), [Kilo Code](adapters/kilo-code/README.md), [Kimchi](adapters/kimchi/README.md), [Kimi Code](adapters/kimi-code/README.md), [Kiro](adapters/kiro/README.md), [Mistral Vibe](adapters/mistral-vibe/README.md), [OMP](adapters/omp/README.md), [Prime Agent](adapters/prime-agent/README.md), [Qwen Code](adapters/qwen-code/README.md) |
+| Sandbox-colocated MCP | [Devin](adapters/devin/README.md) — run the Bus and bridge inside the same managed sandbox; remote exposure is not included |
+| Native session extension | [Pi](adapters/pi/README.md) — public session hooks through the shared bridge |
+| Existing native integration | [October Harness](adapters/october-harness/README.md) — managed launch through its native Bus integration |
 
 For custom integrations, use HTTP or the Go and TypeScript clients. A headless service manifest for Omarchy is also included.
-
-Integration configurations and verified compatibility are different. Setup instructions and known limitations live with each adapter; tested versions, platforms, and verification records live in the [compatibility documentation](compatibility/README.md).
 
 ## Compatibility checks
 
