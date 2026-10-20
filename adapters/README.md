@@ -54,6 +54,8 @@ or wake an idle model.
 
 For a local scope, use `agent run --scope <id> --id <agent> --name <name> -- <host-command>`. This reads protected local discovery and the saved scope credential without a token export. It rejects explicit remote addresses or inherited scope/agent authority; the older `--scope-token-env` route remains available separately for remote/operator-managed launches.
 
+An operator-managed launcher that holds the scope token itself can keep it out of the launcher's environment, where same-user tools can read it for the launcher's whole life, with `--scope-token-fd <n>` or `--scope-token-file <private-file>`. `--scope-token-fd` (Unix) reads the token from an inherited descriptor (3 or more, typically a pipe) up to a newline or end of file, then closes it before the command starts, so nothing touches the environment, arguments or disk. `--scope-token-file` reads an owner-only regular file once and rejects symlinks. Address resolution is unchanged (`--address`, `OCTOBER_BUS_ADDRESS`, then local discovery). Each refuses to combine with `--scope`, with the other, or with a set `--scope-token-env` variable; `--scope-token-env` itself is unchanged.
+
 Do not mix managed credentials with self-registering flags. Missing identity fails with an actionable error, not a tool-less server. Prefer configuration-only setup for independently launched editors.
 
 ## Removal and recovery
