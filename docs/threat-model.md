@@ -32,7 +32,7 @@ Adapters and harnesses remain responsible for their own model access, files, too
 | Message or task flood | Per-scope and per-agent limits return explicit backpressure |
 | Agent resolves its own escalation | Only scope authority can resolve human escalation |
 | Context expands permission | Context is bounded metadata or content and grants no file, URL, tool, or account access |
-| Credential disclosure | Tokens stay out of process arguments, private paths reject symlinks, and responses use `Cache-Control: no-store` |
+| Credential disclosure | Tokens stay out of process arguments, launchers can keep scope tokens out of the environment (`agent run --scope`, `--scope-token-file`, `--scope-token-fd`), private paths reject symlinks, and responses use `Cache-Control: no-store` |
 | Network exposure | The local profile binds to loopback by default |
 
 ## Local process risk
@@ -40,6 +40,8 @@ Adapters and harnesses remain responsible for their own model access, files, too
 The runtime and data directories request owner-only permissions where the operating system supports them. A malicious process already running as the same operating-system user may still be able to access local files, inspect memory, or control sibling processes. October Bus is not a sandbox against the local user account.
 
 Do not place scope or admin credentials in model context. Give a harness only its execution-bound agent token when possible.
+
+A process's environment is often readable where its files and memory are not. Removing a variable after start does not remove it from what the operating system reports (`/proc/<pid>/environ` on Linux, `KERN_PROCARGS2` on macOS), and that view can stay readable to same-user tools, including sandboxed ones, that cannot open the process's files or memory. Launchers that hold a scope token should pass it with `agent run --scope-token-fd` or `--scope-token-file` rather than `--scope-token-env`. The managed child still receives its execution-bound agent token in its environment.
 
 Configuration-only adapters keep both scope and execution tokens inside the Go bridge. Their protected local scope-token files are sensitive credentials, including after daemon shutdown. Creation/import/rotation/deletion through the local CLI maintain that cache; remote API operations do not. Hashing scope IDs makes portable filenames, not encryption. Unix modes are enforced on reads, but Windows deployments must check owner-only ACLs separately. Neither mode protects against a malicious process running as the same OS user.
 
