@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/go-oauth2/oauth2/v4/server"
+	"golang.org/x/time/rate"
 )
 
 type HostedServerOptions struct {
@@ -15,14 +18,18 @@ type HostedServerOptions struct {
 }
 
 type HostedServer struct {
-	accounts  *HostedAccounts
-	identity  HostedIdentityVerifier
-	core      *Server
-	routes    *http.ServeMux
-	publicURL string
-	host      string
-	origins   map[string]bool
-	requests  chan struct{}
+	accounts           *HostedAccounts
+	identity           HostedIdentityVerifier
+	core               *Server
+	routes             *http.ServeMux
+	publicURL          string
+	host               string
+	origins            map[string]bool
+	requests           chan struct{}
+	oauth              *server.Server
+	oauthRegistration  *rate.Limiter
+	oauthAuthorization *rate.Limiter
+	oauthRequests      chan struct{}
 }
 
 func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*HostedServer, error) {
@@ -129,7 +136,12 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 		}
 		writeResult(w, http.StatusOK, result)
 	})
+	h.oauthRegistration = rate.NewLimiter(1, 30)
+	h.oauthAuthorization = rate.NewLimiter(5, 50)
+	h.oauthRequests = make(chan struct{}, 32)
+	h.registerOAuthRoutes()
 	h.registerWorkspaceViews()
+	h.registerBrowserRoutes()
 	return h, nil
 }
 
@@ -167,7 +179,7 @@ func (h *HostedServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
-		if !h.origins[origin] {
+		if !h.origins[origin] && !(h.publicOAuthPath(r.URL.Path) && validOAuthBrowserOrigin(origin)) {
 			writeFailure(w, Errorf(CodePermissionDenied, "Browser origin is not allowed"))
 			return
 		}
@@ -184,7 +196,10 @@ func (h *HostedServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeFailure(w, Errorf(CodeNotFound, "Route not found"))
 		return
 	}
-	if strings.HasPrefix(r.URL.Path, "/api/") {
+	if h.serveBrowser(w, r) {
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/oauth/") || strings.HasPrefix(r.URL.Path, "/.well-known/") {
 		select {
 		case h.requests <- struct{}{}:
 			defer func() { <-h.requests }()
@@ -196,5 +211,36 @@ func (h *HostedServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.routes.ServeHTTP(w, r)
 		return
 	}
+	if r.URL.Path == "/mcp" {
+		token, err := bearer(r)
+		if err != nil {
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+h.publicURL+`/.well-known/oauth-protected-resource/mcp"`)
+			writeFailure(w, err)
+			return
+		}
+		if strings.HasPrefix(token, "oba_") {
+			execution, err := h.oauthExecution(r.Context(), token)
+			if err != nil {
+				if AsBusError(err).Code == CodeUnauthenticated {
+					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", resource_metadata="`+h.publicURL+`/.well-known/oauth-protected-resource/mcp"`)
+				}
+				writeFailure(w, err)
+				return
+			}
+			r = r.Clone(r.Context())
+			r.Header.Set("Authorization", "Bearer "+execution)
+			// Host is pinned above and the OAuth grant is checked before dispatch.
+			// Origin policy is owned by this front door, not the local MCP server.
+			r.Header.Del("Origin")
+		}
+	}
 	h.core.ServeHTTP(w, r)
+}
+
+func (h *HostedServer) publicOAuthPath(path string) bool {
+	return path == "/mcp" || strings.HasPrefix(path, "/oauth/") || strings.HasPrefix(path, "/.well-known/")
+}
+func validOAuthBrowserOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	return err == nil && validOAuthRedirect(origin) && u.Path == "" && u.RawQuery == "" && u.Fragment == ""
 }

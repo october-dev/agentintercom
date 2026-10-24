@@ -109,3 +109,11 @@ credential-key rotation need an explicit deployment procedure.
 Canonical SQL is in [the migration directory](../deploy/hosted/migrations/README.md).
 The service never runs DDL at startup and does not modify another application's
 account, billing or coordination tables.
+
+## Browser and MCP
+
+Open `<public-origin>/app` for account sign-in, workspace selection, session
+presence, invitations and connection revocation. Remote MCP clients use
+`<public-origin>/mcp` and select their workspace through explicit OAuth consent.
+See [hosted MCP authorization](hosted-mcp.md) for the connector contract, token
+lifetimes and operator sign-in configuration.

@@ -74,3 +74,12 @@ ownership and delivery counters. References the runtime's scope and agent tables
 User IDs are verified external identities; this migration neither grants access
 to existing application data nor creates an Auth database dependency. Encrypted
 service credentials require the separately backed-up hosted encryption key.
+
+## MCP authorization: 003_oauth.sql and 004_oauth_client_auth.sql
+
+Adds OAuth client registrations, expiring consent requests and encrypted grants
+bound to a single workspace connection. Access, refresh and authorization-code
+lookups use SHA-256 digests. Client secrets are stored only as digests. Refresh
+rotation, code redemption and connection revocation take the same workspace
+transaction lock as session changes. Migration 004 adds confidential client
+methods; existing public registrations retain the `none` method.

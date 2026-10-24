@@ -9,3 +9,15 @@ The PostgreSQL backend uses `github.com/jackc/pgx/v5` **v5.11.0** through its
 connections and transaction-pooler-compatible execution without introducing a
 second domain implementation. Its transitive module versions are recorded in the
 same Go lock files. Source and release: [pgx](https://github.com/jackc/pgx/releases/tag/v5.11.0).
+
+Hosted MCP authorization uses `github.com/go-oauth2/oauth2/v4` **v4.6.0** for
+OAuth authorization-code/PKCE validation and token rotation. Its storage adapter
+uses the existing workspace transaction and encrypted credentials. Source and
+release: [go-oauth2](https://github.com/go-oauth2/oauth2/releases/tag/v4.6.0).
+
+The workspace browser uses `@supabase/auth-js` **2.118.0** for account-session
+handling; it does not load Supabase database or realtime clients. `web/package-lock.json`
+pins its dependency graph, the `esbuild` **0.28.2** build tool and
+`@playwright/test` **1.64.1** browser test runner. No scripts are loaded from a CDN.
+The generated assets in `bus/hostedweb` are embedded in the Go binary. Regenerate
+with `npm ci --prefix web --ignore-scripts && npm run build --prefix web`.

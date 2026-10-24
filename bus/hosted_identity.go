@@ -40,7 +40,7 @@ type SupabaseIdentity struct {
 
 func NewSupabaseIdentity(origin, publicKey string, additionalIssuers []string) (*SupabaseIdentity, error) {
 	u, err := url.Parse(origin)
-	if err != nil || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || publicKey == "" {
+	if err != nil || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || !isPublicAuthKey(publicKey) {
 		return nil, errors.New("configure an authentication origin and public API key")
 	}
 	ip := net.ParseIP(u.Hostname())
@@ -59,6 +59,23 @@ func NewSupabaseIdentity(origin, publicKey string, additionalIssuers []string) (
 	return &SupabaseIdentity{origin: origin, key: publicKey, issuers: issuers, cache: map[string]cachedHostedIdentity{}, client: &http.Client{
 		Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("authentication redirect refused") },
 	}}, nil
+}
+
+// Only browser-safe key classes may be used for account sign-in. Never expose
+// service_role or secret keys through the workspace's public configuration.
+func isPublicAuthKey(key string) bool {
+	if strings.HasPrefix(key, "sb_publishable_") && len(key) >= 30 && len(key) <= 256 {
+		return !strings.ContainsAny(key, " \r\n\t")
+	}
+	parts := strings.Split(key, ".")
+	if len(parts) != 3 || len(key) > 4096 {
+		return false
+	}
+	data, err := base64.RawURLEncoding.DecodeString(parts[1])
+	var claims struct {
+		Role string `json:"role"`
+	}
+	return err == nil && json.Unmarshal(data, &claims) == nil && claims.Role == "anon"
 }
 
 func (v *SupabaseIdentity) Authenticate(ctx context.Context, token string) (HostedUser, error) {

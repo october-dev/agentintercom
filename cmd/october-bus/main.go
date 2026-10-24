@@ -970,7 +970,7 @@ func runAgent(args []string) error {
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
-	command.Env = setEnvironment(removeEnvironment(os.Environ(), *scopeTokenEnv, "OCTOBER_BUS_SCOPE_TOKEN", "OCTOBER_BUS_ADMIN_TOKEN"),
+	command.Env = setEnvironment(removeEnvironment(os.Environ(), *scopeTokenEnv, "OCTOBER_BUS_SCOPE_TOKEN", "OCTOBER_BUS_ADMIN_TOKEN", "OCTOBER_BUS_DATABASE_URL", "OCTOBER_BUS_ENCRYPTION_KEY", "OCTOBER_BUS_BILLING_SECRET"),
 		"OCTOBER_BUS_ADDRESS", resolvedAddress,
 		"OCTOBER_BUS_MCP_URL", resolvedAddress+"/mcp",
 		"OCTOBER_BUS_AGENT_ID", session.Registration.AgentID,

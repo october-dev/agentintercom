@@ -111,6 +111,14 @@ func (a *HostedAccounts) EnrollDevice(ctx context.Context, user HostedUser, scop
 	if _, err := hostedMember(ctx, tx, scopeID, user.ID); err != nil {
 		return WorkspaceDevice{}, err
 	}
+	device, err := a.enrollDeviceTx(ctx, tx, user, scopeID, name, "device")
+	if err != nil {
+		return WorkspaceDevice{}, err
+	}
+	return device, tx.Commit()
+}
+
+func (a *HostedAccounts) enrollDeviceTx(ctx context.Context, tx sqlExecutor, user HostedUser, scopeID, name, kind string) (WorkspaceDevice, error) {
 	var count int
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_devices WHERE scope_id=? AND user_id=? AND revoked_at=0 AND expires_at>?", scopeID, user.ID, nowMillis()).Scan(&count); err != nil {
 		return WorkspaceDevice{}, err
@@ -127,12 +135,18 @@ func (a *HostedAccounts) EnrollDevice(ctx context.Context, user HostedUser, scop
 		return WorkspaceDevice{}, err
 	}
 	token := "obd_" + secret
+	if kind == "mcp" {
+		token = ""
+	}
 	now := nowMillis()
 	expires := now + (365 * 24 * time.Hour).Milliseconds()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO hosted_devices(device_id,scope_id,user_id,name,kind,token_hash,created_at,expires_at) VALUES(?,?,?,?,'device',?,?,?)`, id, scopeID, user.ID, name, tokenDigest(token), now, expires); err != nil {
+	if kind == "mcp" {
+		expires = now + (30 * 24 * time.Hour).Milliseconds()
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO hosted_devices(device_id,scope_id,user_id,name,kind,token_hash,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)`, id, scopeID, user.ID, name, kind, oauthHash(token), now, expires); err != nil {
 		return WorkspaceDevice{}, err
 	}
-	return WorkspaceDevice{ID: id, UserID: user.ID, Name: name, Kind: "device", CreatedAt: instant(now), ExpiresAt: instant(expires), Token: token}, tx.Commit()
+	return WorkspaceDevice{ID: id, UserID: user.ID, Name: name, Kind: kind, CreatedAt: instant(now), ExpiresAt: instant(expires), Token: token}, nil
 }
 
 func (a *HostedAccounts) Devices(ctx context.Context, user HostedUser, scopeID string) ([]WorkspaceDevice, error) {
@@ -242,6 +256,19 @@ func (a *HostedAccounts) StartDeviceSession(ctx context.Context, token, name, re
 	if err != nil {
 		return RegisterAgentResult{}, err
 	}
+	result, err := a.startSessionTx(ctx, tx, d, name, resumeID)
+	if err != nil {
+		return RegisterAgentResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return RegisterAgentResult{}, err
+	}
+	a.runtime.signals.notifyAllScope(d.ScopeID)
+	return result, nil
+}
+
+func (a *HostedAccounts) startSessionTx(ctx context.Context, tx sqlExecutor, d hostedDeviceIdentity, name, resumeID string) (RegisterAgentResult, error) {
+	var err error
 	var trial, paid, disabled int64
 	var limit int
 	if err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,disabled_at,session_limit FROM hosted_workspaces WHERE scope_id=?", d.ScopeID).Scan(&trial, &paid, &disabled, &limit); err != nil {
@@ -299,9 +326,5 @@ func (a *HostedAccounts) StartDeviceSession(ctx context.Context, token, name, re
 ON CONFLICT(scope_id,agent_id) DO UPDATE SET credential=excluded.credential`, d.ScopeID, result.AgentID, d.ID, sealed, now); err != nil {
 		return RegisterAgentResult{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return RegisterAgentResult{}, err
-	}
-	a.runtime.signals.notifyAllScope(d.ScopeID)
 	return result, nil
 }

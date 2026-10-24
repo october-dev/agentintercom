@@ -1,0 +1,84 @@
+import { test, expect } from '@playwright/test';
+
+async function fixture(page, signedIn = true) {
+  const user = { id: 'owner-id', email: 'owner@example.test', aud: 'authenticated', role: 'authenticated', email_confirmed_at: '2026-01-01T00:00:00Z' };
+  const events = [];
+  let revoked = false;
+  if (signedIn) await page.addInitScript(user => {
+    const claims = btoa(JSON.stringify({ sub: user.id, aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 }));
+    localStorage.setItem('october-bus-auth', JSON.stringify({ access_token: 'e30.' + claims + '.fixture', refresh_token: 'fixture-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user }));
+  }, user);
+  await page.route('https://auth.example.test/**', async route => {
+    if (route.request().url().endsWith('/otp?redirect_to=http%3A%2F%2F127.0.0.1%3A4794%2Fapp')) events.push('email-requested');
+    await route.fulfill({ json: route.request().url().includes('/user') ? user : {} });
+  });
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url()); const path = url.pathname; const method = route.request().method();
+    if (method !== 'GET') events.push({ path, method, body: route.request().postDataJSON() });
+    let result;
+    if (path === '/api/config') result = { authUrl: 'https://auth.example.test', authPublicKey: 'sb_publishable_fixture_key_for_tests', mcpUrl: 'https://bus.example.test/mcp' };
+    else if (path === '/api/me') result = user;
+    else if (path === '/api/workspaces') result = [{ id: 'workspace-1', name: 'My workspace', role: 'owner', memberLimit: 5 }];
+    else if (path.endsWith('/sessions')) result = { sessions: [{ id: 'session-1', displayName: '<img src=x onerror=alert(1)>', deviceId: 'device-1', deviceName: 'Laptop', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' }] };
+    else if (path.endsWith('/members')) result = [{ userId: user.id, email: user.email, role: 'owner', joinedAt: '2026-10-24T12:00:00Z' }];
+    else if (path.endsWith('/devices')) result = [{ id: 'device-1', name: 'My AI app', kind: 'mcp', userId: user.id, revokedAt: revoked ? '2026-10-24T12:00:00Z' : '', expiresAt: '2026-11-24T12:00:00Z' }];
+    else if (path.endsWith('/devices/device-1') && method === 'DELETE') { revoked = true; result = { revoked: true }; }
+    else if (path.endsWith('/invites')) result = method === 'POST' ? { id: 'invite-1', email: 'teammate@example.test', token: 'secret-invitation', expiresAt: '2026-10-31T12:00:00Z' } : [];
+    else if (path === '/api/oauth/requests/request-1') result = method === 'POST' ? { redirectUrl: 'http://127.0.0.1:4794/callback?code=fixture&state=state' } : { id: 'request-1', clientName: 'Connected app', redirectUri: 'http://127.0.0.1:4794/callback' };
+    else { await route.fulfill({ status: 404, json: { error: { message: `Unexpected fixture route ${path}` } } }); return; }
+    await route.fulfill({ json: { result } });
+  });
+  return events;
+}
+
+test('signed-in workspace shows honest presence and safe names, and revokes devices', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app');
+  await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible();
+  await expect(page.getByText('<img src=x onerror=alert(1)>', { exact: true })).toBeVisible();
+  await expect(page.locator('img')).toHaveCount(0);
+  await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+  await expect(page.getByText(/may need you to resume/)).toBeVisible();
+  await page.getByRole('button', { name: 'Members & devices', exact: true }).click();
+  await page.getByRole('button', { name: 'Revoke', exact: true }).click();
+  expect(events).toHaveLength(0);
+  await page.getByRole('button', { name: 'Revoke connection', exact: true }).click();
+  await expect(page.getByText(/MCP app · Revoked/)).toBeVisible();
+  expect(events.filter(e => e.method === 'DELETE')).toHaveLength(1);
+});
+
+test('OAuth requires explicit workspace consent and preserves the app callback', async ({ page }) => {
+  const events = await fixture(page);
+  await page.route('**/callback?*', route => route.fulfill({ contentType: 'text/html', body: '<p>Connection completed</p>' }));
+  await page.goto('/app?authorization_id=request-1');
+  await expect(page.getByRole('heading', { name: 'Connected app' })).toBeVisible();
+  await expect(page.getByText(/October has not verified/)).toBeVisible();
+  expect(events).toHaveLength(0);
+  await page.getByRole('button', { name: 'Allow connection', exact: true }).click();
+  await expect(page).toHaveURL(/\/callback\?code=fixture&state=state/);
+  expect(events).toEqual([{ path: '/api/oauth/requests/request-1', method: 'POST', body: { approve: true, workspaceId: 'workspace-1' } }]);
+});
+
+test('mobile onboarding and teammate invitation stay usable without overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const events = await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Connect an app', exact: true }).last().click();
+  await expect(page.getByText('https://bus.example.test/mcp', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Members & devices', exact: true }).click();
+  await page.getByLabel('Teammate’s email').fill('teammate@example.test');
+  await page.getByRole('button', { name: 'Create invitation', exact: true }).click();
+  await expect(page.getByText('http://127.0.0.1:4794/app#invite=secret-invitation', { exact: true })).toBeVisible();
+  expect(events.at(-1).body).toEqual({ email: 'teammate@example.test', role: 'member' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: '/tmp/october-bus-workspace-mobile.png', fullPage: true });
+});
+
+test('signed-out page presents account login without sending an email on load', async ({ page }) => {
+  const events = await fixture(page, false);
+  await page.goto('/app');
+  await expect(page.getByRole('heading', { name: 'Sign in to October' })).toBeVisible();
+  await expect(page.getByLabel('Email address', { exact: true }).first()).toBeVisible();
+  expect(events).toHaveLength(0);
+  await page.screenshot({ path: '/tmp/october-bus-signin.png', fullPage: true });
+});
