@@ -285,6 +285,19 @@ func (s *Store) CredentialKind(ctx context.Context, supplied string) (Credential
 }
 
 func (s *Store) RegisterAgent(ctx context.Context, scopeID string, input RegisterAgentInput) (RegisterAgentResult, error) {
+	tx, err := s.beginTx(ctx, scopeID)
+	if err != nil {
+		return RegisterAgentResult{}, err
+	}
+	defer tx.Rollback()
+	result, err := registerAgentTx(ctx, tx, scopeID, input)
+	if err != nil {
+		return RegisterAgentResult{}, err
+	}
+	return result, tx.Commit()
+}
+
+func registerAgentTx(ctx context.Context, tx sqlExecutor, scopeID string, input RegisterAgentInput) (RegisterAgentResult, error) {
 	agentID := input.ID
 	var err error
 	if agentID == "" {
@@ -307,11 +320,6 @@ func (s *Store) RegisterAgent(ctx context.Context, scopeID string, input Registe
 	}
 	now := nowMillis()
 	leaseExpiresAt := now + input.LeaseMS
-	tx, err := s.beginTx(ctx, scopeID)
-	if err != nil {
-		return RegisterAgentResult{}, err
-	}
-	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO agents(scope_id,agent_id,display_name,capabilities_json,execution_id,token_hash,lifecycle,ready,lease_expires_at,registered_at,updated_at)
 VALUES(?,?,?,?,?,?,'starting',0,?,?,?)
@@ -349,9 +357,6 @@ ON CONFLICT(scope_id,agent_id) DO UPDATE SET
 			}
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return RegisterAgentResult{}, err
-	}
 	return RegisterAgentResult{
 		AgentIdentity: AgentIdentity{ScopeID: scopeID, AgentID: agentID, ExecutionID: executionID},
 		AgentToken:    agentToken, LeaseExpiresAt: instant(leaseExpiresAt),
@@ -382,6 +387,9 @@ func (s *Store) AuthenticateAgent(ctx context.Context, supplied string) (Princip
 	}
 	if principal.LeaseExpiresAt <= nowMillis() {
 		return Principal{}, Errorf(CodeUnauthenticated, "Agent execution lease has expired")
+	}
+	if err := requireHostedExecution(ctx, s.db, principal, nowMillis()); err != nil {
+		return Principal{}, err
 	}
 	return principal, nil
 }
@@ -745,6 +753,9 @@ func sendMessageTx(ctx context.Context, tx sqlExecutor, scopeID string, senderKi
 	if backlog >= messageBacklogCap {
 		return Message{}, Errorf(CodeBackpressure, "Scope message backlog is full")
 	}
+	if err := consumeHostedDelivery(ctx, tx, scopeID, mode, now); err != nil {
+		return Message{}, err
+	}
 	messageID, err := randomID("msg_")
 	if err != nil {
 		return Message{}, err
@@ -909,7 +920,10 @@ func requireCurrentExecution(ctx context.Context, tx sqlExecutor, principal Prin
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (executionID != principal.ExecutionID || leaseExpiresAt <= now)) {
 		return Errorf(CodeUnauthenticated, "Agent execution is no longer current")
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return requireHostedExecution(ctx, tx, principal, now)
 }
 
 func (s *Store) ReserveInbox(ctx context.Context, principal Principal, limit int) (*InboxReservation, error) {
@@ -925,7 +939,7 @@ func (s *Store) ReserveInbox(ctx context.Context, principal Principal, limit int
 	if err := expireMessages(ctx, tx, principal.ScopeID, now); err != nil {
 		return nil, err
 	}
-	expired, err := tx.QueryContext(ctx, `SELECT reservation_id,scope_id,agent_id FROM reservations WHERE expires_at<=?`, now)
+	expired, err := tx.QueryContext(ctx, `SELECT reservation_id,scope_id,agent_id FROM reservations WHERE scope_id=? AND expires_at<=?`, principal.ScopeID, now)
 	if err != nil {
 		return nil, err
 	}

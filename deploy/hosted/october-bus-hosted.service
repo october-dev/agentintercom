@@ -1,0 +1,23 @@
+[Unit]
+Description=October Bus hosted workspaces
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=october-bus
+Group=october-bus
+EnvironmentFile=/etc/october-bus/hosted.env
+ExecStart=/usr/local/bin/october-bus hosted serve --public-url https://bus.example.com
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

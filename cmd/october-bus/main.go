@@ -22,6 +22,7 @@ import (
 const usage = `October Bus
 
 Usage:
+  october-bus hosted serve --public-url <https-origin> [--listen 127.0.0.1:4780]
   october-bus database migrate [--url-env OCTOBER_BUS_DATABASE_URL]
   october-bus database check [--url-env OCTOBER_BUS_DATABASE_URL]
   october-bus workspace create <name>
@@ -1012,6 +1013,8 @@ func run() error {
 		return nil
 	}
 	switch args[0] {
+	case "hosted":
+		return hostedCommand(args[1:])
 	case "database":
 		return databaseCommand(args[1:], os.Stdout)
 	case "workspace":

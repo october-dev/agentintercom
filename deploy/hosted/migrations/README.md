@@ -66,3 +66,11 @@ go test ./bus ./conformance -run TestPostgres -count=1
 
 These tests apply migrations and create synthetic scopes. They refuse remote
 hosts and other database names. Without this environment variable they skip.
+
+## Workspace schema: 002_workspaces.sql
+
+Adds standalone hosted workspaces, memberships, invitations, devices, session
+ownership and delivery counters. References the runtime's scope and agent tables.
+User IDs are verified external identities; this migration neither grants access
+to existing application data nor creates an Auth database dependency. Encrypted
+service credentials require the separately backed-up hosted encryption key.
