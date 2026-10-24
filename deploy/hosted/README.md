@@ -267,6 +267,17 @@ to be tested. The form's API-key option is not evidence of end-to-end compatibil
 
 ## Operations, rotation, and recovery
 
+- If the proxy service has no restart policy, install
+  [caddy-restart.conf](caddy-restart.conf) as
+  `/etc/systemd/system/caddy.service.d/50-october-restart.conf` and run
+  `systemctl daemon-reload`. Check `systemctl show caddy --property=Restart`;
+  applying this policy does not require restarting the running proxy.
+- After verifying a separate public-key SSH connection, the optional
+  [sshd-key-only.conf](sshd-key-only.conf) disables password and keyboard-interactive
+  login. Back up existing configuration, validate with `sshd -t`, inspect the
+  effective settings with `sshd -T`, reload `ssh`, and verify a new connection
+  while retaining the original session. Authentication hardening is separate
+  from provider firewall rules and off-host backups.
 - Inspect `systemctl status october-bus october-bus-gateway` and their journals.
   Probe `/health/live` for process liveness and `/health/ready` for all connector
   sessions plus storage availability. A partial connector failure leaves other
