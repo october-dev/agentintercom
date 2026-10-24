@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -44,7 +45,7 @@ const (
 )
 
 type Store struct {
-	db     *sql.DB
+	db     *sqlDatabase
 	lock   *os.File
 	source string
 }
@@ -92,7 +93,7 @@ func OpenStore(source string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	store := &Store{db: db, lock: lock, source: source}
+	store := &Store{db: &sqlDatabase{DB: db, backend: StorageBackendSQLite}, lock: lock, source: source}
 	if err := store.initialize(context.Background()); err != nil {
 		db.Close()
 		if lock != nil {
@@ -115,7 +116,7 @@ func (s *Store) Close() error {
 	return err
 }
 
-func (s *Store) Backend() StorageBackend { return StorageBackendSQLite }
+func (s *Store) Backend() StorageBackend { return s.db.backend }
 
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
@@ -191,7 +192,11 @@ func unique(values []string) []string {
 	return result
 }
 
-func isSQLiteConstraint(err error) bool {
+func isStorageConstraint(err error) bool {
+	var pgError *pgconn.PgError
+	if errors.As(err, &pgError) {
+		return strings.HasPrefix(pgError.Code, "23")
+	}
 	var sqliteError *sqlite.Error
 	return errors.As(err, &sqliteError) && sqliteError.Code()&0xff == sqlite3.SQLITE_CONSTRAINT
 }
@@ -209,11 +214,19 @@ func (s *Store) CreateScope(ctx context.Context, requestedID string) (CreateScop
 	if err != nil {
 		return CreateScopeResult{}, err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO scopes(scope_id,token_hash,created_at) VALUES(?,?,?)`, scopeID, tokenDigest(token), nowMillis())
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
-		if isSQLiteConstraint(err) {
+		return CreateScopeResult{}, err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO scopes(scope_id,token_hash,created_at) VALUES(?,?,?)`, scopeID, tokenDigest(token), nowMillis())
+	if err != nil {
+		if isStorageConstraint(err) {
 			return CreateScopeResult{}, Errorf(CodeConflict, "Scope "+scopeID+" already exists")
 		}
+		return CreateScopeResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return CreateScopeResult{}, err
 	}
 	return CreateScopeResult{ScopeID: scopeID, ScopeToken: token}, nil
@@ -294,7 +307,7 @@ func (s *Store) RegisterAgent(ctx context.Context, scopeID string, input Registe
 	}
 	now := nowMillis()
 	leaseExpiresAt := now + input.LeaseMS
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return RegisterAgentResult{}, err
 	}
@@ -408,7 +421,7 @@ func (s *Store) Agent(ctx context.Context, scopeID, agentID string) (Agent, erro
 }
 
 func (s *Store) Heartbeat(ctx context.Context, principal Principal, input HeartbeatInput) (Agent, bool, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return Agent{}, false, err
 	}
@@ -495,7 +508,7 @@ func linkAgents(ctx context.Context, executor interface {
 		}
 	}
 	a, b := orderedPeers(left, right)
-	result, err := executor.ExecContext(ctx, `INSERT OR IGNORE INTO peer_links(scope_id,left_agent,right_agent,created_at) VALUES(?,?,?,?)`, scopeID, a, b, now)
+	result, err := executor.ExecContext(ctx, `INSERT INTO peer_links(scope_id,left_agent,right_agent,created_at) VALUES(?,?,?,?) ON CONFLICT(scope_id,left_agent,right_agent) DO NOTHING`, scopeID, a, b, now)
 	if err != nil {
 		return false, err
 	}
@@ -504,7 +517,7 @@ func linkAgents(ctx context.Context, executor interface {
 }
 
 func (s *Store) LinkAgents(ctx context.Context, scopeID, left, right string) error {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return err
 	}
@@ -544,7 +557,7 @@ WHERE l.scope_id=? AND (l.left_agent=? OR l.right_agent=?) ORDER BY a.registered
 	return peers, rows.Err()
 }
 
-func (s *Store) linked(ctx context.Context, tx *sql.Tx, scopeID, left, right string) (bool, error) {
+func (s *Store) linked(ctx context.Context, tx sqlExecutor, scopeID, left, right string) (bool, error) {
 	return linkedAgents(ctx, tx, scopeID, left, right)
 }
 
@@ -585,7 +598,7 @@ func receiptFromMessage(message Message) DeliveryReceipt {
 	}
 }
 
-func expireMessages(ctx context.Context, tx *sql.Tx, scopeID string, now int64) error {
+func expireMessages(ctx context.Context, tx sqlExecutor, scopeID string, now int64) error {
 	rows, err := tx.QueryContext(ctx, `SELECT message_id,from_id,to_id,mode,delivered_at FROM messages WHERE scope_id=? AND expires_at IS NOT NULL AND expires_at<=? AND state NOT IN ('acknowledged','expired')`, scopeID, now)
 	if err != nil {
 		return err
@@ -647,7 +660,7 @@ func messageRequestHash(input SendMessageInput, mode MessageMode, contextJSON st
 	return hex.EncodeToString(sum[:])
 }
 
-func sendMessageTx(ctx context.Context, tx *sql.Tx, scopeID string, senderKind MessageParticipantKind, senderID string, input SendMessageInput) (Message, error) {
+func sendMessageTx(ctx context.Context, tx sqlExecutor, scopeID string, senderKind MessageParticipantKind, senderID string, input SendMessageInput) (Message, error) {
 	mode := input.Mode
 	if mode == "" {
 		mode = MessageNotify
@@ -786,7 +799,7 @@ func sendMessageTx(ctx context.Context, tx *sql.Tx, scopeID string, senderKind M
 	return message, err
 }
 
-func linkedAgents(ctx context.Context, tx *sql.Tx, scopeID, left, right string) (bool, error) {
+func linkedAgents(ctx context.Context, tx sqlExecutor, scopeID, left, right string) (bool, error) {
 	a, b := orderedPeers(left, right)
 	var found int
 	err := tx.QueryRowContext(ctx, `SELECT 1 FROM peer_links WHERE scope_id=? AND left_agent=? AND right_agent=?`, scopeID, a, b).Scan(&found)
@@ -797,7 +810,7 @@ func linkedAgents(ctx context.Context, tx *sql.Tx, scopeID, left, right string) 
 }
 
 func (s *Store) SendMessage(ctx context.Context, principal Principal, input SendMessageInput) (DeliveryReceipt, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return DeliveryReceipt{}, err
 	}
@@ -823,7 +836,7 @@ func nullableString(value string) any {
 }
 
 func (s *Store) Receipt(ctx context.Context, principal Principal, messageID string) (DeliveryReceipt, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return DeliveryReceipt{}, err
 	}
@@ -848,7 +861,7 @@ func (s *Store) Receipt(ctx context.Context, principal Principal, messageID stri
 	return receiptFromMessage(message), nil
 }
 
-func releaseReservation(ctx context.Context, tx *sql.Tx, scopeID, agentID, reservationID string) error {
+func releaseReservation(ctx context.Context, tx sqlExecutor, scopeID, agentID, reservationID string) error {
 	rows, err := tx.QueryContext(ctx, `SELECT message_id,from_id,to_id,mode,CASE WHEN delivered_at IS NULL THEN 'queued' ELSE 'delivered' END FROM messages WHERE reservation_id=? AND scope_id=? AND to_kind='agent' AND to_id=? AND state='reserved'`, reservationID, scopeID, agentID)
 	if err != nil {
 		return err
@@ -889,7 +902,7 @@ func releaseReservation(ctx context.Context, tx *sql.Tx, scopeID, agentID, reser
 	return nil
 }
 
-func requireCurrentExecution(ctx context.Context, tx *sql.Tx, principal Principal, now int64) error {
+func requireCurrentExecution(ctx context.Context, tx sqlExecutor, principal Principal, now int64) error {
 	var executionID string
 	var leaseExpiresAt int64
 	err := tx.QueryRowContext(ctx, `SELECT execution_id,lease_expires_at FROM agents WHERE scope_id=? AND agent_id=?`, principal.ScopeID, principal.AgentID).Scan(&executionID, &leaseExpiresAt)
@@ -900,7 +913,7 @@ func requireCurrentExecution(ctx context.Context, tx *sql.Tx, principal Principa
 }
 
 func (s *Store) ReserveInbox(ctx context.Context, principal Principal, limit int) (*InboxReservation, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return nil, err
 	}
@@ -993,7 +1006,7 @@ func (s *Store) NextInboxReservationExpiry(ctx context.Context, principal Princi
 }
 
 func (s *Store) CommitInbox(ctx context.Context, principal Principal, reservationID string) ([]Message, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return nil, err
 	}
@@ -1070,7 +1083,7 @@ func (s *Store) CommitInbox(ctx context.Context, principal Principal, reservatio
 }
 
 func (s *Store) ReleaseInbox(ctx context.Context, principal Principal, reservationID string) error {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return err
 	}
@@ -1088,7 +1101,7 @@ func (s *Store) ReleaseInbox(ctx context.Context, principal Principal, reservati
 }
 
 func (s *Store) AcknowledgeMessages(ctx context.Context, principal Principal, messageIDs []string) (int64, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return 0, err
 	}
@@ -1188,7 +1201,7 @@ func taskFrom(ctx context.Context, query interface {
 	return task, nil
 }
 
-func releaseStaleTaskClaims(ctx context.Context, tx *sql.Tx, scopeID string) error {
+func releaseStaleTaskClaims(ctx context.Context, tx sqlExecutor, scopeID string) error {
 	now := nowMillis()
 	rows, err := tx.QueryContext(ctx, `SELECT task_id,claimed_by FROM tasks WHERE scope_id=? AND status='claimed' AND NOT EXISTS (
   SELECT 1 FROM agents
@@ -1239,7 +1252,7 @@ func (s *Store) AddAgentTask(ctx context.Context, principal Principal, input Add
 }
 
 func (s *Store) addTask(ctx context.Context, scopeID, createdBy string, principal *Principal, input AddTaskInput) (Task, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return Task{}, err
 	}
@@ -1295,7 +1308,7 @@ func (s *Store) addTask(ctx context.Context, scopeID, createdBy string, principa
 }
 
 func (s *Store) ClaimTask(ctx context.Context, principal Principal, taskID string) (Task, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return Task{}, err
 	}
@@ -1346,7 +1359,7 @@ func (s *Store) ClaimTask(ctx context.Context, principal Principal, taskID strin
 }
 
 func (s *Store) CompleteTask(ctx context.Context, principal Principal, taskID, note string) (Task, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return Task{}, err
 	}
@@ -1380,7 +1393,7 @@ func (s *Store) CompleteTask(ctx context.Context, principal Principal, taskID, n
 }
 
 func (s *Store) ReleaseTask(ctx context.Context, principal Principal, taskID string) (Task, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return Task{}, err
 	}
@@ -1414,7 +1427,7 @@ func (s *Store) ReleaseTask(ctx context.Context, principal Principal, taskID str
 }
 
 func (s *Store) ListTasks(ctx context.Context, scopeID string, readyOnly bool) ([]Task, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return nil, err
 	}
@@ -1514,7 +1527,7 @@ func escalationFrom(ctx context.Context, query interface {
 }
 
 func (s *Store) AskHuman(ctx context.Context, principal Principal, input AskHumanInput) (HumanEscalation, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return HumanEscalation{}, err
 	}
@@ -1584,7 +1597,7 @@ func (s *Store) ListEscalations(ctx context.Context, scopeID string) ([]HumanEsc
 }
 
 func (s *Store) ResolveEscalation(ctx context.Context, scopeID, escalationID, answer string) (HumanEscalation, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return HumanEscalation{}, err
 	}

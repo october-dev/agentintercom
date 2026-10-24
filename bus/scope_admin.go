@@ -35,7 +35,7 @@ func (s *Store) RotateScopeToken(ctx context.Context, scopeID string) (CreateSco
 	if err != nil {
 		return CreateScopeResult{}, err
 	}
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return CreateScopeResult{}, err
 	}
@@ -91,7 +91,7 @@ func (s *Store) RotateScopeToken(ctx context.Context, scopeID string) (CreateSco
 }
 
 func (s *Store) DeleteScope(ctx context.Context, scopeID string) (bool, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return false, err
 	}

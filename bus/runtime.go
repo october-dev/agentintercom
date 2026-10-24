@@ -334,6 +334,11 @@ func (r *Runtime) ReserveInbox(ctx context.Context, agentToken string, limit int
 			return nil, nil
 		}
 		wakeAt := deadline
+		if r.store.Backend() == StorageBackendPostgres {
+			// A different server process may commit without a local signal.
+			// Bounded polling also works through PostgreSQL transaction poolers.
+			wakeAt = minTime(wakeAt, time.Now().Add(time.Second))
+		}
 		leaseExpiresAt := time.UnixMilli(principal.LeaseExpiresAt)
 		if leaseExpiresAt.Before(wakeAt) {
 			wakeAt = leaseExpiresAt

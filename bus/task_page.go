@@ -13,7 +13,7 @@ type TaskPage struct {
 }
 
 func (s *Store) TaskPage(ctx context.Context, scopeID, after string, limit int) (TaskPage, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return TaskPage{}, err
 	}

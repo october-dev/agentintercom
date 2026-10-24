@@ -91,7 +91,7 @@ func outputStreamFromQuery(ctx context.Context, query interface {
 }
 
 func (s *Store) CreateOutputStream(ctx context.Context, scopeID string, input CreateOutputStreamInput) (OutputStream, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return OutputStream{}, err
 	}
@@ -121,7 +121,7 @@ func (s *Store) CreateOutputStream(ctx context.Context, scopeID string, input Cr
 	_, err = tx.ExecContext(ctx, `INSERT INTO output_streams(stream_id,scope_id,name,retention_limit,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
 		streamID, scopeID, input.Name, input.RetentionLimit, now, now)
 	if err != nil {
-		if isSQLiteConstraint(err) {
+		if isStorageConstraint(err) {
 			return OutputStream{}, Errorf(CodeConflict, "Output stream name already exists")
 		}
 		return OutputStream{}, err
@@ -147,7 +147,7 @@ func (s *Store) CreateOutputStream(ctx context.Context, scopeID string, input Cr
 }
 
 func (s *Store) ListOutputStreams(ctx context.Context, scopeID string) ([]OutputStream, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (s *Store) OutputStream(ctx context.Context, scopeID, streamID string) (Out
 }
 
 func (s *Store) RemoveOutputStream(ctx context.Context, scopeID, streamID string) error {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func (s *Store) RemoveOutputStream(ctx context.Context, scopeID, streamID string
 }
 
 func (s *Store) SetOutputPublisher(ctx context.Context, scopeID, streamID, agentID string, allowed bool) (OutputStream, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return OutputStream{}, err
 	}
@@ -257,7 +257,7 @@ func (s *Store) SetOutputPublisher(ctx context.Context, scopeID, streamID, agent
 		if count >= maxOutputPublishers {
 			return OutputStream{}, Errorf(CodeBackpressure, "Output publisher limit is full")
 		}
-		result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO output_stream_publishers(stream_id,scope_id,agent_id) VALUES(?,?,?)`, streamID, scopeID, agentID)
+		result, err := tx.ExecContext(ctx, `INSERT INTO output_stream_publishers(stream_id,scope_id,agent_id) VALUES(?,?,?) ON CONFLICT(stream_id,agent_id) DO NOTHING`, streamID, scopeID, agentID)
 		if err != nil {
 			return OutputStream{}, err
 		}
@@ -299,9 +299,9 @@ func (s *Store) SetOutputPublisher(ctx context.Context, scopeID, streamID, agent
 	return stream, nil
 }
 
-func consumeOutputQuota(ctx context.Context, tx *sql.Tx, scopeID, principalType, principalID string, publish bool, now int64) error {
+func consumeOutputQuota(ctx context.Context, tx sqlExecutor, scopeID, principalType, principalID string, publish bool, now int64) error {
 	window := now - now%60000
-	if _, err := tx.ExecContext(ctx, `DELETE FROM output_rate_usage WHERE window_start<?`, window-60000); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM output_rate_usage WHERE scope_id=? AND window_start<?`, scopeID, window-60000); err != nil {
 		return err
 	}
 	column, cap := "read_count", outputReadRate
@@ -309,7 +309,7 @@ func consumeOutputQuota(ctx context.Context, tx *sql.Tx, scopeID, principalType,
 		column, cap = "publish_count", outputPublishRate
 	}
 	statement := `INSERT INTO output_rate_usage(scope_id,principal_type,principal_id,window_start,` + column + `) VALUES(?,?,?,?,1)
-	ON CONFLICT(scope_id,principal_type,principal_id,window_start) DO UPDATE SET ` + column + `=` + column + `+1 RETURNING ` + column
+	ON CONFLICT(scope_id,principal_type,principal_id,window_start) DO UPDATE SET ` + column + `=output_rate_usage.` + column + `+1 RETURNING ` + column
 	var count int
 	if err := tx.QueryRowContext(ctx, statement, scopeID, principalType, principalID, window).Scan(&count); err != nil {
 		return err
@@ -326,7 +326,13 @@ type outputPublisher struct {
 }
 
 func (s *Store) PublishOutput(ctx context.Context, authority outputPublisher, streamID string, input PublishOutputInput, valueJSON, referenceJSON string) (OutputValue, string, error) {
-	tx, err := s.beginTx(ctx)
+	// Resolve the lock key only. Authority and existence are checked again
+	// inside the transaction after all competing scope operations finish.
+	scopeID, err := s.outputScope(ctx, streamID, authority.Agent == nil)
+	if err != nil {
+		return OutputValue{}, "", err
+	}
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return OutputValue{}, "", err
 	}
@@ -432,7 +438,7 @@ func scanOutputValue(row rowScanner) (OutputValue, error) {
 
 const outputValueColumns = `stream_id,sequence,producer_type,producer_id,content_type,value_json,reference_json,created_at`
 
-func outputHistory(ctx context.Context, tx *sql.Tx, stream outputStreamRecord, after int64, limit int) (OutputHistory, error) {
+func outputHistory(ctx context.Context, tx sqlExecutor, stream outputStreamRecord, after int64, limit int) (OutputHistory, error) {
 	history := OutputHistory{
 		StreamID: stream.ID, Values: []OutputValue{}, NextSequence: after,
 		CurrentSequence: stream.CurrentSequence, MinimumCursor: stream.MinimumCursor,
@@ -467,7 +473,11 @@ func outputHistory(ctx context.Context, tx *sql.Tx, stream outputStreamRecord, a
 }
 
 func (s *Store) readOutput(ctx context.Context, scopeID, credential, streamID string, after int64, limit int, latest bool) (OutputHistory, *OutputValue, error) {
-	tx, err := s.beginTx(ctx)
+	lockScope, err := s.outputScope(ctx, streamID, credential != "")
+	if err != nil {
+		return OutputHistory{}, nil, err
+	}
+	tx, err := s.beginTx(ctx, lockScope)
 	if err != nil {
 		return OutputHistory{}, nil, err
 	}
@@ -528,6 +538,18 @@ func (s *Store) readOutput(ctx context.Context, scopeID, credential, streamID st
 		return OutputHistory{}, nil, err
 	}
 	return history, nil, nil
+}
+
+func (s *Store) outputScope(ctx context.Context, streamID string, private bool) (string, error) {
+	var scopeID string
+	err := s.db.QueryRowContext(ctx, "SELECT scope_id FROM output_streams WHERE stream_id=?", streamID).Scan(&scopeID)
+	if errors.Is(err, sql.ErrNoRows) {
+		if private {
+			return "", Errorf(CodeUnauthenticated, "Invalid output credential")
+		}
+		return "", Errorf(CodeNotFound, "Output stream "+streamID+" was not found")
+	}
+	return scopeID, err
 }
 
 func normalizedOutputRetention(value int) (int, error) {

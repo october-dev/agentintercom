@@ -175,7 +175,7 @@ func archiveTime(value string, required bool) (int64, error) {
 	return parsed.UnixMilli(), nil
 }
 
-func queryArchivedAgents(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedAgent, error) {
+func queryArchivedAgents(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedAgent, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT agent_id,display_name,capabilities_json,registered_at,updated_at FROM agents WHERE scope_id=? ORDER BY agent_id`, scopeID)
 	if err != nil {
 		return nil, err
@@ -201,7 +201,7 @@ func queryArchivedAgents(ctx context.Context, tx *sql.Tx, scopeID string) ([]Arc
 	return values, rows.Err()
 }
 
-func queryArchivedLinks(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedPeerLink, error) {
+func queryArchivedLinks(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedPeerLink, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT left_agent,right_agent,created_at FROM peer_links WHERE scope_id=? ORDER BY left_agent,right_agent`, scopeID)
 	if err != nil {
 		return nil, err
@@ -228,7 +228,7 @@ func archivedA2APrincipalID(scopeID, principalID string) string {
 	return "a2ap_" + hex.EncodeToString(digest[:16])
 }
 
-func queryArchivedMessages(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedMessage, error) {
+func queryArchivedMessages(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedMessage, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT message_id,from_kind,from_id,to_kind,to_id,mode,body,context_json,response_to,idempotency_key,state,created_at,expires_at,delivered_at,acknowledged_at,replied_at,response_message_id FROM messages WHERE scope_id=? ORDER BY created_at,message_id`, scopeID)
 	if err != nil {
 		return nil, err
@@ -271,7 +271,7 @@ func queryArchivedMessages(ctx context.Context, tx *sql.Tx, scopeID string) ([]A
 	return values, rows.Err()
 }
 
-func queryArchivedA2A(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedA2ATask, []ArchivedA2AMessage, error) {
+func queryArchivedA2A(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedA2ATask, []ArchivedA2AMessage, error) {
 	taskRows, err := tx.QueryContext(ctx, `SELECT task_id,context_id,principal_id,publication_id,target_agent_id,state,created_at,updated_at FROM a2a_tasks WHERE scope_id=? ORDER BY created_at,task_id`, scopeID)
 	if err != nil {
 		return nil, nil, err
@@ -314,7 +314,7 @@ func queryArchivedA2A(ctx context.Context, tx *sql.Tx, scopeID string) ([]Archiv
 	return tasks, messages, messageRows.Err()
 }
 
-func queryArchivedTasks(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedTask, error) {
+func queryArchivedTasks(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedTask, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT task_id,title,description,created_by,claimed_by,status,dependencies_json,note,created_at,updated_at FROM tasks WHERE scope_id=? ORDER BY created_at,task_id`, scopeID)
 	if err != nil {
 		return nil, err
@@ -348,7 +348,7 @@ func queryArchivedTasks(ctx context.Context, tx *sql.Tx, scopeID string) ([]Arch
 	return values, rows.Err()
 }
 
-func queryArchivedTaskProgress(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedTaskProgress, error) {
+func queryArchivedTaskProgress(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedTaskProgress, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT task_id,sequence,agent_id,kind,text,created_at FROM task_progress WHERE scope_id=? ORDER BY task_id,sequence`, scopeID)
 	if err != nil {
 		return nil, err
@@ -367,7 +367,7 @@ func queryArchivedTaskProgress(ctx context.Context, tx *sql.Tx, scopeID string) 
 	return values, rows.Err()
 }
 
-func queryArchivedEscalations(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedEscalation, error) {
+func queryArchivedEscalations(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedEscalation, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT escalation_id,agent_id,question,options_json,status,answer,created_at,resolved_at FROM escalations WHERE scope_id=? ORDER BY created_at,escalation_id`, scopeID)
 	if err != nil {
 		return nil, err
@@ -395,7 +395,7 @@ func queryArchivedEscalations(ctx context.Context, tx *sql.Tx, scopeID string) (
 	return values, rows.Err()
 }
 
-func queryArchivedAgentCards(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedAgentCard, error) {
+func queryArchivedAgentCards(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedAgentCard, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT publication_id,agent_id,created_at,updated_at FROM a2a_publications WHERE scope_id=? ORDER BY created_at,publication_id`, scopeID)
 	if err != nil {
 		return nil, err
@@ -414,7 +414,7 @@ func queryArchivedAgentCards(ctx context.Context, tx *sql.Tx, scopeID string) ([
 	return values, rows.Err()
 }
 
-func queryArchivedOutputs(ctx context.Context, tx *sql.Tx, scopeID string) ([]ArchivedOutputStream, []ArchivedOutputValue, error) {
+func queryArchivedOutputs(ctx context.Context, tx sqlExecutor, scopeID string) ([]ArchivedOutputStream, []ArchivedOutputValue, error) {
 	publishers, err := outputPublishers(ctx, tx, scopeID)
 	if err != nil {
 		return nil, nil, err
@@ -458,7 +458,7 @@ func queryArchivedOutputs(ctx context.Context, tx *sql.Tx, scopeID string) ([]Ar
 }
 
 func (s *Store) ExportScope(ctx context.Context, scopeID string) (ScopeArchive, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return ScopeArchive{}, err
 	}
@@ -1010,7 +1010,7 @@ func validateArchive(archive *ScopeArchive) error {
 	return nil
 }
 
-func insertArchive(ctx context.Context, tx *sql.Tx, archive ScopeArchive, digest, tokenHash string, importedAt int64) error {
+func insertArchive(ctx context.Context, tx sqlExecutor, archive ScopeArchive, digest, tokenHash string, importedAt int64) error {
 	createdAt, _ := archiveTime(archive.Scope.CreatedAt, true)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO scopes(scope_id,token_hash,created_at) VALUES(?,?,?)`, archive.Scope.ID, tokenHash, createdAt); err != nil {
 		return err
@@ -1167,7 +1167,7 @@ func (s *Store) ImportScope(ctx context.Context, archive ScopeArchive) (ImportSc
 	if err != nil {
 		return ImportScopeResult{}, err
 	}
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, archive.Scope.ID)
 	if err != nil {
 		return ImportScopeResult{}, err
 	}
@@ -1193,7 +1193,7 @@ func (s *Store) ImportScope(ctx context.Context, archive ScopeArchive) (ImportSc
 	}
 	now := nowMillis()
 	if err := insertArchive(ctx, tx, archive, digest, tokenDigest(token), now); err != nil {
-		if isSQLiteConstraint(err) {
+		if isStorageConstraint(err) {
 			return ImportScopeResult{}, Errorf(CodeInvalidArgument, "Archive contains conflicting records")
 		}
 		return ImportScopeResult{}, err
@@ -1204,7 +1204,7 @@ func (s *Store) ImportScope(ctx context.Context, archive ScopeArchive) (ImportSc
 	return ImportScopeResult{ScopeID: archive.Scope.ID, ScopeToken: token, Imported: true}, nil
 }
 
-func importedArchiveScope(ctx context.Context, tx *sql.Tx, digest string) (string, error) {
+func importedArchiveScope(ctx context.Context, tx sqlExecutor, digest string) (string, error) {
 	var scopeID string
 	err := tx.QueryRowContext(ctx, `SELECT scope_id FROM events WHERE event_type='scope.imported' AND subject_id=?`, digest).Scan(&scopeID)
 	if errors.Is(err, sql.ErrNoRows) {

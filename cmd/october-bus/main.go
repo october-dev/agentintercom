@@ -22,6 +22,8 @@ import (
 const usage = `October Bus
 
 Usage:
+  october-bus database migrate [--url-env OCTOBER_BUS_DATABASE_URL]
+  october-bus database check [--url-env OCTOBER_BUS_DATABASE_URL]
   october-bus workspace create <name>
   october-bus workspace list [--json]
   october-bus connect --workspace <name> [--name <session-label>] [--format json|toml|entry] [--output <new-file>]
@@ -1007,6 +1009,8 @@ func run() error {
 		return nil
 	}
 	switch args[0] {
+	case "database":
+		return databaseCommand(args[1:], os.Stdout)
 	case "workspace":
 		return workspaceCommand(args[1:], os.Stdout)
 	case "connect":

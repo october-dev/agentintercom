@@ -6,6 +6,12 @@ October Bus is a communication and coordination protocol for AI agents and harne
 
 ## Model
 
+Plain text fields (names, message bodies, context text, task descriptions,
+human questions and answers, and idempotency keys) MUST contain valid UTF-8
+without NUL (U+0000) characters. Invalid text returns `INVALID_ARGUMENT` before
+storage. Binary payloads belong in attachments; JSON output values retain JSON
+string escaping. This restriction also applies to portable archive imports.
+
 ```text
 scope
 ├── agent identity

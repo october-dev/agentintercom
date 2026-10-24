@@ -52,7 +52,7 @@ func loadA2ATask(ctx context.Context, query a2aTaskQuery, principalID, taskID st
 	return task, rows.Err()
 }
 
-func transitionA2ATaskForMessage(ctx context.Context, tx *sql.Tx, scopeID, messageID string, next func(A2ATaskState) (A2ATaskState, bool), now int64) error {
+func transitionA2ATaskForMessage(ctx context.Context, tx sqlExecutor, scopeID, messageID string, next func(A2ATaskState) (A2ATaskState, bool), now int64) error {
 	var taskID, publicationID string
 	var current A2ATaskState
 	err := tx.QueryRowContext(ctx, `SELECT tasks.task_id,tasks.publication_id,tasks.state FROM a2a_tasks AS tasks JOIN a2a_message_correlations AS correlations ON correlations.task_id=tasks.task_id WHERE tasks.scope_id=? AND correlations.bus_request_message_id=?`, scopeID, messageID).Scan(&taskID, &publicationID, &current)
@@ -84,7 +84,7 @@ func a2aMessageRequestHash(input AcceptA2AMessageInput) string {
 }
 
 func (s *Store) AcceptA2AMessage(ctx context.Context, principal A2APrincipal, limits A2APrincipalLimits, input AcceptA2AMessageInput) (A2ATaskCorrelation, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return A2ATaskCorrelation{}, err
 	}
@@ -123,7 +123,7 @@ func (s *Store) AcceptA2AMessage(ctx context.Context, principal A2APrincipal, li
 		return A2ATaskCorrelation{}, err
 	}
 	var unfinishedMessages, unfinishedBytes int64
-	err = tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(length(CAST(messages.body AS BLOB))),0)
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(octet_length(messages.body)),0)
 FROM a2a_message_correlations AS correlations
 JOIN a2a_tasks AS tasks ON tasks.task_id=correlations.task_id
 JOIN messages ON messages.message_id=correlations.bus_request_message_id
@@ -141,7 +141,7 @@ WHERE correlations.principal_id=? AND tasks.principal_id=? AND tasks.state NOT I
 	// Reserve half the active message slots for local work even when a scope
 	// owner has issued many individually bounded remote credentials.
 	var remoteMessages, remoteBytes int64
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(length(CAST(body AS BLOB))),0)
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(octet_length(body)),0)
 FROM messages WHERE scope_id=? AND from_kind='a2aPrincipal' AND state NOT IN ('acknowledged','expired')`, principal.ScopeID).Scan(&remoteMessages, &remoteBytes); err != nil {
 		return A2ATaskCorrelation{}, err
 	}
@@ -226,7 +226,7 @@ FROM messages WHERE scope_id=? AND from_kind='a2aPrincipal' AND state NOT IN ('a
 }
 
 func (s *Store) A2ATask(ctx context.Context, principal A2APrincipal, taskID string) (A2ATaskCorrelation, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return A2ATaskCorrelation{}, err
 	}
@@ -285,7 +285,7 @@ func validA2ATaskTransition(from, to A2ATaskState) bool {
 }
 
 func (s *Store) SetA2ATaskState(ctx context.Context, principal A2APrincipal, taskID string, state A2ATaskState) (A2ATaskCorrelation, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return A2ATaskCorrelation{}, err
 	}

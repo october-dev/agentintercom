@@ -2,7 +2,9 @@ package bus
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 )
 
@@ -17,10 +19,21 @@ func withScopeCredential(ctx context.Context, token string) context.Context {
 	return context.WithValue(ctx, scopeCredentialKey{}, tokenDigest(token))
 }
 
-func (s *Store) beginTx(ctx context.Context) (*sql.Tx, error) {
+func (s *Store) beginTx(ctx context.Context, scopeID string) (*sqlTransaction, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
+	}
+	if s.Backend() == StorageBackendPostgres {
+		// Domain operations may inspect several rows before changing them.
+		// Serialize them per scope across processes, not across the deployment.
+		// READ COMMITTED gives the statements after this lock a fresh snapshot.
+		digest := sha256.Sum256([]byte("october_bus/scope/" + scopeID))
+		key := int64(binary.BigEndian.Uint64(digest[:8]))
+		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", key); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
 	if digest, ok := ctx.Value(scopeCredentialKey{}).(string); ok {
 		var found int

@@ -7,7 +7,7 @@ import (
 
 // A remote task and its idempotency correlations are retained as a unit.
 // A terminal task is eligible only when every correlated Bus message is eligible.
-func retentionA2ACandidates(ctx context.Context, tx *sql.Tx, scopeID string, before int64, messages map[string]retentionMessage) ([]string, int64, error) {
+func retentionA2ACandidates(ctx context.Context, tx sqlExecutor, scopeID string, before int64, messages map[string]retentionMessage) ([]string, int64, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT t.task_id,t.state,t.updated_at,c.bus_request_message_id,c.bus_response_message_id
 FROM a2a_tasks t LEFT JOIN a2a_message_correlations c ON c.task_id=t.task_id
 WHERE t.scope_id=? ORDER BY t.task_id,c.client_message_id`, scopeID)

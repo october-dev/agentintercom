@@ -12,6 +12,9 @@ import (
 // Backup writes a consistent SQLite snapshot, including committed WAL contents.
 // The destination must be new or empty. Credentials are included: keep it private.
 func (s *Store) Backup(ctx context.Context, path string) error {
+	if s.Backend() == StorageBackendPostgres {
+		return Errorf(CodeInvalidArgument, "Use pg_dump or the managed database backup service for PostgreSQL; scope export remains available")
+	}
 	_, err := s.db.ExecContext(ctx, "VACUUM INTO ?", path)
 	return err
 }

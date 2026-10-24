@@ -2,7 +2,7 @@
 
 October Bus keeps protocol behavior above its storage implementation. The runtime depends on a domain-level storage contract instead of issuing database queries from HTTP, MCP, or A2A handlers.
 
-SQLite is the default and currently supported backend. It requires no external service and keeps local operation simple.
+SQLite is the default local backend. It requires no external service. Hosted services can use PostgreSQL with the same domain transactions and public HTTP/MCP contract.
 
 ## Required behavior
 
@@ -33,7 +33,11 @@ Health responses never contain a database address or credential.
 
 ## PostgreSQL
 
-PostgreSQL support requires its own versioned schema, migrations, transaction tests, and concurrency checks. It must pass the same public conformance profile as SQLite before it is supported.
+PostgreSQL uses [versioned migrations](../../deploy/hosted/migrations/README.md). `OpenPostgres` checks schema checksums without changing the database. SQL placeholders and integer flags are adapted at the driver boundary; delivery, authority, retention and archive logic are shared with SQLite.
+
+A transaction advisory lock serializes each scope across server processes. Different scopes can progress concurrently. Statements use READ COMMITTED snapshots after acquiring the lock, so token rotation, execution replacement, deduplication and task claims see preceding committed changes. Cross-process inbox/event waits check the database at most once per second while waiting; in-process commits also signal immediately. This works with transaction poolers without a separate notification service.
+
+Tests cover concurrent independent runtimes and the same public conformance profile as SQLite. Set `OCTOBER_BUS_TEST_POSTGRES_URL` to run them against an isolated loopback database. Capacity still needs qualification for each deployment and workload.
 
 Shared deployments may run several stateless Bus server instances over one PostgreSQL database. Independent databases are not replicas of one scope, and storage support does not grant a server authority over processes running on another host.
 

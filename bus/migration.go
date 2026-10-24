@@ -2,7 +2,6 @@ package bus
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,7 +39,7 @@ func (s *Store) migrateV2(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func migrateV2Tx(ctx context.Context, tx *sql.Tx) error {
+func migrateV2Tx(ctx context.Context, tx sqlExecutor) error {
 	// A write transaction covers renames, copies, validation and the version bump.
 	if _, err := tx.ExecContext(ctx, "UPDATE scopes SET created_at=created_at WHERE 0"); err != nil {
 		return err

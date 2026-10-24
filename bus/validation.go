@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var identityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
@@ -19,6 +20,9 @@ func validateIdentity(value, field string, optional bool) error {
 }
 
 func validateText(value, field string, max int, optional bool) error {
+	if !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
+		return Errorf(CodeInvalidArgument, field+" must be UTF-8 text without NUL characters")
+	}
 	if value == "" && optional {
 		return nil
 	}

@@ -4,7 +4,10 @@ import "context"
 
 type StorageBackend string
 
-const StorageBackendSQLite StorageBackend = "sqlite"
+const (
+	StorageBackendSQLite   StorageBackend = "sqlite"
+	StorageBackendPostgres StorageBackend = "postgres"
+)
 
 type storageBackend interface {
 	Backend() StorageBackend

@@ -24,7 +24,7 @@ func eventAttributes(values ...string) map[string]string {
 	return attributes
 }
 
-func appendEvent(ctx context.Context, tx *sql.Tx, scopeID, eventType, subjectID string, attributes map[string]string, createdAt int64) error {
+func appendEvent(ctx context.Context, tx sqlExecutor, scopeID, eventType, subjectID string, attributes map[string]string, createdAt int64) error {
 	var revision int64
 	if err := tx.QueryRowContext(ctx, `UPDATE scopes SET event_revision=event_revision+1 WHERE scope_id=? RETURNING event_revision`, scopeID).Scan(&revision); err != nil {
 		return err
@@ -63,7 +63,7 @@ func scanEvent(row rowScanner) (BusEvent, error) {
 }
 
 func (s *Store) Events(ctx context.Context, scopeID string, after int64, limit int) (EventBatch, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return EventBatch{}, err
 	}
@@ -167,7 +167,11 @@ func (r *Runtime) Events(ctx context.Context, scopeToken string, after int64, li
 			unsubscribe()
 			return batch, err
 		}
-		timer := time.NewTimer(time.Until(deadline))
+		wakeAt := deadline
+		if r.store.Backend() == StorageBackendPostgres {
+			wakeAt = minTime(wakeAt, time.Now().Add(time.Second))
+		}
+		timer := time.NewTimer(time.Until(wakeAt))
 		select {
 		case <-ctx.Done():
 			stopTimer(timer)
@@ -179,4 +183,11 @@ func (r *Runtime) Events(ctx context.Context, scopeToken string, after int64, li
 		}
 		unsubscribe()
 	}
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }
