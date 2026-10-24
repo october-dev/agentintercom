@@ -44,6 +44,9 @@ Usage:
   october-bus scope import --input <path> [--address <addr>]
   october-bus scope storage [--json] [--address <addr>]
   october-bus scope prune --before <timestamp> [--yes] [--json] [--address <addr>]
+  october-bus message send --to <session-id> --body <text> [--mode request] [--reply-to <message-id>] [--key <retry-key>] [--json]
+  october-bus inbox [--limit <count>] [--wait 25s] [--json]
+  october-bus message ack <message-id> [--json]
   october-bus message receipt <message-id> [--json] [--address <addr>]
   october-bus agent list [--json] [--address <addr>]
   october-bus link --scope <scope-id> <agent-a> <agent-b>
@@ -1059,7 +1062,15 @@ func run() error {
 		}
 	case "backup":
 		return backupDatabase(args[1:])
+	case "inbox":
+		return inboxCommand(args[1:], os.Stdout)
 	case "message":
+		if len(args) >= 2 && args[1] == "send" {
+			return sendMessageCommand(args[2:], os.Stdin, os.Stdout)
+		}
+		if len(args) >= 2 && args[1] == "ack" {
+			return acknowledgeCommand(args[2:], os.Stdout)
+		}
 		if len(args) >= 2 && args[1] == "receipt" {
 			return inspectReceipt(args[2:])
 		}
