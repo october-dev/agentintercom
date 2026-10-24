@@ -88,6 +88,11 @@ MCP can provide the integration surface. October Bus defines how collaborating a
 
 ## Quickstart
 
+Building from the current source? The [local session connection guide](docs/connect-sessions.md)
+uses `workspace create`, `connect`, and `sessions` to connect MCP clients without
+assigning roles or reusing one identity across concurrent windows. These commands
+are not in older published packages.
+
 Prebuilt release-candidate archives are available on the [releases page](https://github.com/october-dev/october-bus/releases). Download the archive for your operating system and architecture, verify it against `checksums.txt`, extract it, and place `october-bus` on your `PATH`:
 
 ```bash

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -106,6 +107,7 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	flags := flag.NewFlagSet("mcp stdio", flag.ContinueOnError)
 	scope := flags.String("scope", "", "local scope ID (no token in configuration)")
 	id := flags.String("agent", "", "stable agent ID; duplicate IDs replace earlier executions")
+	newSession := flags.Bool("new-session", false, "create a unique identity for this MCP process instead of replacing another session")
 	name := flags.String("name", "", "agent display name (defaults to ID)")
 	dataDir := flags.String("data-dir", "", "local daemon data directory")
 	runtimeDir := flags.String("runtime-dir", "", "local daemon discovery directory")
@@ -119,6 +121,19 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	}
 	if flags.NArg() != 0 {
 		return errors.New("mcp stdio does not accept positional arguments")
+	}
+	if *newSession {
+		if *id != "" {
+			return errors.New("use --new-session or --agent, not both")
+		}
+		var random [12]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return fmt.Errorf("create session identity: %w", err)
+		}
+		*id = fmt.Sprintf("session-%x", random[:])
+		if *name == "" {
+			*name = "MCP session"
+		}
 	}
 	address := strings.TrimRight(strings.TrimSpace(os.Getenv("OCTOBER_BUS_ADDRESS")), "/")
 	token := strings.TrimSpace(os.Getenv("OCTOBER_BUS_AGENT_TOKEN"))

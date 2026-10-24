@@ -22,6 +22,10 @@ import (
 const usage = `October Bus
 
 Usage:
+  october-bus workspace create <name>
+  october-bus workspace list [--json]
+  october-bus connect --workspace <name> [--name <session-label>] [--format json|toml|entry] [--output <new-file>]
+  october-bus sessions --workspace <name> [--json]
   october-bus start [--port <port>]
   october-bus stop
   october-bus status
@@ -45,6 +49,7 @@ Usage:
   october-bus task add --title <title> [--description <text>] [--depends-on <task-id>] [--json] [--address <addr>]
   october-bus task list [--ready] [--json] [--limit <1-500>] [--after <cursor>] [--address <addr>]
   october-bus mcp stdio [--scope <scope-id> --agent <id> --name <display>]
+  october-bus mcp stdio --scope <scope-id> --new-session [--name <display>]
   october-bus mcp stdio --connection-file </absolute/private/connection.json>
   october-bus mcp stdio --remote <https-base-url> --scope-token-file <file> --agent <id> [--connect-to <peer>]
   october-bus mcp check [--connection-file <path>] [--json]
@@ -255,27 +260,9 @@ func status() error {
 }
 
 func createScope(id string) error {
-	paths, err := bus.DefaultDaemonPaths()
+	result, err := createLocalScope(id)
 	if err != nil {
 		return err
-	}
-	run, err := bus.ReadRunFile(paths.RunFile)
-	if err != nil {
-		return err
-	}
-	lock, err := bus.LockScopeCredentials(paths.DataDir)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	result, err := (bus.Client{Address: run.Address, Token: run.AdminToken}).CreateScope(ctx, bus.CreateScopeInput{ID: id})
-	if err != nil {
-		return err
-	}
-	if err := bus.SaveScopeToken(paths.DataDir, result.ScopeID, result.ScopeToken); err != nil {
-		return fmt.Errorf("scope was created but its local credential could not be saved; fix the data directory and rotate the scope token: %w", err)
 	}
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -283,6 +270,34 @@ func createScope(id string) error {
 	}
 	fmt.Println(string(encoded))
 	return nil
+}
+
+// Keep the legacy scope command's output while letting onboarding reuse the
+// same credential transaction without printing the workspace owner secret.
+func createLocalScope(id string) (bus.CreateScopeResult, error) {
+	paths, err := bus.DefaultDaemonPaths()
+	if err != nil {
+		return bus.CreateScopeResult{}, err
+	}
+	run, err := bus.ReadRunFile(paths.RunFile)
+	if err != nil {
+		return bus.CreateScopeResult{}, fmt.Errorf("local daemon is unavailable; run october-bus start: %w", err)
+	}
+	lock, err := bus.LockScopeCredentials(paths.DataDir)
+	if err != nil {
+		return bus.CreateScopeResult{}, err
+	}
+	defer lock.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := (bus.Client{Address: run.Address, Token: run.AdminToken}).CreateScope(ctx, bus.CreateScopeInput{ID: id})
+	if err != nil {
+		return bus.CreateScopeResult{}, err
+	}
+	if err := bus.SaveScopeToken(paths.DataDir, result.ScopeID, result.ScopeToken); err != nil {
+		return bus.CreateScopeResult{}, fmt.Errorf("scope was created but its local credential could not be saved; fix the data directory and rotate the scope token: %w", err)
+	}
+	return result, nil
 }
 
 func adminClient(explicitAddress string) (bus.Client, error) {
@@ -992,6 +1007,12 @@ func run() error {
 		return nil
 	}
 	switch args[0] {
+	case "workspace":
+		return workspaceCommand(args[1:], os.Stdout)
+	case "connect":
+		return connectCommand(args[1:], os.Stdout)
+	case "sessions":
+		return sessionsCommand(args[1:], os.Stdout)
 	case "start":
 		return start(args[1:])
 	case "gateway":
