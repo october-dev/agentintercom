@@ -38,6 +38,75 @@ func hostedTestUser(t *testing.T, name string) HostedUser {
 	return HostedUser{ID: id, Email: name + "@example.test"}
 }
 
+func TestHostedOwnershipLimitCoversConcurrentTransfers(t *testing.T) {
+	ctx, a := hostedTestAccounts(t)
+	owner, recipient := hostedTestUser(t, "owner"), hostedTestUser(t, "recipient")
+	create := func(user HostedUser) Workspace {
+		w, err := a.CreateWorkspace(ctx, user, "Ownership limit")
+		requireNoError(t, err)
+		t.Cleanup(func() { _, _ = a.runtime.DeleteScope(context.Background(), w.ID) })
+		return w
+	}
+	first := create(recipient)
+	create(recipient)
+	offers := []Workspace{create(owner), create(owner)}
+	for _, w := range offers {
+		invite, err := a.Invite(ctx, owner, w.ID, recipient.Email, "member")
+		requireNoError(t, err)
+		_, err = a.AcceptInvite(ctx, recipient, invite.Token)
+		requireNoError(t, err)
+	}
+	// Both promotions and creation compete for the same final ownership slot.
+	// A workspace lock alone cannot serialize these three different scopes.
+	type result struct {
+		workspace Workspace
+		err       error
+	}
+	start := make(chan struct{})
+	results := make(chan result, 3)
+	for _, w := range offers {
+		go func() {
+			<-start
+			results <- result{err: a.ChangeMember(ctx, owner, w.ID, recipient.ID, "owner")}
+		}()
+	}
+	go func() {
+		<-start
+		w, err := a.CreateWorkspace(ctx, recipient, "Competing creation")
+		results <- result{w, err}
+	}()
+	close(start)
+	success := 0
+	for range 3 {
+		r := <-results
+		if r.workspace.ID != "" {
+			t.Cleanup(func() { _, _ = a.runtime.DeleteScope(context.Background(), r.workspace.ID) })
+		}
+		if r.err == nil {
+			success++
+		} else {
+			requireCode(t, r.err, CodeBackpressure)
+		}
+	}
+	require(t, success == 1, "expected exactly one ownership grant, got %d", success)
+	workspaces, err := a.ListWorkspaces(ctx, recipient)
+	requireNoError(t, err)
+	owned := 0
+	for _, w := range workspaces {
+		if w.Role == "owner" {
+			owned++
+		} else {
+			require(t, w.Role == "member", "rejected promotion changed membership")
+			requireCode(t, a.ChangeMember(ctx, owner, w.ID, recipient.ID, "owner"), CodeBackpressure)
+		}
+	}
+	require(t, owned == 3, "ownership cap exceeded: %d", owned)
+	_, err = a.CreateWorkspace(ctx, recipient, "Over limit")
+	requireCode(t, err, CodeBackpressure)
+	// Reapplying an existing owner role does not consume another slot.
+	requireNoError(t, a.ChangeMember(ctx, recipient, first.ID, recipient.ID, "owner"))
+}
+
 func TestHostedAccountsMembershipAndDeviceRevocation(t *testing.T) {
 	ctx, a := hostedTestAccounts(t)
 	owner, member, stranger := hostedTestUser(t, "owner"), hostedTestUser(t, "member"), hostedTestUser(t, "stranger")

@@ -160,12 +160,8 @@ func (a *HostedAccounts) CreateWorkspace(ctx context.Context, user HostedUser, n
 		return Workspace{}, err
 	}
 	defer tx.Rollback()
-	var count int
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_members WHERE user_id=? AND role='owner'", user.ID).Scan(&count); err != nil {
+	if err := checkHostedOwnershipLimit(ctx, tx, user.ID); err != nil {
 		return Workspace{}, err
-	}
-	if count >= 3 {
-		return Workspace{}, Errorf(CodeBackpressure, "An account can own up to three workspaces")
 	}
 	now := nowMillis()
 	trialEnd := now + (14 * 24 * time.Hour).Milliseconds()
@@ -188,6 +184,18 @@ func (a *HostedAccounts) CreateWorkspace(ctx context.Context, user HostedUser, n
 		return Workspace{}, err
 	}
 	return Workspace{ID: id, Name: strings.TrimSpace(name), Role: "owner", CreatedAt: instant(now), TrialEndsAt: instant(trialEnd), MemberLimit: 5}, tx.Commit()
+}
+
+// Call while holding the account lock, before granting another ownership.
+func checkHostedOwnershipLimit(ctx context.Context, tx sqlExecutor, userID string) error {
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_members WHERE user_id=? AND role='owner'", userID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= 3 {
+		return Errorf(CodeBackpressure, "An account can own up to three workspaces")
+	}
+	return nil
 }
 
 func (a *HostedAccounts) ListWorkspaces(ctx context.Context, user HostedUser) ([]Workspace, error) {

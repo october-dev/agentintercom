@@ -33,6 +33,19 @@ func (a *HostedAccounts) ChangeMember(ctx context.Context, user HostedUser, scop
 	if !selfLeave && actorRole != "owner" && !(actorRole == "admin" && targetRole == "member" && (role == "" || role == "member")) {
 		return Errorf(CodePermissionDenied, "Your workspace role cannot change this membership")
 	}
+	if role == "owner" && targetRole != "owner" {
+		// Serialize grants across workspaces with CreateWorkspace. Existing
+		// workspace operations acquire the workspace lock before this account
+		// lock; creation holds only the account lock and creates a new scope.
+		if a.store.Backend() == StorageBackendPostgres {
+			if err := lockPostgresScope(ctx, tx, "account/"+targetID); err != nil {
+				return err
+			}
+		}
+		if err := checkHostedOwnershipLimit(ctx, tx, targetID); err != nil {
+			return err
+		}
+	}
 	if targetRole == "owner" && role != "owner" {
 		var owners int
 		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_members WHERE scope_id=? AND role='owner'", scopeID).Scan(&owners); err != nil {
