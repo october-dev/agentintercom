@@ -264,10 +264,14 @@ func (h *HostedServer) oauthConsentDetails(ctx context.Context, _ HostedUser, _ 
 
 func (h *HostedServer) oauthConsent(ctx context.Context, user HostedUser, w http.ResponseWriter, r *http.Request) (any, error) {
 	var input struct {
-		Approve     bool   `json:"approve"`
-		WorkspaceID string `json:"workspaceId"`
+		Approve         bool   `json:"approve"`
+		WorkspaceID     string `json:"workspaceId"`
+		ReplaceDeviceID string `json:"replaceDeviceId"`
 	}
 	if err := decodeBody(w, r, &input); err != nil {
+		return nil, err
+	}
+	if err := validateIdentity(input.ReplaceDeviceID, "replaceDeviceId", true); err != nil {
 		return nil, err
 	}
 	// Lock the pending request as well as the chosen workspace. A second approval
@@ -296,7 +300,12 @@ func (h *HostedServer) oauthConsent(ctx context.Context, user HostedUser, w http
 		if _, err := hostedMember(ctx, tx, input.WorkspaceID, user.ID); err != nil {
 			return nil, err
 		}
-		device, err := h.accounts.enrollDeviceTx(ctx, tx, user, input.WorkspaceID, pending.ClientName, "mcp")
+		var device WorkspaceDevice
+		if input.ReplaceDeviceID == "" {
+			device, err = h.accounts.enrollDeviceTx(ctx, tx, user, input.WorkspaceID, pending.ClientName, "mcp")
+		} else {
+			device, err = h.accounts.replaceConnectionTx(ctx, tx, user, input.WorkspaceID, input.ReplaceDeviceID, pending.ClientName, "mcp")
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -316,6 +325,9 @@ func (h *HostedServer) oauthConsent(ctx context.Context, user HostedUser, w http
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	if input.Approve {
+		h.accounts.runtime.signals.notifyAllScope(input.WorkspaceID)
 	}
 	redirect.RawQuery = query.Encode()
 	return map[string]string{"redirectUrl": redirect.String()}, nil

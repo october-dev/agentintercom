@@ -90,6 +90,13 @@ func (a *HostedAccounts) DevicePairing(ctx context.Context, code string) (Device
 }
 
 func (a *HostedAccounts) ApproveDevicePairing(ctx context.Context, user HostedUser, code, scopeID string, approve bool) error {
+	return a.completeDevicePairing(ctx, user, code, scopeID, "", approve)
+}
+
+func (a *HostedAccounts) completeDevicePairing(ctx context.Context, user HostedUser, code, scopeID, replaceDeviceID string, approve bool) error {
+	if err := validateIdentity(replaceDeviceID, "replaceDeviceId", true); err != nil {
+		return err
+	}
 	code = normalizedPairingCode(code)
 	tx, err := a.store.beginTx(ctx, scopeID)
 	if err != nil {
@@ -121,7 +128,12 @@ func (a *HostedAccounts) ApproveDevicePairing(ctx context.Context, user HostedUs
 		if err := tx.QueryRowContext(ctx, "SELECT pairing_id,name FROM hosted_pairings WHERE user_code=?", code).Scan(&id, &name); err != nil {
 			return err
 		}
-		device, err := a.enrollDeviceTx(ctx, tx, user, scopeID, name, "device")
+		var device WorkspaceDevice
+		if replaceDeviceID == "" {
+			device, err = a.enrollDeviceTx(ctx, tx, user, scopeID, name, "device")
+		} else {
+			device, err = a.replaceConnectionTx(ctx, tx, user, scopeID, replaceDeviceID, name, "device")
+		}
 		if err != nil {
 			return err
 		}
@@ -137,7 +149,13 @@ func (a *HostedAccounts) ApproveDevicePairing(ctx context.Context, user HostedUs
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if approve {
+		a.runtime.signals.notifyAllScope(scopeID)
+	}
+	return nil
 }
 
 func (a *HostedAccounts) PollDevicePairing(ctx context.Context, secret string) (PairedDevice, error) {
@@ -232,13 +250,14 @@ func (h *HostedServer) registerDevicePairingRoutes() {
 	}))
 	h.routes.HandleFunc("POST /api/device/authorizations/{code}", h.userRoute(func(ctx context.Context, u HostedUser, w http.ResponseWriter, r *http.Request) (any, error) {
 		var input struct {
-			WorkspaceID string `json:"workspaceId"`
-			Approve     bool   `json:"approve"`
+			WorkspaceID     string `json:"workspaceId"`
+			ReplaceDeviceID string `json:"replaceDeviceId"`
+			Approve         bool   `json:"approve"`
 		}
 		if err := decodeBody(w, r, &input); err != nil {
 			return nil, err
 		}
-		return map[string]bool{"completed": true}, h.accounts.ApproveDevicePairing(ctx, u, r.PathValue("code"), input.WorkspaceID, input.Approve)
+		return map[string]bool{"completed": true}, h.accounts.completeDevicePairing(ctx, u, r.PathValue("code"), input.WorkspaceID, input.ReplaceDeviceID, input.Approve)
 	}))
 	h.routes.HandleFunc("DELETE /api/device/self", func(w http.ResponseWriter, r *http.Request) {
 		token, err := bearer(r)

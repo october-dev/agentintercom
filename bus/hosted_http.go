@@ -148,6 +148,7 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 	h.registerOAuthRoutes()
 	h.registerDevicePairingRoutes()
 	h.registerWorkspaceViews()
+	h.registerMCPKeyRoutes()
 	h.registerBrowserRoutes()
 	h.registerWorkRoutes()
 	h.registerChannelRoutes()
@@ -233,8 +234,13 @@ func (h *HostedServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeFailure(w, err)
 			return
 		}
-		if strings.HasPrefix(token, "oba_") {
-			execution, err := h.oauthExecution(r.Context(), token)
+		if strings.HasPrefix(token, "oba_") || strings.HasPrefix(token, "obk_") {
+			var execution string
+			if strings.HasPrefix(token, "obk_") {
+				execution, err = h.mcpKeyExecution(r.Context(), token)
+			} else {
+				execution, err = h.oauthExecution(r.Context(), token)
+			}
 			if err != nil {
 				if AsBusError(err).Code == CodeUnauthenticated {
 					w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", resource_metadata="`+h.publicURL+`/.well-known/oauth-protected-resource/mcp"`)
@@ -244,7 +250,7 @@ func (h *HostedServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			r = r.Clone(r.Context())
 			r.Header.Set("Authorization", "Bearer "+execution)
-			// Host is pinned above and the OAuth grant is checked before dispatch.
+			// Host is pinned above and the connector grant is checked before dispatch.
 			// Origin policy is owned by this front door, not the local MCP server.
 			r.Header.Del("Origin")
 		}

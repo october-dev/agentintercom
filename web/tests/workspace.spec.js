@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
 
-async function fixture(page, signedIn = true) {
+async function fixture(page, signedIn = true, options = {}) {
   const user = { id: 'owner-id', email: 'owner@example.test', aud: 'authenticated', role: 'authenticated', email_confirmed_at: '2026-01-01T00:00:00Z' };
   const events = [];
   let revoked = false;
+  const devices = options.devices || [{ id: 'device-1', name: 'My AI app', kind: 'mcp', userId: user.id, expiresAt: '2026-11-24T12:00:00Z' }];
+  let keyGeneration = 0;
   const messages = [];
   const tasks = [];
   const channels = [], posts = [], files = [];
@@ -49,7 +51,14 @@ async function fixture(page, signedIn = true) {
     else if (path.endsWith('/questions')) result = { escalations: answered ? [] : [{ id: 'ask-1', agentId: 'session-1', question: 'Which approach?', options: ['First', 'Second'] }] };
     else if (path.endsWith('/questions/ask-1/answer')) { answered = true; result = { answer: route.request().postDataJSON().answer }; }
     else if (path.endsWith('/members')) result = [{ userId: user.id, email: user.email, role: 'owner', joinedAt: '2026-10-24T12:00:00Z' }];
-    else if (path.endsWith('/devices')) result = [{ id: 'device-1', name: 'My AI app', kind: 'mcp', userId: user.id, revokedAt: revoked ? '2026-10-24T12:00:00Z' : '', expiresAt: '2026-11-24T12:00:00Z' }];
+    else if (path.endsWith('/mcp-keys') && method === 'POST') {
+      const input = route.request().postDataJSON();
+      const connection = { id: input.replaceDeviceId || 'key-1', name: input.name, kind: 'mcp_key', userId: user.id, expiresAt: '2027-01-22T12:00:00Z' };
+      const previous = devices.findIndex(device => device.id === connection.id);
+      if (previous >= 0) devices[previous] = connection; else devices.push(connection);
+      result = { ...connection, token: 'obk_fixture_secret_' + (++keyGeneration) };
+    }
+    else if (path.endsWith('/devices')) result = devices.map(device => ({ ...device, ...(device.id === 'device-1' && revoked ? { revokedAt: '2026-10-24T12:00:00Z' } : {}) }));
     else if (path.endsWith('/devices/device-1') && method === 'DELETE') { revoked = true; result = { revoked: true }; }
     else if (path.endsWith('/invites')) result = method === 'POST' ? { id: 'invite-1', email: 'teammate@example.test', token: 'secret-invitation', expiresAt: '2026-10-31T12:00:00Z' } : [];
     else if (path === '/api/oauth/requests/request-1') result = method === 'POST' ? { redirectUrl: 'http://127.0.0.1:4794/callback?code=fixture&state=state' } : { id: 'request-1', clientName: 'Connected app', redirectUri: 'http://127.0.0.1:4794/callback' };
@@ -149,6 +158,56 @@ test('device pairing waits for explicit code confirmation and workspace consent'
   await page.getByRole('button', { name: 'Open workspace', exact: true }).click();
   await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Connect an app', exact: true }).click();
   await expect(page.getByText(/october-bus hosted login --server/)).toBeVisible();
+});
+
+test('device recovery is an explicit choice among only the account’s machines', async ({ page }) => {
+  const events = await fixture(page, true, { devices: [
+    { id: 'mine', userId: 'owner-id', name: 'Old laptop', kind: 'device', revokedAt: '2026-10-24T12:00:00Z' },
+    { id: 'other', userId: 'another-person', name: 'Other laptop', kind: 'device' },
+    { id: 'app', userId: 'owner-id', name: 'AI app', kind: 'mcp' },
+  ] });
+  await page.goto('/app#device=ABCD-EFGH');
+  const choice = page.getByRole('combobox', { name: 'Device connection', exact: true });
+  await expect(choice).toHaveValue('');
+  await expect(choice.locator('option')).toHaveCount(2);
+  await choice.selectOption('mine');
+  await expect(page.getByText(/Replacing a connection signs out/)).toBeVisible();
+  expect(events).toHaveLength(0);
+  await page.getByRole('button', { name: 'Connect this device', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your device can connect.' })).toBeVisible();
+  expect(events.at(-1).body).toEqual({ approve: true, workspaceId: 'workspace-1', replaceDeviceId: 'mine' });
+});
+
+test('OAuth reconnection keeps an inbox only after choosing it at consent', async ({ page }) => {
+  const events = await fixture(page);
+  await page.route('**/callback?*', route => route.fulfill({ contentType: 'text/html', body: '<p>Connection completed</p>' }));
+  await page.goto('/app?authorization_id=request-1');
+  await expect(page.getByRole('combobox', { name: 'App connection', exact: true })).toHaveValue('');
+  await page.getByRole('combobox', { name: 'App connection', exact: true }).selectOption('device-1');
+  await expect(page.getByText(/old app credentials will stop working/)).toBeVisible();
+  expect(events).toHaveLength(0);
+  await page.getByRole('button', { name: 'Allow connection', exact: true }).click();
+  await expect(page.getByText('Connection completed')).toBeVisible();
+  expect(events.at(-1).body).toEqual({ approve: true, workspaceId: 'workspace-1', replaceDeviceId: 'device-1' });
+});
+
+test('manual MCP key is shown once and replacement requires a deliberate action', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Connect an app', exact: true }).click();
+  await page.getByLabel('App connection name').fill('Automation app');
+  await page.getByRole('button', { name: 'Create MCP key', exact: true }).click();
+  await expect(page.getByText('obk_fixture_secret_1', { exact: true })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByText('obk_fixture_secret_1', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain('obk_fixture');
+  await page.getByRole('button', { name: 'Members & devices', exact: true }).click();
+  await page.getByRole('button', { name: 'Replace key', exact: true }).click();
+  expect(events.filter(event => event.path?.endsWith('/mcp-keys'))).toHaveLength(1);
+  await expect(page.getByRole('dialog').getByText(/old key for Automation app will stop/)).toBeVisible();
+  await page.getByRole('button', { name: 'Create replacement key', exact: true }).click();
+  await expect(page.getByText('obk_fixture_secret_2', { exact: true })).toBeVisible();
+  expect(events.at(-1).body).toEqual({ name: 'Automation app', replaceDeviceId: 'key-1' });
 });
 
 test('channel creation, literal posts, thread replies and search share one conversation', async ({ page }) => {

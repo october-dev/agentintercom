@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/go-oauth2/oauth2/v4"
 	oautherrors "github.com/go-oauth2/oauth2/v4/errors"
@@ -142,7 +141,17 @@ func (h *HostedServer) oauthToken(w http.ResponseWriter, r *http.Request) {
 	// The library handles PKCE and generates/rotates tokens in this transaction.
 	issued, err := h.oauth.GetAccessToken(ctx, grantType, generate)
 	if err != nil {
-		oauthFailure(w, 400, "invalid_grant", "Grant, redirect URL or PKCE verifier is invalid")
+		// Storage/crypto outages must not tell clients to discard a valid grant.
+		// The uncommitted transaction leaves a code/refresh usable for retry.
+		invalid := false
+		for _, known := range []error{oautherrors.ErrInvalidGrant, oautherrors.ErrInvalidClient, oautherrors.ErrInvalidRedirectURI, oautherrors.ErrInvalidAuthorizeCode, oautherrors.ErrInvalidRefreshToken, oautherrors.ErrExpiredRefreshToken, oautherrors.ErrInvalidCodeChallenge, oautherrors.ErrMissingCodeChallenge, oautherrors.ErrMissingCodeVerifier, oautherrors.ErrInvalidScope, oautherrors.ErrAccessDenied, oautherrors.ErrUnauthorizedClient} {
+			invalid = invalid || errors.Is(err, known)
+		}
+		if invalid {
+			oauthFailure(w, 400, "invalid_grant", "Grant, redirect URL or PKCE verifier is invalid")
+		} else {
+			oauthFailure(w, 503, "temporarily_unavailable", "Token service is unavailable; retry shortly")
+		}
 		return
 	}
 	if tx.Commit() != nil {
@@ -250,35 +259,7 @@ func (h *HostedServer) oauthExecution(ctx context.Context, access string) (strin
 	if !ok || token.Extension.Get("resource") != h.publicURL+"/mcp" || token.Extension.Get("device_id") != record.DeviceID || token.Scope != hostedOAuthScope {
 		return "", refused
 	}
-	var id, credential, execution string
-	var lease int64
-	err = tx.QueryRowContext(ctx, `SELECT s.agent_id,s.credential,a.execution_id,a.lease_expires_at FROM hosted_sessions s JOIN agents a ON a.scope_id=s.scope_id AND a.agent_id=s.agent_id WHERE s.device_id=? ORDER BY s.created_at LIMIT 1`, record.DeviceID).Scan(&id, &credential, &execution, &lease)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
-	}
-	if id == "" || lease <= nowMillis() {
-		result, err := h.accounts.startSessionTx(ctx, tx, hostedDeviceIdentity{ID: record.DeviceID, ScopeID: record.ScopeID, UserID: record.UserID}, record.Name, id)
-		if err != nil {
-			return "", err
-		}
-		if err := tx.Commit(); err != nil {
-			return "", err
-		}
-		h.accounts.runtime.notifyScope(record.ScopeID)
-		return result.AgentToken, nil
-	}
-	if err := requireHostedExecution(ctx, tx, Principal{AgentIdentity: AgentIdentity{ScopeID: record.ScopeID, AgentID: id, ExecutionID: execution}}, nowMillis()); err != nil {
-		return "", err
-	}
-	plain, err := h.accounts.unseal(credential, "session/"+record.ScopeID+"/"+id)
-	if err != nil {
-		return "", err
-	}
-	// Activity proves a live connector, not that the model is working or can wake.
-	if _, err := tx.ExecContext(ctx, "UPDATE agents SET lease_expires_at=?,updated_at=? WHERE scope_id=? AND agent_id=?", nowMillis()+(5*time.Minute).Milliseconds(), nowMillis(), record.ScopeID, id); err != nil {
-		return "", err
-	}
-	return plain, tx.Commit()
+	return h.accounts.commitConnectorExecution(ctx, tx, hostedDeviceIdentity{ID: record.DeviceID, ScopeID: record.ScopeID, UserID: record.UserID}, record.Name)
 }
 
 func (h *HostedServer) authenticateOAuthClient(r *http.Request) (string, string, error) {

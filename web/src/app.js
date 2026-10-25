@@ -183,21 +183,35 @@ function workspaceSelect(onChange) {
 }
 async function consent() {
   const request = await api(`/api/oauth/requests/${encodeURIComponent(pending.authorization)}`);
+  const workspaceId = state.workspace?.id;
+  const devices = workspaceId ? await api(path('/devices')) : [];
+  const ownApps = devices.filter(device => device.userId === state.user.id && device.kind === 'mcp');
+  const replacement = el('select', { 'aria-label': 'App connection' }, el('option', { value: '' }, 'Create a new app connection'), ownApps.map(device => el('option', { value: device.id }, `Reconnect ${device.name}${device.revokedAt ? ' · revoked' : ''}`)));
+  const warning = el('p', { class: 'notice-inline', hidden: true }, 'The old app credentials will stop working. This app will receive the same session inbox, including its pending messages.');
+  replacement.addEventListener('change', () => { warning.hidden = !replacement.value; });
   const approve = async allowed => {
-    const result = await api(`/api/oauth/requests/${encodeURIComponent(pending.authorization)}`, { method: 'POST', body: { approve: allowed, workspaceId: allowed ? state.workspace?.id : '' } });
+    if (allowed && workspaceId !== state.workspace?.id) throw new Error('The selected workspace changed. Wait for its connections to load, then try again.');
+    const result = await api(`/api/oauth/requests/${encodeURIComponent(pending.authorization)}`, { method: 'POST', body: { approve: allowed, workspaceId: allowed ? workspaceId : '', ...(allowed && replacement.value ? { replaceDeviceId: replacement.value } : {}) } });
     closePending('authorization'); location.assign(result.redirectUrl);
   };
-  const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(consent)), el('div', { class: 'actions' }, button('Allow connection', () => approve(true), 'primary'), button('Cancel', () => approve(false)))) : createWorkspace(consent);
+  const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(consent)), ownApps.length ? el('label', {}, 'App connection', replacement) : null, warning, el('div', { class: 'actions' }, button('Allow connection', () => approve(true), 'primary'), button('Cancel', () => approve(false)))) : createWorkspace(consent);
   root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect an app'), el('h1', {}, request.clientName), el('p', {}, 'wants to connect to your October Bus workspace.'), el('p', { class: 'help' }, 'This app registered itself. October has not verified its publisher. Only continue if you started this connection in an app you trust.'), el('ul', { class: 'permission-list' }, el('li', {}, 'Read and share messages, files and channels in the selected workspace.'), el('li', {}, 'Discover connected sessions and coordinate shared tasks.'), el('li', {}, 'Remain connected until you revoke access or the connection expires.')), el('p', { class: 'help' }, 'You can revoke access at any time in Members & devices.'), el('p', { class: 'help' }, 'Returns to: ', el('code', {}, new URL(request.redirectUri).origin)), choice)));
 }
 async function deviceConsent() {
   const request = await api(`/api/device/authorizations/${encodeURIComponent(pending.device)}`);
+  const workspaceId = state.workspace?.id;
+  const devices = workspaceId ? await api(path('/devices')) : [];
+  const ownMachines = devices.filter(device => device.userId === state.user.id && device.kind === 'device');
+  const replacement = el('select', { 'aria-label': 'Device connection' }, el('option', { value: '' }, 'Connect a new machine'), ownMachines.map(device => el('option', { value: device.id }, `Replace ${device.name}${device.revokedAt ? ' · revoked' : ''}`)));
+  const warning = el('p', { class: 'notice-inline', hidden: true }, 'Replacing a connection signs out its existing sessions. Their inboxes stay available. Resume each session using its existing session ID after this login completes.');
+  replacement.addEventListener('change', () => { warning.hidden = !replacement.value; });
   const approve = async allowed => {
-    await api(`/api/device/authorizations/${encodeURIComponent(pending.device)}`, { method: 'POST', body: { approve: allowed, workspaceId: allowed ? state.workspace?.id : '' } });
+    if (allowed && workspaceId !== state.workspace?.id) throw new Error('The selected workspace changed. Wait for its connections to load, then try again.');
+    await api(`/api/device/authorizations/${encodeURIComponent(pending.device)}`, { method: 'POST', body: { approve: allowed, workspaceId: allowed ? workspaceId : '', ...(allowed && replacement.value ? { replaceDeviceId: replacement.value } : {}) } });
     closePending('device');
     root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('h1', {}, allowed ? 'Your device can connect.' : 'Connection declined.'), el('p', {}, allowed ? 'Return to your terminal to finish. Each session on this device will appear in your workspace.' : 'No device credential was issued.'), button('Open workspace', signedIn, 'primary'))));
   };
-  const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(deviceConsent)), el('div', { class: 'actions' }, button('Connect this device', () => approve(true), 'primary'), button('Decline', () => approve(false)))) : createWorkspace(deviceConsent);
+  const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(deviceConsent)), ownMachines.length ? el('label', {}, 'Device connection', replacement) : null, warning, el('div', { class: 'actions' }, button('Connect this device', () => approve(true), 'primary'), button('Decline', () => approve(false)))) : createWorkspace(deviceConsent);
   root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect a machine'), el('h1', {}, request.name), el('p', {}, 'Check that this code matches the one in your terminal:'), el('pre', {}, request.userCode), el('p', { class: 'help' }, 'Only approve a request you started. This device can read and send workspace messages and start its own agent sessions. You can revoke it in Members & devices.'), choice)));
 }
 function invitation() {
@@ -232,6 +246,7 @@ async function sessionsView() {
     for (const session of data.sessions) {
       const online = session.reachable === true;
       list.append(el('article', { class: 'card' }, el('div', { class: 'actions' }, el('h2', {}, session.displayName || session.agentId || session.id), el('span', { class: `badge ${online ? 'live' : ''}` }, online ? 'Connected' : 'Offline')), el('p', { class: 'help' }, session.deviceName), el('p', { class: 'help' }, session.deliveryMode === 'poll' ? 'Inbox available when this app checks for messages. It may need you to resume the conversation.' : 'Native listener connected. Your app’s permissions still apply.'), el('small', {}, `Last seen ${date(session.updatedAt)}`), session.wake?.uncertain ? el('p', { class: 'notice-inline' }, 'A wake submission is uncertain. Inspect the app before retrying; the message is still in its inbox.') : null, el('div', { class: 'actions' }, button('Open conversation', async () => { state.conversationAgent = session.id; state.tab = 'messages'; await render(); }))));
+      if (session.userId === state.user.id) list.lastChild.append(el('details', {}, el('summary', {}, 'Session details'), el('p', { class: 'help' }, 'This ID identifies the inbox. Terminal sessions can resume it with --id after reconnecting their owning machine.'), el('code', {}, session.id), button('Copy session ID', () => copy(session.id))));
     }
   };
   if (!page.sessions.length) return el('section', { class: 'card empty' }, el('h2', {}, 'Your first connection starts here.'), el('p', { class: 'muted' }, 'Connect an AI app or terminal session. It will appear here under its own name, ready for shared work.'), button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary'));
@@ -241,13 +256,19 @@ async function sessionsView() {
 }
 function connectView() {
   const url = state.config.mcpUrl;
+  const scopePath = path('');
   return el('div', { class: 'grid' }, el('section', { class: 'card' }, el('h2', {}, 'An app with remote MCP'), el('p', {}, 'In your app’s connectors or MCP settings, add October Bus using this address.'), el('pre', {}, url), button('Copy connector URL', () => copy(url)), el('ol', {}, el('li', {}, 'Add the connector in your app.'), el('li', {}, 'Sign in to October and choose this workspace.'), el('li', {}, 'Ask your app to check its Bus inbox or find connected sessions.')), el('p', { class: 'help' }, 'Works with compatible Streamable HTTP MCP clients. Your app controls which conversations can use tools and whether an idle conversation can resume.')),
+    el('section', { class: 'card' }, el('h2', {}, 'An app that asks for an API key'), el('p', {}, 'Use the same remote MCP URL. Create a separate key for each app so you can revoke it independently.'), form([field('App connection name', { name: 'name', required: true, maxlength: 100, placeholder: 'My AI app' }).node, el('p', { class: 'help' }, 'The app can read and share workspace messages, files, channels and tasks. A key expires after 90 days and cannot manage your account or members.')], 'Create MCP key', async data => {
+      const connection = await api(scopePath + '/mcp-keys', { method: 'POST', body: { name: data.get('name') } });
+      secretDialog('MCP connection key', connection.token, `Paste this into your app’s secret/API key field, or use Authorization: Bearer <key>. It is shown once and expires ${date(connection.expiresAt)}. Keep it out of chat, URLs and source control.`);
+    }), el('p', { class: 'help' }, 'Choose OAuth instead if your app offers it. Neither connection method can make an unsupported app resume an idle conversation.')),
     el('section', { class: 'card' }, el('h2', {}, 'Another machine or automation'), el('p', {}, 'Install the October Bus CLI on that machine, then run:'), el('pre', {}, 'october-bus hosted login --server ' + location.origin), el('p', {}, 'Open the link it prints, confirm the code and choose this workspace. For any app with a local MCP connection, run:'), el('pre', {}, 'october-bus connect --hosted default'), el('p', {}, 'Or start a terminal session with native message wake:'), el('pre', {}, 'october-bus session start claude --hosted default\noctober-bus session start codex --hosted default'), el('p', { class: 'help' }, 'Choose the app you use. Keep its terminal open; normal app permissions apply. Codex native wake is experimental.'), el('details', {}, el('summary', {}, 'Create a credential for custom automation'), form([field('Device name', { name: 'name', required: true, maxlength: 100, placeholder: 'My laptop' }).node], 'Create device credential', async data => {
       const device = await api(path('/devices'), { method: 'POST', body: { name: data.get('name') } });
       secretDialog('Device credential', device.token, 'Save this in your device’s secret store. It is shown only once. Anyone with it can join sessions to this workspace as you.');
     }), el('p', { class: 'help' }, 'Keep credentials out of chat messages, shell history and source control.'))));
 }
 async function membersView() {
+  const scopePath = path('');
   const [members, devices] = await Promise.all([api(path('/members')), api(path('/devices'))]);
   const canManage = state.workspace.role !== 'member';
   const memberList = el('section', { class: 'card' }, el('h2', {}, 'People'));
@@ -264,7 +285,13 @@ async function membersView() {
   if (!devices.length) deviceList.append(el('p', { class: 'muted' }, 'No devices connected yet.'));
   for (const device of devices) {
     const revoked = !!device.revokedAt;
-    deviceList.append(el('div', { class: 'row' }, el('div', { class: 'details' }, el('strong', {}, device.name), el('p', { class: 'help' }, `${device.kind === 'mcp' ? 'MCP app' : 'Device'} · ${revoked ? 'Revoked' : `Expires ${date(device.expiresAt)}`}`)), !revoked && (canManage || device.userId === state.user.id) ? button('Revoke', () => modal('Revoke connection?', close => el('div', {}, el('p', {}, `${device.name} will stop receiving access to this workspace.`), button('Revoke connection', async () => { await api(path(`/devices/${encodeURIComponent(device.id)}`), { method: 'DELETE' }); close(); await render(); }, 'danger'))), 'danger') : null));
+    const controls = [];
+    if (device.kind === 'mcp_key' && device.userId === state.user.id) controls.push(button('Replace key', () => modal('Replace this MCP key?', close => el('div', {}, el('p', {}, `The old key for ${device.name} will stop working immediately. The replacement keeps its session inbox and pending messages. Update the key in your app after replacing it.`), button('Create replacement key', async () => {
+      const connection = await api(scopePath + '/mcp-keys', { method: 'POST', body: { name: device.name, replaceDeviceId: device.id } }); close();
+      secretDialog('Replacement MCP key', connection.token, `Update your app’s secret/API key field. Shown once; expires ${date(connection.expiresAt)}. If this value is lost, replace it again from Members & devices.`);
+    }, 'primary')))));
+    if (!revoked && (canManage || device.userId === state.user.id)) controls.push(button('Revoke', () => modal('Revoke connection?', close => el('div', {}, el('p', {}, `${device.name} will stop receiving access to this workspace.`), button('Revoke connection', async () => { await api(scopePath + `/devices/${encodeURIComponent(device.id)}`, { method: 'DELETE' }); close(); await render(); }, 'danger'))), 'danger'));
+    deviceList.append(el('div', { class: 'row' }, el('div', { class: 'details' }, el('strong', {}, device.name), el('p', { class: 'help' }, `${device.kind === 'mcp' ? 'MCP app' : device.kind === 'mcp_key' ? 'MCP key' : 'Device'} · ${revoked ? 'Revoked' : `Expires ${date(device.expiresAt)}`}`)), el('div', { class: 'actions' }, controls)));
   }
   const container = el('div', {}, memberList, deviceList);
   if (canManage) {

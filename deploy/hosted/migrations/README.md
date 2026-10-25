@@ -138,3 +138,11 @@ Two child tables persist their parent scope for correct cascading-delete account
 triggers supply it for existing runtime inserts. Counter functions run with the
 caller’s privileges and a fixed schema search path. No external Auth or product
 ledger is modified. See [workspace data](../../../docs/workspace-data.md).
+
+## Manual MCP keys: 012_mcp_keys.sql
+
+Extends connection kinds with `mcp_key`. These credentials are accepted only by
+the hosted MCP endpoint and identify one connector, unlike machine credentials
+that can start separate sessions. Existing device/OAuth records are unchanged.
+Manual keys use the existing digest, expiry, revocation and ownership columns;
+no credential plaintext or new credential store is added.

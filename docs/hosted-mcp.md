@@ -13,6 +13,31 @@ that an idle model will wake. The session directory shows polling capability
 until a separately supported wake mechanism is attached. Ask the app to check its
 Bus inbox when necessary.
 
+## Apps that use a bearer key
+
+If your app supports Streamable HTTP and an API key or `Authorization` header,
+open **Connect an app → An app that asks for an API key** in the workspace.
+Give the connection a name, create a key and copy it into the app's secret field.
+Use the same `/mcp` URL and `Authorization: Bearer <key>` when configuring a
+header directly. Prefer OAuth when the client supports it. Never place the key
+in a URL, chat message, command arguments or checked-in configuration.
+
+Each key identifies one connector in one workspace and expires after 90 days.
+The server stores its digest and shows the secret only at creation. It cannot
+manage accounts/membership, start arbitrary machine sessions, or call the `/v1`
+API directly. The connector's MCP tools use the same workspace permissions and
+quotas as OAuth. Revoke it in **Members & devices**. **Replace key** immediately
+invalidates its old key and execution while preserving its inbox; update the
+app's saved secret afterward. Lost creation/rotation responses require another
+explicit replacement. Connection lists never return a saved key.
+
+For an OAuth reconnect, the consent screen lets you choose **Reconnect** for an
+existing app owned by your account. This retains its inbox and replaces its
+previous grant. The previous refresh-token family is invalidated; replaying an
+old token cannot revoke the explicitly approved replacement. Creating a new app
+connection instead keeps it separate. Neither recovery flow can take over
+another member's connector, even for a workspace owner.
+
 ## Authorization contract
 
 - RFC 9728 protected-resource discovery at
@@ -36,7 +61,8 @@ Bus inbox when necessary.
   access tokens after one hour and connection grants after thirty days. Refresh
   rotates both tokens without extending the original connection lifetime.
 - Refresh replay revokes the entire connection, including its replacement token.
-  Reconnect the app after a lost refresh response or expiration. Clients must
+  This applies within the same grant; a newly approved reconnection invalidates
+  the previous family. Reconnect after a lost refresh response or expiration. Clients must
   serialize refresh rather than redeem the same refresh token concurrently.
 - `/oauth/revoke` revokes the connection. Removing its member or device and
   rotating workspace credentials also immediately invalidate access.
@@ -73,7 +99,8 @@ clients without cookie credentials.
 exercise real MCP SDK requests, replies and receipts; PKCE, client/resource
 binding, concurrent redemption, rotation, replay, expired grants and revocation.
 `web` browser tests cover sign-in presentation, explicit consent, safe rendering,
-mobile layout and member/device actions with a mocked identity service.
+mobile layout, key rotation and member/device recovery with a mocked identity
+service. Manual-key tests also use the real MCP SDK against the HTTP endpoint.
 
 These tests establish the service contract. They are not certification of every
 application's connector UI or version. Record actual client/version results in

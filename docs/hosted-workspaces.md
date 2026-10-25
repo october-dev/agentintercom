@@ -34,6 +34,16 @@ Removing a member or revoking a device retires its executions, releases inbox
 reservations and task claims, and prevents new registrations. Device expiry is
 also checked by the ordinary protocol routes. Other members remain connected.
 
+Lost or expired connections can be replaced with explicit account approval.
+During CLI pairing, choose **Replace** for one of your own machines. During OAuth
+consent, choose **Reconnect** for one of your own apps. Manual MCP keys have a
+**Replace key** action in **Members & devices**. A replacement fences all old
+executions, releases reservations/claims, and retains session identities and
+inboxes. It never restores a removed membership or bypasses a paused workspace.
+An owner/admin cannot replace another member's connection. A machine credential
+cannot perform recovery by itself. See [connection recovery](connect-sessions.md#recover-a-hosted-connection)
+for terminal session resumption.
+
 ## HTTP routes
 
 Account routes require `Authorization: Bearer <account-session>`:
@@ -48,6 +58,7 @@ Account routes require `Authorization: Bearer <account-session>`:
 | POST | `/api/invites/accept` | Accept an invitation `token` |
 | GET / POST | `/api/workspaces/{id}/devices` | List connections / enroll a device with `name` |
 | DELETE | `/api/workspaces/{id}/devices/{device}` | Revoke a connection |
+| POST | `/api/workspaces/{id}/mcp-keys` | Issue a remote MCP key with `name`; optional `replaceDeviceId` rotates an owned key |
 | GET | `/api/workspaces/{id}/sessions?after=...` | Page through sessions and machine/member attribution |
 
 `POST /api/device/sessions` instead requires a device bearer credential and a
@@ -122,7 +133,7 @@ Open `<public-origin>/app` for account sign-in, workspace selection, session
 presence, invitations and connection revocation. Remote MCP clients use
 `<public-origin>/mcp` and select their workspace through explicit OAuth consent.
 See [hosted MCP authorization](hosted-mcp.md) for the connector contract, token
-lifetimes and operator sign-in configuration.
+lifetimes, manual bearer keys and operator sign-in configuration.
 
 ## Conversations, tasks and decisions
 

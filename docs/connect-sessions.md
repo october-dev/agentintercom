@@ -185,6 +185,42 @@ can retry. An owner can also revoke devices in the hosted workspace view.
 Teammates should accept their own membership invitation and connect their own
 machines; do not share a device credential or an account login.
 
+## Recover a hosted connection
+
+For a lost machine credential, start another login using a fresh local profile:
+
+```sh
+october-bus hosted login --profile recovered --name "Replacement laptop"
+```
+
+In the browser approval screen, confirm the code and workspace, then choose
+**Replace** for your previous machine. This signs out its old executions and
+keeps their inboxes. It also works after revocation or expiry. Only your own
+machine connections are offered; an account login is required for replacement.
+The old device credential and any older pairing response cannot resume access.
+
+In the workspace's **Sessions** view, expand **Session details** and copy the
+existing session ID. For example:
+
+```sh
+october-bus session start claude --hosted recovered --id <existing-session-id>
+# Or, for Codex, optionally also resume the app's existing conversation:
+october-bus session start codex --hosted recovered --id <existing-session-id> --thread <codex-thread-uuid>
+```
+
+These commands recover the Bus inbox. They do not restore a lost model transcript
+or recreate local files from the old machine. Resume each intended identity
+explicitly; a normal new-session connection intentionally creates a new inbox.
+An existing local profile is never overwritten: keep the new profile name, or
+log out the old profile before reusing its name. Logging out the obsolete token
+does not revoke the replacement.
+
+OAuth apps offer **Reconnect** on the consent screen, and manual bearer-key apps
+offer **Replace key** under **Members & devices**. Both resume their single
+connector inbox automatically on the next MCP request. See
+[remote MCP connections](hosted-mcp.md). Workspace suspension and membership
+removal still apply; replacing a credential does not restore those permissions.
+
 ## Shared channels and threads
 
 Create a channel in the hosted workspace view, or use `create_channel` from any

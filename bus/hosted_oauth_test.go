@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,8 +13,27 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/go-oauth2/oauth2/v4"
+	"github.com/go-oauth2/oauth2/v4/manage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+type unavailableOAuthStore struct{ hostedOAuthStore }
+
+func (*unavailableOAuthStore) Create(context.Context, oauth2.TokenInfo) error {
+	return errors.New("synthetic credential storage outage")
+}
+
+func TestHostedOAuthStorageOutagePreservesGrantForRetry(t *testing.T) {
+	f := newHostedOAuthFixture(t)
+	code := f.approve(f.authorization())
+	manager := f.h.oauth.Manager.(*manage.Manager)
+	manager.MapTokenStorage(&unavailableOAuthStore{hostedOAuthStore{accounts: f.h.accounts}})
+	failed := f.exchange(code, f.verifier)
+	require(t, failed.Code == 503 && strings.Contains(failed.Body.String(), "temporarily_unavailable"), "storage outage misclassified as invalid grant: %s", failed.Body.String())
+	manager.MapTokenStorage(&hostedOAuthStore{accounts: f.h.accounts})
+	require(t, f.exchange(code, f.verifier).Code == 200, "failed token issue consumed the valid authorization code")
+}
 
 type hostedOAuthFixture struct {
 	ctx                context.Context
@@ -71,7 +91,11 @@ func (f *hostedOAuthFixture) authorization() string {
 }
 
 func (f *hostedOAuthFixture) approve(id string) string {
-	body, _ := json.Marshal(map[string]any{"approve": true, "workspaceId": f.workspace.ID})
+	return f.approveReplacement(id, "")
+}
+
+func (f *hostedOAuthFixture) approveReplacement(id, replaceID string) string {
+	body, _ := json.Marshal(map[string]any{"approve": true, "workspaceId": f.workspace.ID, "replaceDeviceId": replaceID})
 	response := f.call("POST", "/api/oauth/requests/"+id, "account", string(body))
 	require(f.t, response.Code == 200, "consent: %s", response.Body.String())
 	var envelope struct {
@@ -84,6 +108,44 @@ func (f *hostedOAuthFixture) approve(id string) string {
 	requireNoError(f.t, err)
 	require(f.t, u.Scheme == "http" && u.Host == "127.0.0.1:5555" && u.Query().Get("state") == "state-test", "consent redirected elsewhere")
 	return u.Query().Get("code")
+}
+
+func TestHostedOAuthReconnectPreservesInboxAndRejectsOldFamily(t *testing.T) {
+	f := newHostedOAuthFixture(t)
+	issue := func(replaceID string) issuedOAuthTokens {
+		token := f.exchange(f.approveReplacement(f.authorization(), replaceID), f.verifier)
+		require(t, token.Code == 200, "exchange failed: %s", token.Body.String())
+		var result issuedOAuthTokens
+		requireNoError(t, json.Unmarshal(token.Body.Bytes(), &result))
+		return result
+	}
+	old := issue("")
+	execution, err := f.h.oauthExecution(f.ctx, old.Access)
+	requireNoError(t, err)
+	principal, err := f.h.accounts.runtime.Principal(f.ctx, execution)
+	requireNoError(t, err)
+	sessions, err := f.h.accounts.Sessions(f.ctx, f.user, f.workspace.ID, "")
+	requireNoError(t, err)
+	connector := sessions.Sessions[0]
+	next := issue(connector.DeviceID)
+	_, err = f.h.accounts.runtime.Principal(f.ctx, execution)
+	requireCode(t, err, CodeUnauthenticated)
+	_, err = f.h.oauthExecution(f.ctx, old.Access)
+	requireCode(t, err, CodeUnauthenticated)
+	refresh := url.Values{"grant_type": {"refresh_token"}, "client_id": {f.clientID}, "refresh_token": {old.Refresh}}
+	require(t, f.call("POST", "/oauth/token", "", refresh.Encode()).Code == 400, "old refresh survived explicit reconnection")
+	currentExecution, err := f.h.oauthExecution(f.ctx, next.Access)
+	requireNoError(t, err)
+	current, err := f.h.accounts.runtime.Principal(f.ctx, currentExecution)
+	requireNoError(t, err)
+	require(t, current.AgentID == principal.AgentID && current.ExecutionID != principal.ExecutionID, "reconnection replaced inbox or retained old execution")
+	// A revoked connector can be explicitly recovered by the same account.
+	requireNoError(t, f.h.accounts.RevokeDevice(f.ctx, f.user, f.workspace.ID, connector.DeviceID))
+	recovered := issue(connector.DeviceID)
+	_, err = f.h.oauthExecution(f.ctx, recovered.Access)
+	requireNoError(t, err)
+	_, err = f.h.oauthExecution(f.ctx, next.Access)
+	requireCode(t, err, CodeUnauthenticated)
 }
 
 func (f *hostedOAuthFixture) exchange(code, verifier string) *httptest.ResponseRecorder {

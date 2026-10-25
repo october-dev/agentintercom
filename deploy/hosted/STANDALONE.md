@@ -151,7 +151,12 @@ and invalidates device/MCP authority while retaining history and work. Review
 memberships and operator suspensions changed since the backup,
 and reconcile Stripe's current subscriptions/refunds before enabling payments.
 An operator re-enables only reviewed workspaces, preserving prior suspensions.
-Owners reconnect their machines/apps with fresh grants. Confirm message/request
+Members reconnect their own machines/apps with fresh grants. Use explicit
+connection replacement during device pairing/OAuth consent, or **Replace key**
+for a manual MCP key, to retain the restored inboxes. Terminal sessions must
+then resume their existing IDs; a new connection/session creates a new inbox.
+See [connection recovery](../../docs/connect-sessions.md#recover-a-hosted-connection).
+Confirm message/request
 round trips and file downloads on a synthetic workspace before switching HTTPS.
 Do not use a customer workspace for the acceptance test.
 

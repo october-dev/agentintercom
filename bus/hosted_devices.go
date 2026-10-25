@@ -119,34 +119,88 @@ func (a *HostedAccounts) EnrollDevice(ctx context.Context, user HostedUser, scop
 }
 
 func (a *HostedAccounts) enrollDeviceTx(ctx context.Context, tx sqlExecutor, user HostedUser, scopeID, name, kind string) (WorkspaceDevice, error) {
-	var count int
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_devices WHERE scope_id=? AND user_id=? AND revoked_at=0 AND expires_at>?", scopeID, user.ID, nowMillis()).Scan(&count); err != nil {
+	if err := checkHostedConnectionLimit(ctx, tx, scopeID, user.ID, ""); err != nil {
 		return WorkspaceDevice{}, err
-	}
-	if count >= 20 {
-		return WorkspaceDevice{}, Errorf(CodeBackpressure, "Revoke an unused connection before adding another; each member can have 20 connections per workspace")
 	}
 	id, err := randomID("device_")
 	if err != nil {
 		return WorkspaceDevice{}, err
 	}
-	secret, err := randomValue(32)
+	token, expires, err := newHostedConnectionCredential(kind)
 	if err != nil {
 		return WorkspaceDevice{}, err
 	}
-	token := "obd_" + secret
-	if kind == "mcp" {
-		token = ""
-	}
 	now := nowMillis()
-	expires := now + (365 * 24 * time.Hour).Milliseconds()
-	if kind == "mcp" {
-		expires = now + (30 * 24 * time.Hour).Milliseconds()
-	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO hosted_devices(device_id,scope_id,user_id,name,kind,token_hash,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)`, id, scopeID, user.ID, name, kind, oauthHash(token), now, expires); err != nil {
 		return WorkspaceDevice{}, err
 	}
 	return WorkspaceDevice{ID: id, UserID: user.ID, Name: name, Kind: kind, CreatedAt: instant(now), ExpiresAt: instant(expires), Token: token}, nil
+}
+
+func newHostedConnectionCredential(kind string) (string, int64, error) {
+	prefix, days := "obd_", 365
+	switch kind {
+	case "mcp":
+		return "", nowMillis() + (30 * 24 * time.Hour).Milliseconds(), nil
+	case "mcp_key":
+		prefix, days = "obk_", 90
+	case "device":
+	default:
+		return "", 0, Errorf(CodeInvalidArgument, "Unknown connection kind")
+	}
+	secret, err := randomValue(32)
+	return prefix + secret, nowMillis() + (time.Duration(days) * 24 * time.Hour).Milliseconds(), err
+}
+
+func checkHostedConnectionLimit(ctx context.Context, tx sqlExecutor, scopeID, userID, exceptID string) error {
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_devices WHERE scope_id=? AND user_id=? AND revoked_at=0 AND expires_at>? AND device_id<>?", scopeID, userID, nowMillis(), exceptID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= 20 {
+		return Errorf(CodeBackpressure, "Revoke an unused connection before adding another; each member can have 20 connections per workspace")
+	}
+	return nil
+}
+
+// replaceConnectionTx is reachable only through verified account approval of a
+// fresh connection. A device or app token alone cannot recover another grant.
+// Keeping the device ID preserves its session ownership and queued inboxes;
+// retiring every execution prevents the lost credential from running alongside
+// the replacement. Even workspace owners cannot take over another user's device.
+func (a *HostedAccounts) replaceConnectionTx(ctx context.Context, tx sqlExecutor, user HostedUser, scopeID, deviceID, name, expectedKind string) (WorkspaceDevice, error) {
+	var ownerID, kind string
+	var created int64
+	err := tx.QueryRowContext(ctx, "SELECT user_id,kind,created_at FROM hosted_devices WHERE scope_id=? AND device_id=?", scopeID, deviceID).Scan(&ownerID, &kind, &created)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (ownerID != user.ID || kind != expectedKind)) {
+		return WorkspaceDevice{}, Errorf(CodePermissionDenied, "Only your own connections of the same kind can be replaced here")
+	}
+	if err != nil {
+		return WorkspaceDevice{}, err
+	}
+	if err := checkHostedConnectionLimit(ctx, tx, scopeID, user.ID, deviceID); err != nil {
+		return WorkspaceDevice{}, err
+	}
+	token, expires, err := newHostedConnectionCredential(kind)
+	if err != nil {
+		return WorkspaceDevice{}, err
+	}
+	if err := retireHostedSessions(ctx, tx, scopeID, "", deviceID); err != nil {
+		return WorkspaceDevice{}, err
+	}
+	// Remove the previous OAuth family before replacing its grant. Replaying an
+	// old refresh token must not revoke the new explicitly approved connection.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM oauth_tokens WHERE device_id=?", deviceID); err != nil {
+		return WorkspaceDevice{}, err
+	}
+	now := nowMillis()
+	if _, err := tx.ExecContext(ctx, "UPDATE hosted_devices SET name=?,token_hash=?,expires_at=?,revoked_at=0 WHERE scope_id=? AND device_id=?", name, oauthHash(token), expires, scopeID, deviceID); err != nil {
+		return WorkspaceDevice{}, err
+	}
+	if err := appendEvent(ctx, tx, scopeID, "workspace.connection_replaced", deviceID, eventAttributes("userId", user.ID), now); err != nil {
+		return WorkspaceDevice{}, err
+	}
+	return WorkspaceDevice{ID: deviceID, UserID: user.ID, Name: name, Kind: kind, CreatedAt: instant(created), ExpiresAt: instant(expires), Token: token}, nil
 }
 
 func (a *HostedAccounts) Devices(ctx context.Context, user HostedUser, scopeID string) ([]WorkspaceDevice, error) {
@@ -226,7 +280,7 @@ type hostedDeviceIdentity struct {
 func authenticateHostedDevice(ctx context.Context, q sqlExecutor, token string) (hostedDeviceIdentity, error) {
 	var d hostedDeviceIdentity
 	err := q.QueryRowContext(ctx, `SELECT d.device_id,d.scope_id,d.user_id FROM hosted_devices d JOIN hosted_members m ON m.scope_id=d.scope_id AND m.user_id=d.user_id
-WHERE d.token_hash=? AND d.revoked_at=0 AND d.expires_at>?`, tokenDigest(token), nowMillis()).Scan(&d.ID, &d.ScopeID, &d.UserID)
+WHERE d.token_hash=? AND d.kind='device' AND d.revoked_at=0 AND d.expires_at>?`, tokenDigest(token), nowMillis()).Scan(&d.ID, &d.ScopeID, &d.UserID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return d, Errorf(CodeUnauthenticated, "Connection has expired or been revoked; reconnect this device")
 	}
