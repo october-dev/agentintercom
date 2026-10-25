@@ -103,28 +103,39 @@ func writeNativeJSON(path string, value any) error {
 	return os.Rename(file.Name(), path)
 }
 
-func readNativeBinding(path string) (nativewake.Binding, error) {
-	var binding nativewake.Binding
+func readPrivateSessionJSON(path string, value any) error {
 	if err := nativePrivateDirectory(filepath.Dir(path)); err != nil {
-		return binding, err
+		return err
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		return binding, err
+		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > 4096 || (runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0) {
-		return binding, errors.New("native binding must be a private regular file")
+		return errors.New("session file must be a private regular file")
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return binding, err
+		return err
 	}
 	defer file.Close()
 	after, err := file.Stat()
 	if err != nil || !os.SameFile(info, after) {
-		return binding, errors.New("native binding changed during read")
+		return errors.New("session file changed during read")
 	}
-	if err := json.NewDecoder(io.LimitReader(file, 4097)).Decode(&binding); err != nil {
+	decoder := json.NewDecoder(io.LimitReader(file, 4097))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	if decoder.Decode(new(any)) != io.EOF {
+		return errors.New("session file has trailing data")
+	}
+	return nil
+}
+func readNativeBinding(path string) (nativewake.Binding, error) {
+	var binding nativewake.Binding
+	if err := readPrivateSessionJSON(path, &binding); err != nil {
 		return binding, err
 	}
 	return binding, nativewake.ValidateBinding(binding)
@@ -156,14 +167,15 @@ func startClaudeSession(args []string) error {
 	}
 	flags := flag.NewFlagSet("session start claude", flag.ContinueOnError)
 	workspace := flags.String("workspace", "", "local workspace name")
+	hosted := flags.String("hosted", "", "saved hosted device profile")
 	name := flags.String("name", "Claude Code", "session label")
 	id := flags.String("id", "", "optional stable Bus identity to resume")
 	binary := flags.String("command", "claude", "Claude Code executable")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *workspace == "" {
-		return errors.New("--workspace is required")
+	if (*workspace == "") == (*hosted == "") {
+		return errors.New("choose --workspace <local-name> or --hosted <profile>")
 	}
 	for _, arg := range flags.Args() {
 		for _, owned := range []string{"--settings", "--mcp-config", "--bare"} {
@@ -172,13 +184,19 @@ func startClaudeSession(args []string) error {
 			}
 		}
 	}
-	owner, err := localScopeClient(*workspace)
+	var owner bus.Client
+	var err error
+	if *hosted != "" {
+		owner, err = hostedDeviceClient(*hosted)
+	} else {
+		owner, err = localScopeClient(*workspace)
+	}
 	if err != nil {
 		return err
 	}
 	// Redirects must never carry the execution credential to another service.
 	owner.HTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("Bus redirect refused") }}
-	if *id == "" {
+	if *id == "" && *hosted == "" {
 		var value [12]byte
 		if _, err := rand.Read(value[:]); err != nil {
 			return err
@@ -194,6 +212,9 @@ func startClaudeSession(args []string) error {
 	}
 	paths, err := bus.DefaultDaemonPaths()
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(paths.RuntimeDir, 0700); err != nil {
 		return err
 	}
 	if err := nativePrivateDirectory(paths.RuntimeDir); err != nil {
@@ -215,7 +236,11 @@ func startClaudeSession(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	session, err := bus.StartAgentSession(ctx, bus.AgentSessionOptions{Address: owner.Address, ScopeToken: owner.Token, HTTP: owner.HTTP, Registration: bus.RegisterAgentInput{ID: *id, DisplayName: *name, ConnectWorkspace: true, LeaseMS: 300000}, InitialLifecycle: bus.LifecycleReady, InitialReady: true})
+	options := bus.AgentSessionOptions{Address: owner.Address, ScopeToken: owner.Token, HTTP: owner.HTTP, Registration: bus.RegisterAgentInput{ID: *id, DisplayName: *name, ConnectWorkspace: true, LeaseMS: 300000}, InitialLifecycle: bus.LifecycleReady, InitialReady: true}
+	if *hosted != "" {
+		options.ScopeToken, options.DeviceToken = "", owner.Token
+	}
+	session, err := bus.StartAgentSession(ctx, options)
 	if err != nil {
 		return err
 	}

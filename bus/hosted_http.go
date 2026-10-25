@@ -140,6 +140,7 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 	h.oauthAuthorization = rate.NewLimiter(5, 50)
 	h.oauthRequests = make(chan struct{}, 32)
 	h.registerOAuthRoutes()
+	h.registerDevicePairingRoutes()
 	h.registerWorkspaceViews()
 	h.registerBrowserRoutes()
 	h.registerWorkRoutes()

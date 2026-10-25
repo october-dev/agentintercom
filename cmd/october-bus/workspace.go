@@ -65,8 +65,9 @@ func workspaceCommand(args []string, out io.Writer) error {
 }
 
 type stdioConfig struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 // connectCommand emits standard configuration, without guessing at a host's
@@ -75,6 +76,7 @@ type stdioConfig struct {
 func connectCommand(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("connect", flag.ContinueOnError)
 	workspace := flags.String("workspace", "", "local workspace name")
+	hosted := flags.String("hosted", "", "saved hosted device profile")
 	name := flags.String("name", "MCP session", "optional app or session label; no role required")
 	format := flags.String("format", "json", "json (mcpServers), toml (Codex), or entry (server object)")
 	command := flags.String("command", "", "absolute Bus executable path (defaults to this binary)")
@@ -82,8 +84,8 @@ func connectCommand(args []string, out io.Writer) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || *workspace == "" {
-		return errors.New("connect requires --workspace <name> and no positional arguments")
+	if flags.NArg() != 0 || ((*workspace == "") == (*hosted == "")) {
+		return errors.New("choose --workspace <local-name> or --hosted <profile>, without positional arguments")
 	}
 	if *format != "json" && *format != "toml" && *format != "entry" {
 		return errors.New("--format must be json, toml, or entry")
@@ -120,19 +122,25 @@ func connectCommand(args []string, out io.Writer) error {
 			return errors.New("configuration values cannot contain shell expansion or control characters")
 		}
 	}
-	owner, err := localScopeClientAt(paths, *workspace)
-	if err != nil {
-		return err
+	var entry stdioConfig
+	if *hosted != "" {
+		if _, err := readHostedProfile(*hosted); err != nil {
+			return err
+		}
+		entry = stdioConfig{Command: *command, Args: []string{"mcp", "stdio", "--hosted", *hosted, "--new-session", "--name", *name}, Env: map[string]string{"OCTOBER_BUS_DATA_DIR": dataDir}}
+	} else {
+		owner, err := localScopeClientAt(paths, *workspace)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := owner.ListAgents(ctx); err != nil {
+			return fmt.Errorf("workspace is unavailable: %w", err)
+		}
+		entry = stdioConfig{Command: *command, Args: []string{"mcp", "stdio", "--scope", *workspace, "--new-session", "--name", *name, "--data-dir", dataDir, "--runtime-dir", runtimeDir}}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if _, err := owner.ListAgents(ctx); err != nil {
-		return fmt.Errorf("workspace is unavailable: %w", err)
-	}
-	entry := stdioConfig{Command: *command, Args: []string{
-		"mcp", "stdio", "--scope", *workspace, "--new-session", "--name", *name,
-		"--data-dir", dataDir, "--runtime-dir", runtimeDir,
-	}}
+
 	var data []byte
 	switch *format {
 	case "toml":
@@ -141,6 +149,10 @@ func connectCommand(args []string, out io.Writer) error {
 		encodedCommand, _ := json.Marshal(entry.Command)
 		encodedArgs, _ := json.Marshal(entry.Args)
 		data = []byte(fmt.Sprintf("[mcp_servers.october_bus]\ncommand = %s\nargs = %s\nstartup_timeout_sec = 20\ntool_timeout_sec = 60\ndefault_tools_approval_mode = \"prompt\"\n", encodedCommand, encodedArgs))
+		if entry.Env != nil {
+			encodedPath, _ := json.Marshal(dataDir)
+			data = append(data, []byte(fmt.Sprintf("env = { OCTOBER_BUS_DATA_DIR = %s }\n", encodedPath))...)
+		}
 	case "entry":
 		data, err = json.MarshalIndent(entry, "", "  ")
 	case "json":

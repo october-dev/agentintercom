@@ -20,6 +20,7 @@ async function fixture(page, signedIn = true) {
     if (method !== 'GET') events.push({ path, method, body: route.request().postDataJSON() });
     let result;
     if (path === '/api/config') result = { authUrl: 'https://auth.example.test', authPublicKey: 'sb_publishable_fixture_key_for_tests', mcpUrl: 'https://bus.example.test/mcp' };
+    else if (path === '/api/device/authorizations/ABCD-EFGH') result = method === 'GET' ? { id: 'pair-1', name: '<script>My laptop</script>', userCode: 'ABCD-EFGH' } : { completed: true };
     else if (path === '/api/me') result = user;
     else if (path === '/api/workspaces') result = [{ id: 'workspace-1', name: 'My workspace', role: 'owner', memberLimit: 5 }];
     else if (path.endsWith('/sessions')) result = { sessions: [{ id: 'session-1', displayName: '<img src=x onerror=alert(1)>', deviceId: 'device-1', deviceName: 'Laptop', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' }] };
@@ -115,4 +116,19 @@ test('human conversation, shared task and question flows preserve human intent',
   await page.getByRole('button', { name: 'Send answer', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Nothing waiting on you.' })).toBeVisible();
   expect(events.at(-1).body).toEqual({ answer: 'Second' });
+});
+
+test('device pairing waits for explicit code confirmation and workspace consent', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app#device=ABCD-EFGH');
+  await expect(page.getByRole('heading', { name: '<script>My laptop</script>', exact: true })).toBeVisible();
+  await expect(page.getByText('ABCD-EFGH', { exact: true })).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
+  expect(events).toHaveLength(0);
+  await page.getByRole('button', { name: 'Connect this device', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your device can connect.' })).toBeVisible();
+  expect(events).toEqual([{ path: '/api/device/authorizations/ABCD-EFGH', method: 'POST', body: { approve: true, workspaceId: 'workspace-1' } }]);
+  await page.getByRole('button', { name: 'Open workspace', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Connect an app', exact: true }).click();
+  await expect(page.getByText(/october-bus hosted login --server/)).toBeVisible();
 });

@@ -25,6 +25,10 @@ Usage:
   october-bus session start claude --workspace <name> [--name <label>] -- [Claude arguments]
   october-bus session status
   october-bus session retry <message-id>
+  october-bus hosted login [--server <https-origin>] [--profile <name>] [--name <device-label>]
+  october-bus hosted logout [--profile <name>]
+  october-bus connect --hosted <profile> [--name <session-label>] [--format json|toml|entry]
+  october-bus session start claude --hosted <profile> [--name <label>] -- [Claude arguments]
   october-bus hosted serve --public-url <https-origin> [--listen 127.0.0.1:4780]
   october-bus database migrate [--url-env OCTOBER_BUS_DATABASE_URL]
   october-bus database check [--url-env OCTOBER_BUS_DATABASE_URL]

@@ -18,6 +18,12 @@ import (
 )
 
 func hostedCommand(args []string) error {
+	if len(args) > 0 && args[0] == "login" {
+		return hostedLogin(args[1:], os.Stdout)
+	}
+	if len(args) > 0 && args[0] == "logout" {
+		return hostedLogout(args[1:], os.Stdout)
+	}
 	if len(args) == 0 || args[0] != "serve" {
 		return errors.New("use hosted serve --public-url <https-origin> [--listen 127.0.0.1:4780]")
 	}

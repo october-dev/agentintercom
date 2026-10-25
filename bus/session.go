@@ -12,6 +12,7 @@ import (
 type AgentSessionOptions struct {
 	Address           string
 	ScopeToken        string
+	DeviceToken       string // Hosted device authority; mutually exclusive with ScopeToken.
 	Registration      RegisterAgentInput
 	HeartbeatInterval time.Duration
 	InitialLifecycle  AgentLifecycle
@@ -26,22 +27,26 @@ type AgentSession struct {
 	Registration RegisterAgentResult
 	Client       Client
 
-	leaseMS   int64
-	context   context.Context
-	cancel    context.CancelFunc
-	done      chan struct{}
-	beatMu    sync.Mutex
-	stateMu   sync.Mutex
-	lifecycle AgentLifecycle
-	ready     bool
-	errMu     sync.Mutex
-	err       error
-	close     sync.Once
-	closed    bool // guarded by stateMu
+	retryTransient bool
+	leaseMS        int64
+	context        context.Context
+	cancel         context.CancelFunc
+	done           chan struct{}
+	beatMu         sync.Mutex
+	stateMu        sync.Mutex
+	lifecycle      AgentLifecycle
+	ready          bool
+	errMu          sync.Mutex
+	err            error
+	close          sync.Once
+	closed         bool // guarded by stateMu
 }
 
 // StartAgentSession registers an execution and starts its heartbeat loop.
 func StartAgentSession(ctx context.Context, options AgentSessionOptions) (*AgentSession, error) {
+	if options.ScopeToken != "" && options.DeviceToken != "" {
+		return nil, Errorf(CodeInvalidArgument, "use workspace or device authority, not both")
+	}
 	leaseMS, err := normalizedLease(options.Registration.LeaseMS)
 	if err != nil {
 		return nil, err
@@ -76,7 +81,13 @@ func StartAgentSession(ctx context.Context, options AgentSessionOptions) (*Agent
 		health.Status != "ready" || !slices.Contains(health.Features, FeatureSessionRetirement) {
 		return nil, Errorf(CodeConflict, "managed sessions require a ready protocol 0.1 runtime advertising session-retirement; upgrade the daemon before registering")
 	}
-	registration, err := scopeClient.RegisterAgent(ctx, registrationInput)
+	var registration RegisterAgentResult
+	if options.DeviceToken != "" {
+		deviceClient := Client{Address: options.Address, Token: options.DeviceToken, HTTP: options.HTTP}
+		registration, err = deviceClient.StartDeviceSession(ctx, registrationInput.DisplayName, registrationInput.ID)
+	} else {
+		registration, err = scopeClient.RegisterAgent(ctx, registrationInput)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +101,7 @@ func StartAgentSession(ctx context.Context, options AgentSessionOptions) (*Agent
 	heartbeatCtx, cancel := context.WithCancel(ctx)
 	session := &AgentSession{
 		Address: options.Address, Registration: registration, Client: agentClient,
-		leaseMS: leaseMS, context: heartbeatCtx, cancel: cancel, done: make(chan struct{}),
+		retryTransient: options.DeviceToken != "", leaseMS: leaseMS, context: heartbeatCtx, cancel: cancel, done: make(chan struct{}),
 		lifecycle: lifecycle, ready: options.InitialReady,
 	}
 	go session.heartbeat(heartbeatCtx, interval)
@@ -116,22 +127,30 @@ func (s *AgentSession) heartbeat(ctx context.Context, interval time.Duration) {
 			s.errMu.Unlock()
 		}
 	}()
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	leaseDeadline := time.Now().Add(time.Duration(s.leaseMS) * time.Millisecond)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			if _, err := s.sendHeartbeat(ctx); err != nil {
 				if ctx.Err() != nil {
 					return
+				}
+				code := AsBusError(err).Code
+				if s.retryTransient && (code == CodeInternal || code == CodeBackpressure) && time.Now().Before(leaseDeadline.Add(-time.Second)) {
+					timer.Reset(min(interval, 5*time.Second))
+					continue
 				}
 				s.errMu.Lock()
 				s.err = err
 				s.errMu.Unlock()
 				return
 			}
+			leaseDeadline = time.Now().Add(time.Duration(s.leaseMS) * time.Millisecond)
+			timer.Reset(interval)
 		}
 	}
 }

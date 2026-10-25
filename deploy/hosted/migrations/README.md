@@ -97,3 +97,11 @@ and transcript content are not stored. The same portable SQL creates SQLite's
 wake tables in schema 11. Message foreign keys remove attempts when retained
 messages are pruned; scope deletion also cascades. Portable scope archives omit
 this execution-specific state, just as they omit live execution credentials.
+
+## Device approval: 007_device_pairing.sql
+
+Adds ten-minute CLI pairing requests, random device-code digests and encrypted
+approved credentials. Browser approval is bound to a verified member and one
+workspace. Conditional approval prevents concurrent requests from issuing two
+devices; polling permits lost-response recovery within the same approval window.
+Expired requests are removed on subsequent registration, with a bounded table.

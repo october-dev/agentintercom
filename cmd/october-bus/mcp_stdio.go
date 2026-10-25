@@ -106,6 +106,7 @@ func (transport agentTokenTransport) roundTrip(request *http.Request) (*http.Res
 func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	flags := flag.NewFlagSet("mcp stdio", flag.ContinueOnError)
 	scope := flags.String("scope", "", "local scope ID (no token in configuration)")
+	hosted := flags.String("hosted", "", "saved hosted device profile")
 	id := flags.String("agent", "", "stable agent ID; duplicate IDs replace earlier executions")
 	newSession := flags.Bool("new-session", false, "create a unique identity for this MCP process instead of replacing another session")
 	name := flags.String("name", "", "agent display name (defaults to ID)")
@@ -126,11 +127,13 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		if *id != "" {
 			return errors.New("use --new-session or --agent, not both")
 		}
-		var random [12]byte
-		if _, err := rand.Read(random[:]); err != nil {
-			return fmt.Errorf("create session identity: %w", err)
+		if *hosted == "" {
+			var random [12]byte
+			if _, err := rand.Read(random[:]); err != nil {
+				return fmt.Errorf("create session identity: %w", err)
+			}
+			*id = fmt.Sprintf("session-%x", random[:])
 		}
-		*id = fmt.Sprintf("session-%x", random[:])
 		if *name == "" {
 			*name = "MCP session"
 		}
@@ -138,7 +141,7 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	address := strings.TrimRight(strings.TrimSpace(os.Getenv("OCTOBER_BUS_ADDRESS")), "/")
 	token := strings.TrimSpace(os.Getenv("OCTOBER_BUS_AGENT_TOKEN"))
 	remoteMode := *remote != "" || *scopeTokenFile != ""
-	selfRegister := remoteMode || *scope != "" || *id != "" || *name != "" || len(peers) != 0 || *dataDir != "" || *runtimeDir != ""
+	selfRegister := *hosted != "" || remoteMode || *scope != "" || *id != "" || *name != "" || len(peers) != 0 || *dataDir != "" || *runtimeDir != ""
 	var endpoint string
 	var connectionSource func() (managedMCPConnection, error)
 	var sessionDone <-chan struct{}
@@ -159,7 +162,7 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		if token != "" {
 			return errors.New("use either managed agent credentials or --scope/--agent, not both")
 		}
-		if *id == "" || (!remoteMode && *scope == "") {
+		if *hosted == "" && (*id == "" || (!remoteMode && *scope == "")) {
 			return errors.New("self-registering mcp stdio requires --agent and either --scope or --remote/--scope-token-file")
 		}
 		if *name == "" {
@@ -167,7 +170,12 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		}
 		var owner bus.Client
 		var err error
-		if remoteMode {
+		if *hosted != "" {
+			if remoteMode || *scope != "" || *dataDir != "" || *runtimeDir != "" || len(peers) > 0 || (!*newSession && *id == "") {
+				return errors.New("hosted MCP requires --new-session or --agent <owned-session-id>, without local or scope-token flags")
+			}
+			owner, err = hostedDeviceClient(*hosted)
+		} else if remoteMode {
 			if *remote == "" || *scopeTokenFile == "" || *scope != "" || *dataDir != "" || *runtimeDir != "" {
 				return errors.New("remote registration requires --remote and --scope-token-file, without local scope/directory flags")
 			}
@@ -197,11 +205,17 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		// The harness launched this bridge and owns the process, so peers may
 		// send work: ready means attached and reachable, not that a model turn
 		// is running. Delivery still never implies execution.
-		session, err := bus.StartAgentSession(sessionCtx, bus.AgentSessionOptions{
+		options := bus.AgentSessionOptions{
 			Address: owner.Address, ScopeToken: owner.Token, HTTP: owner.HTTP, HeartbeatInterval: 5 * time.Second,
 			Registration:     bus.RegisterAgentInput{ID: *id, DisplayName: *name, ConnectTo: peers, ConnectWorkspace: *newSession, LeaseMS: 30_000},
 			InitialLifecycle: bus.LifecycleReady, InitialReady: true,
-		})
+		}
+		if *hosted != "" {
+			options.ScopeToken, options.DeviceToken = "", owner.Token
+			options.Registration.LeaseMS = 300000
+			options.HeartbeatInterval = time.Minute
+		}
+		session, err := bus.StartAgentSession(sessionCtx, options)
 		if err != nil {
 			return fmt.Errorf("could not start agent session: %w", err)
 		}

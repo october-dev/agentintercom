@@ -11,9 +11,12 @@ const pendingKey = 'october-bus-pending';
 let pending = {};
 try { const saved = JSON.parse(sessionStorage.getItem(pendingKey) || '{}'); if (saved.until > Date.now()) pending = saved; } catch {}
 if (params.get('authorization_id')) pending.authorization = params.get('authorization_id');
-const invite = new URLSearchParams(location.hash.slice(1)).get('invite');
+const fragment = new URLSearchParams(location.hash.slice(1));
+const invite = fragment.get('invite');
+const device = fragment.get('device') || params.get('device_code');
+if (device) { pending.device = device; history.replaceState(null, '', location.pathname + location.search); }
 if (invite) { pending.invite = invite; history.replaceState(null, '', location.pathname + location.search); }
-if (pending.authorization || pending.invite) sessionStorage.setItem(pendingKey, JSON.stringify({ ...pending, until: Date.now() + 20 * 60 * 1000 }));
+if (pending.authorization || pending.invite || pending.device) sessionStorage.setItem(pendingKey, JSON.stringify({ ...pending, until: Date.now() + 20 * 60 * 1000 }));
 
 function el(tag, attributes = {}, ...children) {
   const node = document.createElement(tag);
@@ -76,7 +79,7 @@ function signIn() {
   state.user = null;
   const email = field('Email address', { type: 'email', name: 'email', autocomplete: 'email', required: true });
   const emailForm = form([email.node], 'Continue with email', async data => {
-    const { error } = await state.auth.signInWithOtp({ email: data.get('email'), options: { emailRedirectTo: location.origin + '/app' + (pending.authorization ? '?authorization_id=' + encodeURIComponent(pending.authorization) : ''), shouldCreateUser: true } });
+    const { error } = await state.auth.signInWithOtp({ email: data.get('email'), options: { emailRedirectTo: location.origin + '/app' + (pending.authorization ? '?authorization_id=' + encodeURIComponent(pending.authorization) : pending.device ? '?device_code=' + encodeURIComponent(pending.device) : ''), shouldCreateUser: true } });
     if (error) throw error;
     inform('Check your email for an October sign-in link. Open it in this browser.');
     emailForm.append(el('p', { class: 'notice-inline' }, 'Check your email for a sign-in link. Keep this tab open so you can return to your connection request.'));
@@ -100,6 +103,7 @@ async function signedIn() {
   state.workspace = state.workspaces.find(w => w.id === wanted) || state.workspaces[0] || null;
   if (pending.invite) return invitation();
   if (pending.authorization) return consent();
+  if (pending.device) return deviceConsent();
   if (!state.workspace) return firstWorkspace();
   await render();
 }
@@ -126,6 +130,16 @@ async function consent() {
   };
   const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(consent)), el('div', { class: 'actions' }, button('Allow connection', () => approve(true), 'primary'), button('Cancel', () => approve(false)))) : createWorkspace(consent);
   root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect an app'), el('h1', {}, request.clientName), el('p', {}, 'wants to connect to your October Bus workspace.'), el('p', { class: 'help' }, 'This app registered itself. October has not verified its publisher. Only continue if you started this connection in an app you trust.'), el('ul', { class: 'permission-list' }, el('li', {}, 'Read and send messages in the selected workspace.'), el('li', {}, 'Discover connected sessions and coordinate shared tasks.'), el('li', {}, 'Remain connected until you revoke access or the connection expires.')), el('p', { class: 'help' }, 'You can revoke access at any time in Members & devices.'), el('p', { class: 'help' }, 'Returns to: ', el('code', {}, new URL(request.redirectUri).origin)), choice)));
+}
+async function deviceConsent() {
+  const request = await api(`/api/device/authorizations/${encodeURIComponent(pending.device)}`);
+  const approve = async allowed => {
+    await api(`/api/device/authorizations/${encodeURIComponent(pending.device)}`, { method: 'POST', body: { approve: allowed, workspaceId: allowed ? state.workspace?.id : '' } });
+    closePending('device');
+    root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('h1', {}, allowed ? 'Your device can connect.' : 'Connection declined.'), el('p', {}, allowed ? 'Return to your terminal to finish. Each session on this device will appear in your workspace.' : 'No device credential was issued.'), button('Open workspace', signedIn, 'primary'))));
+  };
+  const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(deviceConsent)), el('div', { class: 'actions' }, button('Connect this device', () => approve(true), 'primary'), button('Decline', () => approve(false)))) : createWorkspace(deviceConsent);
+  root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect a machine'), el('h1', {}, request.name), el('p', {}, 'Check that this code matches the one in your terminal:'), el('pre', {}, request.userCode), el('p', { class: 'help' }, 'Only approve a request you started. This device can read and send workspace messages and start its own agent sessions. You can revoke it in Members & devices.'), choice)));
 }
 function invitation() {
   root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('h1', {}, 'Join a workspace'), el('p', {}, `You are signed in as ${state.user.email}. The invitation must match this address.`), el('div', { class: 'actions' }, button('Accept invitation', async () => {
@@ -169,10 +183,10 @@ async function sessionsView() {
 function connectView() {
   const url = state.config.mcpUrl;
   return el('div', { class: 'grid' }, el('section', { class: 'card' }, el('h2', {}, 'An app with remote MCP'), el('p', {}, 'In your app’s connectors or MCP settings, add October Bus using this address.'), el('pre', {}, url), button('Copy connector URL', () => copy(url)), el('ol', {}, el('li', {}, 'Add the connector in your app.'), el('li', {}, 'Sign in to October and choose this workspace.'), el('li', {}, 'Ask your app to check its Bus inbox or find connected sessions.')), el('p', { class: 'help' }, 'Works with compatible Streamable HTTP MCP clients. Your app controls which conversations can use tools and whether an idle conversation can resume.')),
-    el('section', { class: 'card' }, el('h2', {}, 'Another machine or automation'), el('p', {}, 'Create a separate device credential. Each device can connect its own sessions and can be revoked independently.'), form([field('Device name', { name: 'name', required: true, maxlength: 100, placeholder: 'My laptop' }).node], 'Create device credential', async data => {
+    el('section', { class: 'card' }, el('h2', {}, 'Another machine or automation'), el('p', {}, 'Install the October Bus CLI on that machine, then run:'), el('pre', {}, 'october-bus hosted login --server ' + location.origin), el('p', {}, 'Open the link it prints, confirm the code and choose this workspace. Then run october-bus connect --hosted default, or october-bus session start claude --hosted default.'), el('details', {}, el('summary', {}, 'Create a credential for custom automation'), form([field('Device name', { name: 'name', required: true, maxlength: 100, placeholder: 'My laptop' }).node], 'Create device credential', async data => {
       const device = await api(path('/devices'), { method: 'POST', body: { name: data.get('name') } });
       secretDialog('Device credential', device.token, 'Save this in your device’s secret store. It is shown only once. Anyone with it can join sessions to this workspace as you.');
-    }), el('p', { class: 'help' }, 'Keep credentials out of chat messages, shell history and source control.')));
+    }), el('p', { class: 'help' }, 'Keep credentials out of chat messages, shell history and source control.'))));
 }
 async function membersView() {
   const [members, devices] = await Promise.all([api(path('/members')), api(path('/devices'))]);

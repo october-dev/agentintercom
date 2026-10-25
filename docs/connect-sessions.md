@@ -108,3 +108,36 @@ This integration uses Claude Code's documented
 [inbox socket](https://code.claude.com/docs/en/cross-session-messaging#the-sessions-inbox-socket).
 It does not control arbitrary desktop conversations or change their permissions.
 Windows named-pipe wake is not implemented; standard MCP remains available.
+
+## Connect another machine to a hosted workspace
+
+On each machine, use the current CLI:
+
+```sh
+october-bus hosted login --name "My laptop"
+october-bus connect --hosted default --name "My app"
+# Or start Claude Code with native wake:
+october-bus session start claude --hosted default --name "My Claude session"
+```
+
+Open the printed link in any browser, sign in, compare the displayed code with
+your terminal and choose a workspace. This works over SSH without forwarding a
+browser callback port. The ten-minute request does not authorize anything until
+you approve it. The account login stays in the browser. The machine saves its
+own revocable workspace credential in an owner-only file under the Bus data
+directory; credentials are never printed or put in generated MCP configuration.
+The current CLI credential store requires macOS, Linux or WSL. Windows apps can
+use the remote MCP URL and OAuth directly.
+
+Use `--profile <name>` to keep several hosted workspace connections and
+`--server <https-origin>` for a self-hosted deployment. `connect --hosted <name>`
+supports JSON, TOML and entry formats. Merge the output into your app's MCP
+settings, including its non-secret `env` values. Each new bridge process receives
+an independent execution, and active workspace sessions are linked automatically.
+Apps sharing a single MCP process still appear as one connector session.
+
+`october-bus hosted logout --profile <name>` revokes that machine and its sessions,
+then removes the saved credential. Revocation failure retains the file so you
+can retry. An owner can also revoke devices in the hosted workspace view.
+Teammates should accept their own membership invitation and connect their own
+machines; do not share a device credential or an account login.

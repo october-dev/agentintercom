@@ -222,3 +222,22 @@ agents in the registration transaction (at most 128 peers). Concurrent workspace
 registrations therefore cannot miss one another. Explicit `connectTo` remains
 available and unchanged. The standard local `--new-session` bridge and native
 session launcher opt into workspace linking; existing explicit-ID clients do not.
+
+### Hosted device connection
+
+The hosted account front door adds a browser-approved device flow. These are
+hosted product endpoints, not local runtime routes. All responses use `no-store`.
+
+| Method | Path | Authority | Purpose |
+| --- | --- | --- | --- |
+| POST | `/api/device/authorizations` | None; bounded registration | Start a ten-minute request with `{name}`. Returns a public `userCode` and a secret `deviceCode`. |
+| GET | `/api/device/authorizations/{code}` | Verified account | Display pending device name and code; never returns credentials. |
+| POST | `/api/device/authorizations/{code}` | Verified account | `{approve, workspaceId}`. Only a member can approve the selected workspace; one approval wins. |
+| POST | `/api/device/authorizations/token` | Secret `deviceCode` in JSON body | Poll no faster than every five seconds. Status is `pending`, `denied` or `approved`; approved includes the revocable device credential. |
+| POST | `/api/device/sessions` | Device bearer | `{name, resumeId?}` starts an independent execution or resumes an identity owned by that device. |
+| DELETE | `/api/device/self` | Device bearer | Revoke this device and all its executions. |
+
+Knowing the public comparison code cannot redeem a device credential. Polling
+repeats the same approved credential during its short window to recover a lost
+response; it never creates an additional device. Expiry, revocation or membership
+removal prevents redemption. The device bearer cannot call account endpoints.
