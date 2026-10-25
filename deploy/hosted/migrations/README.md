@@ -89,3 +89,11 @@ methods; existing public registrations retain the `none` method.
 Extends message participant constraints with `human` and indexes workspace
 history. No message rows are rewritten, and the existing agent receipt lifecycle
 is unchanged. Human identity and access come from the hosted member boundary.
+
+## Native dispatch: 006_native_wake.sql
+
+Adds operational wake connection and attempt state. Socket paths, provider tokens
+and transcript content are not stored. The same portable SQL creates SQLite's
+wake tables in schema 11. Message foreign keys remove attempts when retained
+messages are pruned; scope deletion also cascades. Portable scope archives omit
+this execution-specific state, just as they omit live execution credentials.

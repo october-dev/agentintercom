@@ -31,6 +31,11 @@ type storageBackend interface {
 	LinkAgents(context.Context, string, string, string) error
 	ListPeers(context.Context, Principal) ([]Agent, error)
 
+	ClaimWake(context.Context, Principal, string) (WakeBatch, error)
+	FinishWake(context.Context, Principal, string, string) error
+	WakeStatus(context.Context, Principal) (WakeStatus, error)
+	RetryWake(context.Context, Principal, []string) error
+
 	SendMessage(context.Context, Principal, SendMessageInput) (DeliveryReceipt, error)
 	Receipt(context.Context, Principal, string) (DeliveryReceipt, error)
 	ReserveInbox(context.Context, Principal, int) (*InboxReservation, error)

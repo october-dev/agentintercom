@@ -192,3 +192,33 @@ protocol.schema.json#/$defs/sendMessageInput
 | `CONFLICT` | 409 |
 | `BACKPRESSURE` | 429 |
 | `INTERNAL` | 500 |
+
+## Native wake dispatch
+
+Execution-authenticated helpers may call `POST /v1/me/wake/claim` with `provider`
+(`claude-socket` or `codex-app-server`) and `waitMs` (0–25000). A nonempty response
+contains an `attemptId` and up to twenty `messageIds`. The service atomically
+reserves the **wake attempt**, not the inbox delivery. It batches notifications,
+limits submissions to one per two seconds and preserves the message for normal
+inbox retrieval. Only an implemented, locally bound adapter should claim work.
+
+After the external write, `POST /v1/me/wake/attempts/{attemptId}` records `outcome`:
+`submitted`, `unavailable` (no connection), or `uncertain` (possibly written).
+These outcomes do not change message receipts. A dispatcher lost while writing
+becomes uncertain after thirty seconds. Unavailable attempts retry at most five
+times with at least thirty seconds between them; uncertain/submitted attempts
+never automatically replay. `POST /v1/me/wake/retry` with `messageIds` explicitly
+releases selected attempts after the caller has inspected the provider session.
+
+`GET /v1/me/wake` reports the execution's connection, pending count, last outcome
+and uncertain count. A recent listener heartbeat means a native adapter is
+connected; only ordinary inbox delivery and acknowledgment prove progress. Old
+execution credentials cannot claim or complete a replacement execution's attempts.
+Provider socket addresses and authentication tokens remain on the agent's machine.
+
+Registration accepts optional `connectWorkspace: true` under existing scope-owner
+authority. It links the new execution to the scope's currently leased, non-offline
+agents in the registration transaction (at most 128 peers). Concurrent workspace
+registrations therefore cannot miss one another. Explicit `connectTo` remains
+available and unchanged. The standard local `--new-session` bridge and native
+session launcher opt into workspace linking; existing explicit-ID clients do not.

@@ -22,6 +22,9 @@ import (
 const usage = `October Bus
 
 Usage:
+  october-bus session start claude --workspace <name> [--name <label>] -- [Claude arguments]
+  october-bus session status
+  october-bus session retry <message-id>
   october-bus hosted serve --public-url <https-origin> [--listen 127.0.0.1:4780]
   october-bus database migrate [--url-env OCTOBER_BUS_DATABASE_URL]
   october-bus database check [--url-env OCTOBER_BUS_DATABASE_URL]
@@ -1013,6 +1016,8 @@ func run() error {
 		return nil
 	}
 	switch args[0] {
+	case "session":
+		return sessionCommand(args[1:])
 	case "hosted":
 		return hostedCommand(args[1:])
 	case "database":

@@ -199,7 +199,7 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		// is running. Delivery still never implies execution.
 		session, err := bus.StartAgentSession(sessionCtx, bus.AgentSessionOptions{
 			Address: owner.Address, ScopeToken: owner.Token, HTTP: owner.HTTP, HeartbeatInterval: 5 * time.Second,
-			Registration:     bus.RegisterAgentInput{ID: *id, DisplayName: *name, ConnectTo: peers, LeaseMS: 30_000},
+			Registration:     bus.RegisterAgentInput{ID: *id, DisplayName: *name, ConnectTo: peers, ConnectWorkspace: *newSession, LeaseMS: 30_000},
 			InitialLifecycle: bus.LifecycleReady, InitialReady: true,
 		})
 		if err != nil {

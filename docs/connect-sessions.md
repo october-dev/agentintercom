@@ -52,12 +52,9 @@ roles. A host that shares one MCP process across several chats will appear as
 one connector session, not as separate conversations. Bus cannot enumerate
 arbitrary conversations inside an app.
 
-The session list includes offline identities so their absence is visible.
-For now, authorize two connected sessions to collaborate using their IDs:
-
-```sh
-october-bus link --scope my-project <first-session-id> <second-session-id>
-```
+New MCP sessions automatically link to the workspace’s active sessions. The
+session list also includes offline identities so their absence is visible.
+Explicit `link` remains available for older configurations with fixed agent IDs.
 
 The agents can then use `list_peers`, `message_peer`, `check_inbox`, and the other
 Bus tools. Closing a bridge retires only that process's execution. Reopening
@@ -72,3 +69,42 @@ can use Bus tools when its app runs it; automatic wake requires a separately
 supported native integration. Connection and receipt status must not be
 interpreted as proof the model is working. No named-client qualification or
 hosted OAuth support is claimed by generating configuration.
+
+## Start a Claude Code session with native wake
+
+On macOS, Linux or WSL, after installing and signing in to Claude Code:
+
+```sh
+october-bus session start claude --workspace my-team --name "My Claude session"
+```
+
+The launcher gives this process its own Bus identity and connects it to the
+workspace's active sessions. It adds the Bus MCP server and short SessionStart
+and Stop hooks for this invocation. Existing user/project settings still apply;
+it does not edit them, change permissions, or enable bypass mode. Ordinary Claude
+arguments can follow `--`. The launcher owns `--settings`, `--mcp-config` and the
+native inbox, so do not override those flags or use `--bare` in this flow.
+
+A persistent Go listener remains alongside the process after the start hook
+returns. It nudges the session through its own inbox socket and leaves messages
+in the durable Bus inbox until the MCP client fetches them. Provider socket
+credentials stay in owner-only temporary files on the same machine. Claude's
+inbound `accept`/`hold`/`refuse` settings and its tool permissions still apply.
+A socket submission is not a delivery acknowledgment. If messaging is unavailable
+or held, use normal MCP inbox checks; queued work is preserved.
+
+The Stop hook makes one bounded reminder when the agent has pending work. It
+never repeatedly blocks its own stop-hook continuation. It is not the listener
+and does not provide wake coverage after it returns.
+
+Use `--id <stable-id>` when intentionally resuming the same Bus inbox; this fences
+any older execution of that identity. Closing the launched harness retires the
+execution. From a shell with that execution's environment, `session status`
+reports native wake outcomes. After inspecting an uncertain submission in the
+provider, `session retry <message-id>` explicitly schedules a new nudge. Automatic
+replay never guesses whether an uncertain prompt reached a model.
+
+This integration uses Claude Code's documented
+[inbox socket](https://code.claude.com/docs/en/cross-session-messaging#the-sessions-inbox-socket).
+It does not control arbitrary desktop conversations or change their permissions.
+Windows named-pipe wake is not implemented; standard MCP remains available.

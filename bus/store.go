@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	schemaVersion                = 10
+	schemaVersion                = 11
 	reservationTTL               = 30 * time.Second
 	messageBacklogCap            = 10000
 	activeTaskCap                = 5000
@@ -132,7 +132,13 @@ func (s *Store) initialize(ctx context.Context) error {
 		return s.migrateV2(ctx)
 	}
 	if version == 9 {
-		return s.migrateV9(ctx)
+		if err := s.migrateV9(ctx); err != nil {
+			return err
+		}
+		return s.migrateV10(ctx)
+	}
+	if version == 10 {
+		return s.migrateV10(ctx)
 	}
 	if version != 0 && version != schemaVersion {
 		return fmt.Errorf("database schema %d does not match %d", version, schemaVersion)
@@ -347,6 +353,28 @@ ON CONFLICT(scope_id,agent_id) DO UPDATE SET
 		"executionId", executionID, "lifecycle", string(LifecycleStarting), "ready", "false", "leaseExpiresAt", instant(leaseExpiresAt),
 	), now); err != nil {
 		return RegisterAgentResult{}, err
+	}
+	if input.ConnectWorkspace {
+		rows, err := tx.QueryContext(ctx, "SELECT agent_id FROM agents WHERE scope_id=? AND agent_id<>? AND lease_expires_at>? AND lifecycle<>'offline' ORDER BY agent_id LIMIT 129", scopeID, agentID, now)
+		if err != nil {
+			return RegisterAgentResult{}, err
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return RegisterAgentResult{}, err
+			}
+			input.ConnectTo = append(input.ConnectTo, id)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return RegisterAgentResult{}, err
+		}
+		if len(unique(input.ConnectTo)) > 128 {
+			return RegisterAgentResult{}, Errorf(CodeBackpressure, "Workspace has too many connected sessions for automatic linking")
+		}
 	}
 	for _, peer := range unique(input.ConnectTo) {
 		created, err := linkAgents(ctx, tx, scopeID, agentID, peer, now)

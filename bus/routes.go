@@ -66,6 +66,10 @@ func (s *Server) newRouter() http.Handler {
 		routeMethod{http.MethodGet, s.health},
 	)
 	registerAllMethods(router, "/mcp", s.serveMCP)
+	registerRoute(router, "/v1/me/wake", routeMethod{http.MethodGet, s.wakeStatus})
+	registerRoute(router, "/v1/me/wake/claim", routeMethod{http.MethodPost, s.claimWake})
+	registerRoute(router, "/v1/me/wake/attempts/{attemptId}", routeMethod{http.MethodPost, s.finishWake})
+	registerRoute(router, "/v1/me/wake/retry", routeMethod{http.MethodPost, s.retryWake})
 	registerRoute(router, "/v1/admin/shutdown",
 		routeMethod{http.MethodPost, s.shutdownServer},
 	)
@@ -269,7 +273,7 @@ func (s *Server) health(response http.ResponseWriter, request *http.Request) err
 	writeJSON(response, httpStatus, Health{
 		Name: "october-bus", ProtocolVersion: ProtocolVersion, RuntimeVersion: Version,
 		Status: status, StartedAt: s.options.StartedAt, Storage: storage,
-		Features: []string{FeatureSessionRetirement},
+		Features: []string{FeatureSessionRetirement, FeatureNativeWake},
 	})
 	return nil
 }

@@ -451,6 +451,7 @@ export interface RegisterAgentInput {
   capabilities?: AgentCapability[]
   connectTo?: AgentId[]
   leaseMs?: number
+  connectWorkspace?: boolean
 }
 
 export interface RegisterAgentResult extends AgentIdentity {

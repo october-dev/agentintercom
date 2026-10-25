@@ -7,10 +7,11 @@ import (
 
 type WorkspaceSession struct {
 	Agent
-	DeviceID     string `json:"deviceId"`
-	DeviceName   string `json:"deviceName"`
-	UserID       string `json:"userId"`
-	DeliveryMode string `json:"deliveryMode"`
+	DeviceID     string     `json:"deviceId"`
+	DeviceName   string     `json:"deviceName"`
+	UserID       string     `json:"userId"`
+	DeliveryMode string     `json:"deliveryMode"`
+	Wake         WakeStatus `json:"wake"`
 }
 
 type WorkspaceSessionPage struct {
@@ -32,8 +33,12 @@ func (a *HostedAccounts) Sessions(ctx context.Context, user HostedUser, scopeID,
 		return result, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT a.agent_id,a.display_name,a.capabilities_json,a.lifecycle,a.ready,a.execution_id,a.lease_expires_at,a.registered_at,a.updated_at,
-d.device_id,d.name,d.user_id FROM agents a JOIN hosted_sessions s ON s.scope_id=a.scope_id AND s.agent_id=a.agent_id
-JOIN hosted_devices d ON d.device_id=s.device_id WHERE a.scope_id=? AND a.agent_id>? ORDER BY a.agent_id LIMIT 101`, scopeID, after)
+d.device_id,d.name,d.user_id,COALESCE(w.provider,''),COALESCE(w.last_seen_at,0),COALESCE(w.last_attempt_at,0),COALESCE(w.last_outcome,''),
+(SELECT COUNT(*) FROM messages m WHERE m.scope_id=a.scope_id AND m.to_kind='agent' AND m.to_id=a.agent_id AND m.state IN ('queued','delivered') AND (m.expires_at IS NULL OR m.expires_at>?)),
+(SELECT COUNT(*) FROM wake_attempts wa JOIN messages m ON m.message_id=wa.message_id WHERE wa.scope_id=a.scope_id AND wa.agent_id=a.agent_id AND wa.execution_id=a.execution_id AND (wa.outcome='uncertain' OR (wa.outcome='dispatching' AND wa.updated_at<?)) AND m.state IN ('queued','delivered') AND (m.expires_at IS NULL OR m.expires_at>?))
+FROM agents a JOIN hosted_sessions s ON s.scope_id=a.scope_id AND s.agent_id=a.agent_id
+JOIN hosted_devices d ON d.device_id=s.device_id LEFT JOIN wake_connections w ON w.scope_id=a.scope_id AND w.agent_id=a.agent_id AND w.execution_id=a.execution_id
+WHERE a.scope_id=? AND a.agent_id>? ORDER BY a.agent_id LIMIT 101`, nowMillis(), nowMillis()-30000, nowMillis(), scopeID, after)
 	if err != nil {
 		return result, err
 	}
@@ -47,6 +52,9 @@ JOIN hosted_devices d ON d.device_id=s.device_id WHERE a.scope_id=? AND a.agent_
 		}
 		value.Agent = agent
 		value.DeliveryMode = "poll"
+		if value.Wake.Connected && value.Reachable {
+			value.DeliveryMode = value.Wake.Provider
+		}
 		result.Sessions = append(result.Sessions, value)
 	}
 	err = rows.Err()
@@ -68,7 +76,16 @@ type hostedSessionRow struct {
 }
 
 func (r hostedSessionRow) Scan(dest ...any) error {
-	return r.row.Scan(append(dest, &r.session.DeviceID, &r.session.DeviceName, &r.session.UserID)...)
+	var seen, attempt int64
+	status := &r.session.Wake
+	err := r.row.Scan(append(dest, &r.session.DeviceID, &r.session.DeviceName, &r.session.UserID, &status.Provider, &seen, &attempt, &status.LastOutcome, &status.Pending, &status.Uncertain)...)
+	status.LastSeenAt = instant(seen)
+	status.LastAttemptAt = instant(attempt)
+	status.Connected = seen > nowMillis()-90000
+	if status.LastOutcome == "dispatching" && attempt < nowMillis()-30000 {
+		status.LastOutcome = "uncertain"
+	}
+	return err
 }
 
 func (a *HostedAccounts) Invites(ctx context.Context, user HostedUser, scopeID string) ([]WorkspaceInvite, error) {

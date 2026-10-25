@@ -147,3 +147,17 @@ func (s *Store) migrateV9(ctx context.Context) error {
 	}
 	return tx.Commit()
 }
+
+// Schema 10 to 11 is additive. The operational wake tables hold no model
+// transcripts or provider credentials and do not alter existing messages.
+func (s *Store) migrateV10(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, nativeWakeSchemaSQL+"PRAGMA user_version=11;"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

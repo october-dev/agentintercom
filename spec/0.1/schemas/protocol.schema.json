@@ -109,6 +109,7 @@
           "maxItems": 64,
           "items": { "$ref": "#/$defs/capability" }
         },
+        "connectWorkspace": { "type": "boolean", "default": false },
         "connectTo": {
           "type": "array",
           "maxItems": 128,
