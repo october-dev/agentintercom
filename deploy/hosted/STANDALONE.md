@@ -39,6 +39,15 @@ application's database role. Use a direct or session-pooler endpoint for `psql`,
 `pg_dump` and restore. Runtime transaction-pooler connections are supported.
 All remote PostgreSQL connections require a trusted CA and `sslmode=verify-full`.
 
+Place the Go service close to its database, preferably in the same region.
+Workspace writes use short, serialized transactions; intercontinental latency
+accumulates across their statements and can exhaust the lock budget during a
+connection burst. Peer links and their events are inserted in batches, but that
+does not remove the need for nearby storage. Measure connection, heartbeat and
+message latency at the intended concurrent-session limit before public signup.
+Database lock contention returns `BACKPRESSURE` (HTTP 429); retry with bounded
+backoff. Do not increase database timeouts to conceal a saturated deployment.
+
 ## Release and configuration
 
 Create a dedicated system user with no login shell and no home directory. Put

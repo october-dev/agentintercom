@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -25,33 +26,52 @@ func eventAttributes(values ...string) map[string]string {
 }
 
 func appendEvent(ctx context.Context, tx sqlExecutor, scopeID, eventType, subjectID string, attributes map[string]string, createdAt int64) error {
+	return appendEvents(ctx, tx, scopeID, []pendingEvent{{eventType, subjectID, attributes}}, createdAt)
+}
+
+type pendingEvent struct {
+	eventType, subjectID string
+	attributes           map[string]string
+}
+
+// Reserve contiguous revisions and insert a transaction's events together.
+// In particular, joining a workspace must not make a database round trip for
+// each peer's revision and link event.
+func appendEvents(ctx context.Context, tx sqlExecutor, scopeID string, events []pendingEvent, createdAt int64) error {
+	if len(events) == 0 {
+		return nil
+	}
 	var revision int64
-	if err := tx.QueryRowContext(ctx, `UPDATE scopes SET event_revision=event_revision+1 WHERE scope_id=? RETURNING event_revision`, scopeID).Scan(&revision); err != nil {
+	if err := tx.QueryRowContext(ctx, `UPDATE scopes SET event_revision=event_revision+? WHERE scope_id=? RETURNING event_revision`, len(events), scopeID).Scan(&revision); err != nil {
 		return err
 	}
-	eventID, err := randomID("evt_")
-	if err != nil {
-		return err
+	args := make([]any, 0, len(events)*7)
+	for i, event := range events {
+		eventID, err := randomID("evt_")
+		if err != nil {
+			return err
+		}
+		if event.attributes == nil {
+			event.attributes = map[string]string{}
+		}
+		if user, ok := ctx.Value(hostedMemberKey{}).(HostedUser); ok {
+			event.attributes["actorKind"], event.attributes["actorId"] = "human", user.ID
+		}
+		data, err := json.Marshal(event.attributes)
+		if err != nil {
+			return err
+		}
+		args = append(args, eventID, scopeID, revision-int64(len(events))+int64(i)+1, event.eventType, event.subjectID, string(data), createdAt)
 	}
-	if attributes == nil {
-		attributes = map[string]string{}
-	}
-	if user, ok := ctx.Value(hostedMemberKey{}).(HostedUser); ok {
-		attributes["actorKind"], attributes["actorId"] = "human", user.ID
-	}
-	data, err := json.Marshal(attributes)
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO events(event_id,scope_id,revision,event_type,subject_id,attributes_json,created_at) VALUES(?,?,?,?,?,?,?)`,
-		eventID, scopeID, revision, eventType, subjectID, string(data), createdAt)
+	values := strings.TrimSuffix(strings.Repeat("(?,?,?,?,?,?,?),", len(events)), ",")
+	_, err := tx.ExecContext(ctx, `INSERT INTO events(event_id,scope_id,revision,event_type,subject_id,attributes_json,created_at) VALUES`+values, args...)
 	if err != nil {
 		return err
 	}
 	// A bounded notification log is distinct from retained messages and tasks.
 	// Clients already handle a cursor below the floor by resynchronizing.
-	if isPostgresQuery(tx) && revision > 100000 && revision%100 == 0 {
-		floor := revision - 100000
+	if isPostgresQuery(tx) && revision > 100000 && (revision-int64(len(events)))/100 < revision/100 {
+		floor := revision/100*100 - 100000
 		if _, err := tx.ExecContext(ctx, "DELETE FROM events WHERE scope_id=? AND revision<=? AND event_type!='scope.imported' AND EXISTS(SELECT 1 FROM hosted_workspaces WHERE scope_id=?)", scopeID, floor, scopeID); err != nil {
 			return err
 		}

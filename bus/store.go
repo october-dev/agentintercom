@@ -379,17 +379,8 @@ ON CONFLICT(scope_id,agent_id) DO UPDATE SET
 			return RegisterAgentResult{}, Errorf(CodeBackpressure, "Workspace has too many connected sessions for automatic linking")
 		}
 	}
-	for _, peer := range unique(input.ConnectTo) {
-		created, err := linkAgents(ctx, tx, scopeID, agentID, peer, now)
-		if err != nil {
-			return RegisterAgentResult{}, err
-		}
-		if created {
-			a, b := orderedPeers(agentID, peer)
-			if err := appendEvent(ctx, tx, scopeID, "link.created", a+":"+b, eventAttributes("leftAgent", a, "rightAgent", b), now); err != nil {
-				return RegisterAgentResult{}, err
-			}
-		}
+	if err := linkRegisteredPeers(ctx, tx, scopeID, agentID, unique(input.ConnectTo), now); err != nil {
+		return RegisterAgentResult{}, err
 	}
 	return RegisterAgentResult{
 		AgentIdentity: AgentIdentity{ScopeID: scopeID, AgentID: agentID, ExecutionID: executionID},
@@ -530,6 +521,76 @@ func orderedPeers(left, right string) (string, string) {
 		return left, right
 	}
 	return right, left
+}
+
+// Registration already holds the workspace lock and has inserted the agent.
+// Validate and link its bounded peer list in batches, keeping network latency
+// independent of the number of sessions already in a hosted workspace.
+func linkRegisteredPeers(ctx context.Context, tx sqlExecutor, scopeID, agentID string, peers []string, now int64) error {
+	if len(peers) == 0 {
+		return nil
+	}
+	args := []any{scopeID}
+	for _, peer := range peers {
+		if peer == agentID {
+			return Errorf(CodeInvalidArgument, "An agent cannot link to itself")
+		}
+		args = append(args, peer)
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(peers)), ",")
+	rows, err := tx.QueryContext(ctx, "SELECT agent_id FROM agents WHERE scope_id=? AND agent_id IN ("+placeholders+")", args...)
+	if err != nil {
+		return err
+	}
+	found := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		found[id] = true
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	args = nil
+	for _, peer := range peers {
+		if !found[peer] {
+			return Errorf(CodeNotFound, "Agent "+peer+" was not found")
+		}
+		a, b := orderedPeers(agentID, peer)
+		args = append(args, scopeID, a, b, now)
+	}
+	values := strings.TrimSuffix(strings.Repeat("(?,?,?,?),", len(peers)), ",")
+	rows, err = tx.QueryContext(ctx, "INSERT INTO peer_links(scope_id,left_agent,right_agent,created_at) VALUES"+values+" ON CONFLICT(scope_id,left_agent,right_agent) DO NOTHING RETURNING left_agent,right_agent", args...)
+	if err != nil {
+		return err
+	}
+	created := map[[2]string]bool{}
+	for rows.Next() {
+		var pair [2]string
+		if err := rows.Scan(&pair[0], &pair[1]); err != nil {
+			rows.Close()
+			return err
+		}
+		created[pair] = true
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	events := make([]pendingEvent, 0, len(created))
+	for _, peer := range peers {
+		a, b := orderedPeers(agentID, peer)
+		if created[[2]string{a, b}] {
+			events = append(events, pendingEvent{"link.created", a + ":" + b, eventAttributes("leftAgent", a, "rightAgent", b)})
+		}
+	}
+	return appendEvents(ctx, tx, scopeID, events, now)
 }
 
 func linkAgents(ctx context.Context, executor interface {

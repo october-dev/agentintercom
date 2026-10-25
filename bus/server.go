@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -217,6 +218,11 @@ func writeResult(response http.ResponseWriter, status int, result any) {
 
 func writeFailure(response http.ResponseWriter, err error) {
 	failure := AsBusError(err)
+	if failure.Code == CodeInternal {
+		if state := databaseErrorState(err); state != "" {
+			log.Printf("October Bus database operation failed (SQLSTATE %s)", state)
+		}
+	}
 	writeJSON(response, ErrorStatus(failure), map[string]any{
 		"ok":    false,
 		"error": map[string]any{"code": failure.Code, "message": failure.Message},
