@@ -66,12 +66,13 @@ type AttachmentContent struct {
 // A single service owns the private file directory. A directory lock rejects
 // multiple writers; PostgreSQL alone does not replicate attachment bytes.
 type attachmentFiles struct {
-	maintenance sync.RWMutex
-	mu          sync.Mutex
-	directory   string
-	root        *os.Root
-	lock        *os.File
-	temporary   bool
+	minimumFreeBytes uint64
+	maintenance      sync.RWMutex
+	mu               sync.Mutex
+	directory        string
+	root             *os.Root
+	lock             *os.File
+	temporary        bool
 }
 
 func (f *attachmentFiles) open(source string) error {
@@ -317,6 +318,20 @@ func (s *Store) UploadAttachment(ctx context.Context, scopeID string, input Uplo
 
 // Caller owns files.mu and uses a validated/generated ID, never a user path.
 func (s *Store) writeAttachmentFile(id string, data []byte) error {
+	reserve := s.files.minimumFreeBytes
+	if reserve == 0 {
+		reserve = 256 * 1024 * 1024
+		if s.Backend() == StorageBackendPostgres {
+			reserve = 1024 * 1024 * 1024
+		}
+	}
+	available, err := attachmentAvailableSpace(s.files.root, s.files.directory)
+	if err != nil {
+		return Errorf(CodeInternal, "File storage capacity could not be checked")
+	}
+	if available < reserve || uint64(len(data)) > available-reserve {
+		return Errorf(CodeBackpressure, "File storage is low on disk space; retry after the operator restores capacity")
+	}
 	file, err := s.files.root.OpenFile(id, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err

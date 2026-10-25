@@ -75,3 +75,10 @@ The database includes credentials; protect the complete bundle as a secret.
 requires a database dump plus its attachment directory. Quiesce the hosted Bus
 service during a coordinated backup or use a verified consistent snapshot
 procedure. Test a restore before relying on an off-host backup.
+
+The common HTTP/MCP transport bounds file transfers to four concurrent requests
+per runtime before buffering uploads. Supported Linux, macOS and Windows builds
+refuse a new file write if it would leave less than 256 MiB free (local SQLite) or
+1 GiB free (PostgreSQL service). Rejected uploads do not consume transfer allowance.
+This reserve protects recovery space; it does not preallocate customer allowances
+or replace capacity monitoring, backups and expansion before selling hosting.

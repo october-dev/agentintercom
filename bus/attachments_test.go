@@ -303,3 +303,23 @@ func TestHostedAttachmentQuotasAndMembership(t *testing.T) {
 	retry = f.call("POST", base+"?name=report.txt&idempotencyKey=hosted-file", "account", "hello")
 	require(t, retry.Code == 200, "inactive hosting rejected safe retry")
 }
+
+func TestAttachmentDiskReserveRefusesWriteWithoutCharging(t *testing.T) {
+	a := setupAgents(t, ":memory:")
+	defer a.runtime.Close()
+	ctx := context.Background()
+	store := a.runtime.store.(*Store)
+	original, err := a.runtime.UploadAttachment(ctx, a.plannerToken, UploadAttachmentInput{Name: "kept", IdempotencyKey: "kept"}, []byte("same"))
+	requireNoError(t, err)
+	store.files.minimumFreeBytes = 1 << 62
+	_, err = a.runtime.UploadAttachment(ctx, a.plannerToken, UploadAttachmentInput{Name: "refused"}, []byte("new data"))
+	requireCode(t, err, CodeBackpressure)
+	retry, err := a.runtime.UploadAttachment(ctx, a.plannerToken, UploadAttachmentInput{Name: "kept", IdempotencyKey: "kept"}, []byte("same"))
+	requireNoError(t, err)
+	require(t, retry.ID == original.ID, "low disk broke idempotent recovery")
+	var bytes, count int64
+	requireNoError(t, store.db.QueryRowContext(ctx, "SELECT COALESCE(SUM(uploaded_bytes),0) FROM attachment_usage WHERE scope_id=?", a.scope.ScopeID).Scan(&bytes))
+	require(t, bytes == 4, "refused write consumed transfer allowance")
+	requireNoError(t, store.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM attachments WHERE scope_id=?", a.scope.ScopeID).Scan(&count))
+	require(t, count == 1, "refused write committed metadata")
+}
