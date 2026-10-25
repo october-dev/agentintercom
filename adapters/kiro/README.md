@@ -1,17 +1,17 @@
 # Kiro adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#57](https://github.com/october-dev/october-bus/issues/57).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#57](https://github.com/october-dev/agent-intercom/issues/57).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config kiro --scope my-project --agent kiro-reviewer --name "Kiro Reviewer"
-october-bus doctor --harness kiro --scope my-project
+agentintercom harness config kiro --scope my-project --agent kiro-reviewer --name "Kiro Reviewer"
+agentintercom doctor --harness kiro --scope my-project
 ```
 
-Configuration location: `.kiro/settings/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.kiro/settings/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

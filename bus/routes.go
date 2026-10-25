@@ -66,6 +66,7 @@ func (s *Server) newRouter() http.Handler {
 		routeMethod{http.MethodGet, s.health},
 	)
 	registerAllMethods(router, "/mcp", s.serveMCP)
+	registerRoute(router, "/v1/inbox/preview", routeMethod{http.MethodGet, s.previewInbox})
 	registerRoute(router, "/v1/me/wake", routeMethod{http.MethodGet, s.wakeStatus})
 	registerRoute(router, "/v1/me/wake/claim", routeMethod{http.MethodPost, s.claimWake})
 	registerRoute(router, "/v1/me/wake/attempts/{attemptId}", routeMethod{http.MethodPost, s.finishWake})

@@ -1,17 +1,17 @@
 # Cursor adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#33](https://github.com/october-dev/october-bus/issues/33).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#33](https://github.com/october-dev/agent-intercom/issues/33).
 
 The [earlier CLI observation](../../compatibility/observations/cursor-3.18.9-macos-arm64.md) is not editor or current-candidate certification.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config cursor --scope my-project --agent cursor-reviewer --name "Cursor Reviewer"
-october-bus doctor --harness cursor --scope my-project
+agentintercom harness config cursor --scope my-project --agent cursor-reviewer --name "Cursor Reviewer"
+agentintercom doctor --harness cursor --scope my-project
 ```
 
-Configuration location: `.cursor/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.cursor/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Editor and cursor-agent CLI behavior require separate runbook evidence.
 

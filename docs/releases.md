@@ -1,6 +1,6 @@
 # Releases
 
-October Bus publishes native runtime archives for macOS, Linux, and Windows on amd64 and arm64.
+Agent Intercom publishes native runtime archives for macOS, Linux, and Windows on amd64 and arm64.
 
 ## Tagged runtime releases
 
@@ -27,7 +27,7 @@ Release binaries embed the version from the tag. Tags containing a hyphen create
 
 A stable tag must point to the original reviewed candidate source commit. Verification pins a separately reviewed `main` evidence commit and requires all six launch-core host records to match both the tag's runtime version and source SHA. This allows evidence to land after candidate publication without rebuilding a different source revision. Native archives are still built from the tagged source, not from the later evidence checkout.
 
-Download the archive for your operating system and architecture from the [GitHub releases page](https://github.com/october-dev/october-bus/releases). Verify its SHA-256 value against `checksums.txt`, extract the archive, and place the `october-bus` binary on your `PATH`. Each archive also contains the conformance runner, license, specification, and documentation.
+Download the archive for your operating system and architecture from the [GitHub releases page](https://github.com/october-dev/agent-intercom/releases). Verify its SHA-256 value against `checksums.txt`, extract the archive, and place the `agentintercom` binary on your `PATH`. Each archive also contains the conformance runner, license, specification, and documentation.
 
 Before creating a tag:
 
@@ -53,7 +53,7 @@ publication still requires release authorization and a verified signed tag.
 
 ## npm CLI and TypeScript distribution
 
-The npm package uses pre-1.0 versions. From `0.1.0-next.15`, it contains both the TypeScript SDK and a Node launcher for the native Go daemon. Six exact-version optional dependencies, named `@october-dev/october-bus-{darwin,linux,win32}-{x64,arm64}`, carry the prebuilt executables. The launcher does not download binaries, execute a shell, or fall back to PATH. Linux builds use `CGO_ENABLED=0`, so a separate musl package is unnecessary.
+The npm package uses pre-1.0 versions. From `0.1.0-next.15`, it contains both the TypeScript SDK and a Node launcher for the native Go daemon. Six exact-version optional dependencies, named `agentintercom-{darwin,linux,win32}-{x64,arm64}`, carry the prebuilt executables. The launcher does not download binaries, execute a shell, or fall back to PATH. Linux builds use `CGO_ENABLED=0`, so a separate musl package is unnecessary.
 
 The prerelease workflow accepts reviewed `main` commits, runs Go and SDK validation, cross-builds all six native packages, and packs the SDK/launcher. It then installs the actual tarballs through a temporary registry on Linux, macOS, and Windows. These tests verify automatic optional-package selection, `npm exec`, a real daemon demo, SDK imports, and failure exit codes with install scripts disabled.
 
@@ -104,8 +104,8 @@ from that run:
 # GitHub CLI requires a .json or .jsonl extension for a local bundle.
 cp "$TARBALL.sigstore" "$TARBALL.sigstore.json"
 gh attestation verify "$TARBALL" --bundle "$TARBALL.sigstore.json" \
-  --repo october-dev/october-bus --digest-alg sha512 \
-  --signer-workflow october-dev/october-bus/.github/workflows/publish-npm-prerelease.yml \
+  --repo october-dev/agentintercom --digest-alg sha512 \
+  --signer-workflow october-dev/agentintercom/.github/workflows/publish-npm-prerelease.yml \
   --source-ref refs/heads/main --source-digest "$SOURCE_SHA" \
   --deny-self-hosted-runners
 ```
@@ -119,7 +119,7 @@ passes `--provenance` to generate its statement. Never omit the bundle for an
 interactive publication. Preserve all original tarballs for integrity-safe retries.
 
 After each package exists, configure its publisher with `npm trust github
-PACKAGE --repo october-dev/october-bus --file publish-npm-prerelease.yml
+PACKAGE --repo october-dev/agentintercom --file publish-npm-prerelease.yml
 --env npm --allow-publish`. Then rerun the failed publish job: it accepts identical
 native packages and publishes the parent through its existing trusted publisher.
 The initial workflow's publish job may fail while the native names are unowned;

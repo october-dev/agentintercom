@@ -15,7 +15,7 @@ func TestDatabaseContentionIsSafeBackpressure(t *testing.T) {
 		if code == "55P03" {
 			require(t, failure.Code == CodeBackpressure && ErrorStatus(err) == http.StatusTooManyRequests, "lock contention must be retryable")
 		} else {
-			require(t, failure.Code == CodeInternal && failure.Message == "Internal October Bus error", "driver details escaped")
+			require(t, failure.Code == CodeInternal && failure.Message == "Internal Agent Intercom error", "driver details escaped")
 		}
 		if len(code) != 5 {
 			require(t, databaseErrorState(err) == "", "untrusted diagnostic text accepted")

@@ -21,12 +21,12 @@
   "testedVersions": [],
   "platforms": [],
   "maintainer": "October",
-  "repository": "https://github.com/october-dev/october-bus",
+  "repository": "https://github.com/october-dev/agent-intercom",
   "limitations": [
     "Experimental configuration, not named-harness certification.",
-    "Generic MCP is called through the kernel's pre-imported Python mcp module, not ordinary model tools. Use await mcp.list_tools(\"october_bus\") and await mcp.call_tool(\"october_bus\", name, arguments). Only user settings execute MCP; project settings are ignored. Discovery is lazy: make an initial call before linking peers. Each kernel owns its connection; test await mcp.reload(), cancellation and kernel shutdown. Concurrent sessions using one user entry need distinct agent IDs/configurations; identical IDs replace earlier executions."
+    "Generic MCP is called through the kernel's pre-imported Python mcp module, not ordinary model tools. Use await mcp.list_tools(\"agent_intercom\") and await mcp.call_tool(\"agent_intercom\", name, arguments). Only user settings execute MCP; project settings are ignored. Discovery is lazy: make an initial call before linking peers. Each kernel owns its connection; test await mcp.reload(), cancellation and kernel shutdown. Concurrent sessions using one user entry need distinct agent IDs/configurations; identical IDs replace earlier executions."
   ],
-  "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
+  "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
     "file": "mcp.json.example",
     "format": "json",

@@ -74,7 +74,7 @@ jobs:
       - run: npm run build:native -- --all
       - run: npm run test:integration
         env:
-          OCTOBER_BUS_BINARY: ${{ github.workspace }}/dist/npm/linux-x64/bin/october-bus
+          OCTOBER_BUS_BINARY: ${{ github.workspace }}/dist/npm/linux-x64/bin/agentintercom
       - run: npm run pack:distribution -- --all
       - name: Identify the checked tarballs for provenance
         id: provenance

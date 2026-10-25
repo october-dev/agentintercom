@@ -1,0 +1,13 @@
+{
+  "name": "agent-intercom",
+  "version": "0.2.0",
+  "description": "Connect this Claude Code session to an Agent Intercom workspace.",
+  "author": { "name": "October" },
+  "homepage": "https://agentintercom.org",
+  "repository": "https://github.com/october-dev/agent-intercom",
+  "license": "Apache-2.0",
+  "userConfig": {
+    "workspace": { "type": "string", "title": "Local workspace", "description": "An existing local Agent Intercom workspace.", "default": "default", "required": true },
+    "binary": { "type": "string", "title": "Agent Intercom executable", "description": "Installed executable name or absolute path.", "default": "agentintercom", "required": true }
+  }
+}

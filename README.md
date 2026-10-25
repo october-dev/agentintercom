@@ -19,8 +19,10 @@ Keep its reply, shared tasks, channels and files in one workspace. Each app keep
 its own models, tools and permissions. You do not need to assign roles or design
 a workflow before connecting.
 
-The repository, CLI, npm package and protocol identifiers remain **October Bus**
-(`october-bus`). The product website is [agentintercom.org](https://agentintercom.org).
+The CLI and npm package are **`agentintercom`**. The repository and Go module are
+`october-dev/agent-intercom`. The product website is
+[agentintercom.org](https://agentintercom.org). Existing storage and protocol
+identifiers are preserved; see [installation](docs/installation.md).
 
 > [!WARNING]
 > **Project status:** This is a prerelease. This checkout includes local SQLite and
@@ -34,7 +36,7 @@ The repository, CLI, npm package and protocol identifiers remain **October Bus**
 
 When several agents work at once, people often become their messenger: copying
 context between windows, asking for updates, and checking who owns a task.
-Intercom gives them durable inboxes and shared work without combining their
+Agent Intercom gives them durable inboxes and shared work without combining their
 private conversations or replacing their apps.
 
 - **Choose the session.** Discover connected peers and their declared capabilities.
@@ -78,7 +80,7 @@ Your app or agent
        |
 MCP / HTTP / Go or TypeScript SDK
        |
-October Bus runtime
+Agent Intercom runtime
   sessions | messages | channels | files | tasks | human input
        |
 Other sessions | teammates | browser workspace
@@ -91,24 +93,36 @@ It does not choose models, approve tools or run agents on your behalf.
 
 ## Quickstart
 
-With a binary built from this source, start the server in one terminal:
+With a binary built from this source, connect installed Claude Code and Codex apps:
 
 ```sh
-october-bus start
+agentintercom install --workspace my-project
+```
+
+This installs a user login service when available, creates the workspace and
+saves managed MCP configuration. Reconnect MCP or restart the apps. Use
+`--only claude` or `--only codex` to select one. See
+[installation and session attachment](docs/installation.md) for uninstall,
+existing sessions, hosted profiles and platforms without a user service manager.
+
+For another MCP app, start the server in one terminal:
+
+```sh
+agentintercom start
 ```
 
 In another terminal, create a workspace and connect your app:
 
 ```sh
-october-bus workspace create my-project
-october-bus connect --workspace my-project --name "My app"
+agentintercom workspace create my-project
+agentintercom connect --workspace my-project --name "My app"
 ```
 
 Add the printed entry to your app's MCP settings. For Codex-style TOML, add
 `--format toml`. Each bridge gets a separate session identity; inspect them with:
 
 ```sh
-october-bus sessions --workspace my-project
+agentintercom sessions --workspace my-project
 ```
 
 An app that shares a connector across chats appears as one connector, not every
@@ -120,8 +134,8 @@ published packages.
 For a supported terminal app with native wake, use either:
 
 ```sh
-october-bus session start claude --workspace my-project
-october-bus session start codex --workspace my-project
+agentintercom session start claude --workspace my-project
+agentintercom session start codex --workspace my-project
 ```
 
 Keep the terminal open. These commands retain your normal app permissions and do
@@ -130,26 +144,18 @@ macOS, Linux or WSL. Generic MCP is available independently of the native launch
 
 ### Install a published preview
 
-Download a matching archive from [releases](https://github.com/october-dev/october-bus/releases),
-verify it against `checksums.txt`, and put `october-bus` on your `PATH`. Try:
+Download a matching archive from [releases](https://github.com/october-dev/agent-intercom/releases),
+verify it against `checksums.txt`, and put `agentintercom` on your `PATH`. Try:
 
 ```sh
-october-bus version
-october-bus demo
+agentintercom version
+agentintercom demo
 ```
 
-With Node.js 20+, the published native CLI preview can also run through npm:
-
-```sh
-npx @october-dev/october-bus@0.1.0-next.15 demo
-# Or install once:
-npm install -g @october-dev/october-bus@0.1.0-next.15
-```
-
-This version includes the Go CLI and TypeScript client for macOS, Linux and
-Windows, on x64 and arm64. Use the explicit version: npm's `latest` tag and older
-versions can contain only the SDK. A published preview does not include every
-feature on this development branch.
+The `agentintercom` distribution is prepared for macOS, Linux and Windows on x64
+and arm64, with Node.js 20+ for npm installation. Follow the exact package version
+in its release notes once published. Older releases under the October Bus name
+do not contain this setup flow; a source checkout is not an npm publication.
 
 ### Build from source
 
@@ -157,29 +163,25 @@ The module language floor is Go 1.26; this checkout selects Go 1.27 and CI uses
 Go 1.27.x. Use Go 1.27 for a reproducible build.
 
 ```sh
-git clone https://github.com/october-dev/october-bus.git
-cd october-bus
-go build -o ./bin/october-bus ./cmd/october-bus
-./bin/october-bus demo
+git clone https://github.com/october-dev/agent-intercom.git
+cd agent-intercom
+go build -o ./bin/agentintercom ./cmd/agentintercom
+./bin/agentintercom demo
 ```
 
 The demo uses isolated local state and two example agents to show a request,
 task and reply. No account, model subscription or October Desktop is required.
 Use an installed binary for saved MCP configurations, not a temporary `go run`
-executable. Check or stop your persistent local server with `october-bus status`,
-`october-bus doctor` and `october-bus stop`.
+executable. Check or stop your persistent local server with `agentintercom status`,
+`agentintercom doctor` and `agentintercom stop`.
 
 ### Use the SDKs
 
-```sh
-npm install @october-dev/october-bus@next
-# Published Go preview:
-go get github.com/october-dev/october-bus@v0.1.0-rc.5
-```
-
-Import `github.com/october-dev/october-bus/bus` for Go. The TypeScript SDK supports
+Import `github.com/october-dev/agent-intercom/bus` for Go. The TypeScript SDK supports
 Node.js 20+. See [client SDKs](docs/clients.md) for examples and the runtime/SDK
-compatibility matrix. A source checkout or passing CI run is not publication.
+compatibility matrix. Select a published version whose release notes include the
+new module/package name; earlier tags still declare the old module path.
+A source checkout or passing CI run is not publication.
 Older stable-identity harness configurations remain documented in
 [adapter setup](adapters/README.md); do not share one identity between concurrent
 sessions, because replacement intentionally fences the older execution.
@@ -214,8 +216,8 @@ connect an app, and choose its session to send a message. The browser also shows
 receipts, tasks, channels, files, questions awaiting your answer and usage.
 
 Connect a remote MCP app through OAuth or its own bearer key. On another machine,
-run `october-bus hosted login`, approve its code in the browser, then use
-`october-bus connect --hosted default`. Invite teammates with their own accounts.
+run `agentintercom hosted login`, approve its code in the browser, then use
+`agentintercom connect --hosted default`. Invite teammates with their own accounts.
 Lost credentials can be replaced without discarding the existing session inboxes.
 No October Desktop installation is required.
 
@@ -287,15 +289,15 @@ inbox checks. See the [verification runbook](compatibility/RUNBOOK.md).
 Run the isolated runtime conformance profile:
 
 ```sh
-october-bus-conformance --start-runtime --format text
+agentintercom-conformance --start-runtime --format text
 ```
 
 Or drive an MCP adapter over stdio:
 
 ```sh
-october-bus-conformance \
+agentintercom-conformance \
   --profile mcp-adapter --start-runtime \
-  --adapter-command october-bus \
+  --adapter-command agentintercom \
   --adapter-arg mcp --adapter-arg stdio --format text
 ```
 
@@ -325,7 +327,7 @@ source, protocol, SDKs and adapters. You may run them yourself under Apache 2.0.
 
 October Desktop's canvas and its own current Bus implementation are separate.
 Automatic staffing, model selection, routing and supervision are outside this
-runtime. Intercom can carry work between agents without deciding how an entire
+runtime. Agent Intercom can carry work between agents without deciding how an entire
 operation should be run. See [ROADMAP.md](ROADMAP.md) for implementation status.
 
 ## Contributing
@@ -340,7 +342,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development and review requirements.
 The code and documentation are licensed under [Apache 2.0](LICENSE). The license
 does not grant rights to October's names, logos or other brand assets. Do not
 imply endorsement. Use distinct branding for modified distributions unless you
-have written permission. “October Bus compatible” describes implementations
+have written permission. “Agent Intercom compatible” describes implementations
 that pass the applicable conformance profile.
 
 ---

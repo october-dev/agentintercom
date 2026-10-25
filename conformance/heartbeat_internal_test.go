@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agent-intercom/bus"
 )
 
 const testExecution = "exec-1"

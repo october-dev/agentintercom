@@ -21,12 +21,12 @@
   "testedVersions": [],
   "platforms": [],
   "maintainer": "October",
-  "repository": "https://github.com/october-dev/october-bus",
+  "repository": "https://github.com/october-dev/agent-intercom",
   "limitations": [
     "Experimental configuration, not named-harness certification.",
-    "The public CLI loads mcpServers from .agents/mcp.json through its SDK and adds them to base agents. The inspected loader visits project, parent, then home directories; later entries override earlier ones despite a contradictory source comment. Check all three for duplicate october_bus entries. Its MCP client caches connections and converts tool content without preserving isError; error reporting, reconnects, model access and shutdown therefore need explicit host verification before support can be promoted. This does not certify Freebuff Desktop, Web or Cloud. Review the vendor's data-use policy before sharing peer work."
+    "The public CLI loads mcpServers from .agents/mcp.json through its SDK and adds them to base agents. The inspected loader visits project, parent, then home directories; later entries override earlier ones despite a contradictory source comment. Check all three for duplicate agent_intercom entries. Its MCP client caches connections and converts tool content without preserving isError; error reporting, reconnects, model access and shutdown therefore need explicit host verification before support can be promoted. This does not certify Freebuff Desktop, Web or Cloud. Review the vendor's data-use policy before sharing peer work."
   ],
-  "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
+  "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
     "file": "mcp.json.example",
     "format": "json",

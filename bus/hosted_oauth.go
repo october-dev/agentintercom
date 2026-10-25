@@ -43,7 +43,7 @@ func validOAuthRedirect(value string) bool {
 func (h *HostedServer) registerOAuthRoutes() {
 	h.oauth = newHostedOAuth(h.accounts)
 	metadata := func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"resource": h.publicURL + "/mcp", "authorization_servers": []string{h.publicURL}, "scopes_supported": []string{hostedOAuthScope}, "bearer_methods_supported": []string{"header"}, "resource_name": "October Bus"})
+		writeJSON(w, 200, map[string]any{"resource": h.publicURL + "/mcp", "authorization_servers": []string{h.publicURL}, "scopes_supported": []string{hostedOAuthScope}, "bearer_methods_supported": []string{"header"}, "resource_name": "Agent Intercom"})
 	}
 	h.routes.HandleFunc("GET /.well-known/oauth-protected-resource", metadata)
 	h.routes.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", metadata)
@@ -175,7 +175,7 @@ func (h *HostedServer) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	resource := r.FormValue("resource")
 	if resource != "" && resource != h.publicURL+"/mcp" {
-		oauthFailure(w, 400, "invalid_target", "Resource must be this October Bus MCP endpoint")
+		oauthFailure(w, 400, "invalid_target", "Resource must be this Agent Intercom MCP endpoint")
 		return
 	}
 	if req.Scope != "" && req.Scope != hostedOAuthScope {

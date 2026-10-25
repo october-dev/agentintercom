@@ -88,7 +88,7 @@ func (b *HostedBilling) StartMaintenance() func() {
 				err := b.ReconcileDue(run)
 				stop()
 				if err != nil && ctx.Err() == nil {
-					log.Print("October Bus billing reconciliation failed; pending accounts will be retried")
+					log.Print("Agent Intercom billing reconciliation failed; pending accounts will be retried")
 				}
 				timer.Reset(time.Minute)
 			}

@@ -1,17 +1,17 @@
 # Goose adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#50](https://github.com/october-dev/october-bus/issues/50).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#50](https://github.com/october-dev/agent-intercom/issues/50).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config goose --scope my-project --agent goose-reviewer --name "Goose Reviewer"
-october-bus doctor --harness goose --scope my-project
+agentintercom harness config goose --scope my-project --agent goose-reviewer --name "Goose Reviewer"
+agentintercom doctor --harness goose --scope my-project
 ```
 
-Configuration location: `~/.config/goose/config.yaml`. The [template](config.yaml.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `~/.config/goose/config.yaml`. The [template](config.yaml.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 The snippet uses JSON syntax, which is valid YAML; merge the named entry into the existing YAML mapping by hand.
 

@@ -5,9 +5,9 @@ These are contributor-reported observations, not reviewed compatibility evidence
 ## Setup
 
 - Harness: Claude Code 2.1.282, authenticated through claude.ai (first-party), model `claude-sonnet-5`.
-- Launch mode: headless print mode, `claude -p` with `--setting-sources project,local --strict-mcp-config --mcp-config .mcp.json`. The `.mcp.json` file was produced by `october-bus harness config claude-code`. The flags excluded the operator's unrelated user-level MCP servers and hooks. Interactive terminal, IDE and desktop modes were not exercised.
+- Launch mode: headless print mode, `claude -p` with `--setting-sources project,local --strict-mcp-config --mcp-config .mcp.json`. The `.mcp.json` file was produced by `agentintercom harness config claude-code`. The flags excluded the operator's unrelated user-level MCP servers and hooks. Interactive terminal, IDE and desktop modes were not exercised.
 - Host approvals: a project-local `permissions.allow` list naming the 15 `october_bus` tools. No permission bypass was used.
-- Runtime: the released `october-bus_0.1.0-rc.5_darwin_arm64` archive, checksum verified against the release's `checksums.txt`, tag commit `8357265c1113b6c7f87fb11d87924ee122e97156`. Private `OCTOBER_BUS_DATA_DIR` and `OCTOBER_BUS_RUNTIME_DIR`.
+- Runtime: the released `agentintercom_0.1.0-rc.5_darwin_arm64` archive, checksum verified against the release's `checksums.txt`, tag commit `8357265c1113b6c7f87fb11d87924ee122e97156`. Private `OCTOBER_BUS_DATA_DIR` and `OCTOBER_BUS_RUNTIME_DIR`.
 - Adapter: `claude-code-mcp` 0.2.0, protocol 0.1, macOS arm64. Not a clean machine.
 - Independent controller: Codex CLI 0.153.4 (the ChatGPT app bundle), model `gpt-5.6-terra`, isolated `CODEX_HOME`. It used the generated Codex config with `default_tools_approval_mode` changed from `prompt` to `approve`, because `codex exec` cannot answer approval prompts.
 
@@ -41,4 +41,4 @@ One controller-side retry: a Codex turn registered its bridge but loaded no MCP 
 
 A local, unreviewed bundle was produced with `scripts/verification-bundle.mjs`. It contains the full stream-json transcripts of every turn and the owner-side checks, with home and memory paths redacted. The sanitized log digest is `sha256:13c3d8212cb4b99b5b4da7861595ad783537c8feb1777fe8bca19dc024cc188a` (652770 bytes). A scan found no scope or admin token in any configuration file, argument or transcript. The bundle is not published. It is available for maintainer review under the [maintainer-assisted workflow](../VERIFICATION.md), and the digest is recorded here only for provenance.
 
-Delivery is pull-only and process reachability does not prove model readiness. [Issue #37](https://github.com/october-dev/october-bus/issues/37) remains open for interactive-mode runs, the cancellation case, a clean-machine run, and independent review.
+Delivery is pull-only and process reachability does not prove model readiness. [Issue #37](https://github.com/october-dev/agent-intercom/issues/37) remains open for interactive-mode runs, the cancellation case, a clean-machine run, and independent review.

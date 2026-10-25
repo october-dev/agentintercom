@@ -49,7 +49,7 @@ async function main() {
     return payload.result
   }
   const init = await rpc(1, 'initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'october-hosted-check', version: '1' } })
-  if (init.serverInfo?.name !== 'october-bus') throw new Error('Endpoint is not the October Bus MCP server')
+  if (init.serverInfo?.name !== 'agentintercom') throw new Error('Endpoint is not the Agent Intercom MCP server')
   headers['MCP-Protocol-Version'] = init.protocolVersion
   const initialized = await request('/mcp', { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) })
   if (!initialized.ok) throw new Error(`MCP initialization notification failed (HTTP ${initialized.status})`)

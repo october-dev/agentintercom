@@ -19,7 +19,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/october-dev/october-bus/deploy/hosted/migrations"
+	"github.com/october-dev/agent-intercom/deploy/hosted/migrations"
 )
 
 const MaxAttachmentBytes = 16 * 1024 * 1024
@@ -84,7 +84,7 @@ func (f *attachmentFiles) open(source string) error {
 			return Errorf(CodeInternal, "Attachment storage is not configured")
 		}
 		if source == ":memory:" {
-			dir, err := os.MkdirTemp("", "october-bus-files-")
+			dir, err := os.MkdirTemp("", "agentintercom-files-")
 			if err != nil {
 				return err
 			}

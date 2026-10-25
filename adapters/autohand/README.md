@@ -1,17 +1,17 @@
 # Autohand adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#53](https://github.com/october-dev/october-bus/issues/53).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#53](https://github.com/october-dev/agent-intercom/issues/53).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config autohand --scope my-project --agent autohand-reviewer --name "Autohand Reviewer"
-october-bus doctor --harness autohand --scope my-project
+agentintercom harness config autohand --scope my-project --agent autohand-reviewer --name "Autohand Reviewer"
+agentintercom doctor --harness autohand --scope my-project
 ```
 
-Configuration location: `.autohand/config.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.autohand/config.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

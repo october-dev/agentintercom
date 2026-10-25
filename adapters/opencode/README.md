@@ -1,17 +1,17 @@
 # OpenCode adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#34](https://github.com/october-dev/october-bus/issues/34).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#34](https://github.com/october-dev/agent-intercom/issues/34).
 
 The [earlier observation](../../compatibility/observations/opencode-1.18.25-macos-arm64.md) reported a stringified messageIds array. The bridge now normalizes schema-declared structured arguments; the live host run still needs repeating.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config opencode --scope my-project --agent opencode-reviewer --name "OpenCode Reviewer"
-october-bus doctor --harness opencode --scope my-project
+agentintercom harness config opencode --scope my-project --agent opencode-reviewer --name "OpenCode Reviewer"
+agentintercom doctor --harness opencode --scope my-project
 ```
 
-Configuration location: `opencode.json`. The [template](opencode.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `opencode.json`. The [template](opencode.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 The example sets a 10-second discovery timeout. Use inbox waitMs=1000 initially; discovery timeout is not evidence of the host's tool-execution timeout.
 

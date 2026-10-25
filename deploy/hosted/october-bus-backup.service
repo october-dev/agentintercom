@@ -1,5 +1,5 @@
 [Unit]
-Description=Encrypted October Bus database and file backup
+Description=Encrypted Agent Intercom database and file backup
 After=network-online.target october-bus-hosted.service
 Wants=network-online.target
 

@@ -1,17 +1,17 @@
 # DeepSeek adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-11; no named-harness versions or platforms certified for this revision. Refs [#41](https://github.com/october-dev/october-bus/issues/41).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-11; no named-harness versions or platforms certified for this revision. Refs [#41](https://github.com/october-dev/agent-intercom/issues/41).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config deepseek --scope my-project --agent dsh-reviewer --name "DeepSeek Reviewer"
-october-bus doctor --harness deepseek --scope my-project
+agentintercom harness config deepseek --scope my-project --agent dsh-reviewer --name "DeepSeek Reviewer"
+agentintercom doctor --harness deepseek --scope my-project
 ```
 
-Configuration location: `cordis.yml` in the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) profile configuration. The [template](cordis.yml.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry, which merges into the dsh plugin list as one `@deepseek-ai/dsh-mcp-client` server entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `cordis.yml` in the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) profile configuration. The [template](cordis.yml.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry, which merges into the dsh plugin list as one `@deepseek-ai/dsh-mcp-client` server entry. Retain the host's own tool approvals and workspace trust controls.
 
 The snippet uses JSON syntax, which is valid YAML; merge the named entry into the existing plugin list by hand.
 

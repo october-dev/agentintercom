@@ -68,7 +68,7 @@ func request[T any](ctx context.Context, client Client, method, path string, inp
 		if envelope.Error.Message != "" {
 			return zero, Errorf(envelope.Error.Code, envelope.Error.Message)
 		}
-		return zero, fmt.Errorf("October Bus request failed with HTTP %d", response.StatusCode)
+		return zero, fmt.Errorf("Agent Intercom request failed with HTTP %d", response.StatusCode)
 	}
 	return envelope.Result, nil
 }

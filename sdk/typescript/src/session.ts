@@ -1,4 +1,4 @@
-import { OctoberBusAdminClient, OctoberBusClient, OctoberBusScopeClient } from './client.js'
+import { AgentIntercomAdminClient, AgentIntercomClient, AgentIntercomScopeClient } from './client.js'
 import { BusError } from './errors.js'
 import type {
   Agent,
@@ -43,8 +43,8 @@ export function newIdempotencyKey(): string {
   return crypto.randomUUID()
 }
 
-export class OctoberBusAgentSession {
-  readonly client: OctoberBusClient
+export class AgentIntercomAgentSession {
+  readonly client: AgentIntercomClient
   readonly registration: RegisterAgentResult
   readonly done: Promise<void>
 
@@ -64,7 +64,7 @@ export class OctoberBusAgentSession {
 
   private constructor(options: AgentSessionOptions, registration: RegisterAgentResult) {
     this.registration = registration
-    this.client = new OctoberBusClient(options.address, registration.agentToken)
+    this.client = new AgentIntercomClient(options.address, registration.agentToken)
     this.leaseMs = options.registration.leaseMs || 300_000
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? Math.floor(this.leaseMs / 3)
     this.lifecycle = options.initialLifecycle ?? 'starting'
@@ -74,7 +74,7 @@ export class OctoberBusAgentSession {
     this.signal?.addEventListener('abort', this.abortListener, { once: true })
   }
 
-  static async start(options: AgentSessionOptions): Promise<OctoberBusAgentSession> {
+  static async start(options: AgentSessionOptions): Promise<AgentIntercomAgentSession> {
     if (options.signal?.aborted) throw options.signal.reason ?? new Error('Operation aborted')
     const leaseMs = options.registration.leaseMs || 300_000
     const interval = options.heartbeatIntervalMs ?? Math.floor(leaseMs / 3)
@@ -84,7 +84,7 @@ export class OctoberBusAgentSession {
       throw new Error('heartbeatIntervalMs must be shorter than the execution lease')
     }
     if (lifecycle === 'offline' && ready) throw new Error('offline agents cannot be ready')
-    const health = await new OctoberBusAdminClient(options.address, '').health(
+    const health = await new AgentIntercomAdminClient(options.address, '').health(
       options.signal === undefined ? {} : { signal: options.signal }
     )
     if (health.name !== 'october-bus' || health.protocolVersion !== '0.1' ||
@@ -92,11 +92,11 @@ export class OctoberBusAgentSession {
       throw new BusError('CONFLICT', 'Managed sessions require a ready protocol 0.1 runtime advertising session-retirement; upgrade the daemon before registering')
     }
     if (options.signal?.aborted) throw options.signal.reason ?? new Error('Operation aborted')
-    const scope = new OctoberBusScopeClient(options.address, options.scopeToken)
+    const scope = new AgentIntercomScopeClient(options.address, options.scopeToken)
     // Do not abort registration halfway through an ambiguous committed response.
     // Once its result arrives, cancellation retires the returned execution.
     const registration = await scope.registerAgent({ ...options.registration, leaseMs })
-    const session = new OctoberBusAgentSession(options, registration)
+    const session = new AgentIntercomAgentSession(options, registration)
     try {
       if (options.signal?.aborted) throw options.signal.reason ?? new Error('Operation aborted')
       await session.enqueueHeartbeat(lifecycle, ready)
@@ -170,7 +170,7 @@ export class OctoberBusAgentSession {
 }
 
 export async function* pollInbox(
-  client: OctoberBusClient,
+  client: AgentIntercomClient,
   options: InboxPollingOptions = {}
 ): AsyncGenerator<BusMessage[]> {
   const limit = options.limit ?? 50
@@ -195,7 +195,7 @@ export async function* pollInbox(
 }
 
 export async function withClaimedTask<T>(
-  client: OctoberBusClient,
+  client: AgentIntercomClient,
   taskId: string,
   work: (task: BusTask) => Promise<T>,
   completionNote?: (value: T) => string | undefined

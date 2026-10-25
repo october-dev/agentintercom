@@ -753,6 +753,10 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 	requireCode(t, err, CodePermissionDenied)
 	receipt, err := plannerClient.SendMessage(ctx, SendMessageInput{To: "reviewer", Body: "Reserve me"})
 	requireNoError(t, err)
+	preview, err := reviewerClient.PreviewInbox(ctx)
+	require(t, err == nil && len(preview) == 1 && preview[0].ID == receipt.MessageID, "HTTP inbox preview failed: %#v %v", preview, err)
+	_, err = ownerClient.PreviewInbox(ctx)
+	require(t, err != nil, "scope authority impersonated an execution's inbox preview")
 	reservation, err := reviewerClient.ReserveInbox(ctx, 10, 0)
 	require(t, err == nil && reservation != nil, "unexpected HTTP reservation: %#v, %v", reservation, err)
 	requireNoError(t, reviewerClient.ReleaseInbox(ctx, reservation.ID))
@@ -771,6 +775,19 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 	tools, err := session.ListTools(ctx, nil)
 	if err != nil || len(tools.Tools) != 23 {
 		t.Fatalf("unexpected tools: %d, %v", len(tools.Tools), err)
+	}
+	for _, tool := range tools.Tools {
+		require(t, tool.Title != "" && tool.Annotations != nil, "missing tool metadata: %s", tool.Name)
+		if tool.Name == "check_inbox" || tool.Name == "read_attachment" {
+			require(t, !tool.Annotations.ReadOnlyHint && !tool.Annotations.IdempotentHint, "misleading effects: %s", tool.Name)
+		}
+		if tool.Name == "list_peers" {
+			require(t, tool.Annotations.ReadOnlyHint, "peer listing should be a read")
+		}
+	}
+	for _, args := range []map[string]any{{"waitMs": 25001}, {"limit": 101}, {"unknown": true}} {
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "check_inbox", Arguments: args})
+		require(t, err != nil || result.IsError, "accepted invalid inbox schema: %#v", args)
 	}
 	for _, input := range []*mcp.CallToolParams{
 		{Name: "acknowledge_messages", Arguments: map[string]any{"messageIds": "[]"}},

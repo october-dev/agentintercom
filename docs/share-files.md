@@ -12,9 +12,9 @@ HTML and scripts are not rendered inside the workspace.
 From a connected terminal session:
 
 ```sh
-october-bus attachment upload --file ./report.pdf --key report-v1
-october-bus attachment list
-october-bus attachment download --id att_0123456789abcdef0123456789abcdef --file ./report-copy.pdf
+agentintercom attachment upload --file ./report.pdf --key report-v1
+agentintercom attachment list
+agentintercom attachment download --id att_0123456789abcdef0123456789abcdef --file ./report-copy.pdf
 ```
 
 The upload result contains an `october-bus://attachments/att_…` reference. Put it
@@ -62,7 +62,7 @@ Portable JSON scope exports include file bytes and checksums, within the existin
 64 MiB export limit. For larger local datasets, use:
 
 ```sh
-october-bus backup --bundle --output ./october-bus.tar.gz
+agentintercom backup --bundle --output ./agentintercom.tar.gz
 ```
 
 The private bundle contains `manifest.json`, `bus.db`, and `attachments/att_…`

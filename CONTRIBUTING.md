@@ -1,6 +1,6 @@
-# Contributing to October Bus
+# Contributing to Agent Intercom
 
-October Bus welcomes protocol improvements, adapters, SDKs, examples, tests, and runtime fixes.
+Agent Intercom welcomes protocol improvements, adapters, SDKs, examples, tests, and runtime fixes.
 
 ## Before you start
 
@@ -16,7 +16,7 @@ The Go module language floor is 1.26; `go.mod` selects the Go 1.27 toolchain and
 ```bash
 go test -race -count=1 ./...
 go vet ./...
-go run ./cmd/october-bus demo
+go run ./cmd/agentintercom demo
 
 cd sdk/typescript
 npm ci
@@ -28,9 +28,9 @@ npm run test:errors
 Run the TypeScript integration test with a freshly built daemon:
 
 ```bash
-go build -o /tmp/october-bus ./cmd/october-bus
+go build -o /tmp/agentintercom ./cmd/agentintercom
 cd sdk/typescript
-OCTOBER_BUS_BINARY=/tmp/october-bus npm run test:integration
+OCTOBER_BUS_BINARY=/tmp/agentintercom npm run test:integration
 ```
 
 ## Protocol changes

@@ -110,7 +110,7 @@ func (h *HostedServer) registerDataRoutes() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Disposition", `attachment; filename="october-bus-workspace.json"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="agentintercom-workspace.json"`)
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 		json.NewEncoder(w).Encode(archive)
 	})

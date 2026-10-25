@@ -54,6 +54,7 @@ type storageBackend interface {
 	SendMessage(context.Context, Principal, SendMessageInput) (DeliveryReceipt, error)
 	Receipt(context.Context, Principal, string) (DeliveryReceipt, error)
 	ReserveInbox(context.Context, Principal, int) (*InboxReservation, error)
+	PreviewInbox(context.Context, Principal) ([]InboxNotice, error)
 	NextInboxReservationExpiry(context.Context, Principal) (int64, error)
 	CommitInbox(context.Context, Principal, string) ([]Message, error)
 	ReleaseInbox(context.Context, Principal, string) error

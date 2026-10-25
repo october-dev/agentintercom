@@ -295,3 +295,11 @@ SQLite database and its retained attachment bytes. Without that query flag the
 route remains a database-only snapshot. `X-October-Bus-Backup-Includes` identifies
 which form was returned. Both routes require the existing local admin credential
 and are blocked on the hosted account front door and pilot gateway.
+
+## Non-consuming inbox preview
+
+`GET /v1/inbox/preview` requires a current execution credential and returns up to
+the newest 100 unexpired pending messages as `{id, from, preview}` records. The
+preview contains at most 160 characters. This optional monitor route does not
+reserve messages, change delivery receipts or acknowledge work. Use the normal
+inbox operations to receive and process messages.

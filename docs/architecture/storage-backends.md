@@ -1,6 +1,6 @@
 # Storage backend contract
 
-October Bus keeps protocol behavior above its storage implementation. The runtime depends on a domain-level storage contract instead of issuing database queries from HTTP, MCP, or A2A handlers.
+Agent Intercom keeps protocol behavior above its storage implementation. The runtime depends on a domain-level storage contract instead of issuing database queries from HTTP, MCP, or A2A handlers.
 
 SQLite is the default local backend. It requires no external service. Hosted services can use PostgreSQL with the same domain transactions and public HTTP/MCP contract.
 

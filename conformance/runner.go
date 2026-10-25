@@ -10,7 +10,7 @@ import (
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agent-intercom/bus"
 )
 
 const ProfileLocalRuntime = "local-runtime"
@@ -654,7 +654,7 @@ func Run(ctx context.Context, options Options) (result Result, runErr error) {
 			Transport: bearerTransport{token: reviewer.Token, base: http.DefaultTransport},
 			Timeout:   10 * time.Second,
 		}
-		client := mcp.NewClient(&mcp.Implementation{Name: "october-bus-conformance", Version: bus.Version}, nil)
+		client := mcp.NewClient(&mcp.Implementation{Name: "agentintercom-conformance", Version: bus.Version}, nil)
 		session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
 			Endpoint: options.Address + "/mcp", HTTPClient: httpClient, DisableStandaloneSSE: true,
 		}, nil)

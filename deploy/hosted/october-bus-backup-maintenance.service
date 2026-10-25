@@ -1,5 +1,5 @@
 [Unit]
-Description=Verify and expire old October Bus backups
+Description=Verify and expire old Agent Intercom backups
 After=network-online.target
 Wants=network-online.target
 

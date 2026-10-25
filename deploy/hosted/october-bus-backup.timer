@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up hosted October Bus every six hours
+Description=Back up hosted Agent Intercom every six hours
 
 [Timer]
 OnCalendar=*-*-* 00,06,12,18:20:00 UTC

@@ -3,9 +3,9 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import {
   BusError,
-  OctoberBusAgentSession,
-  OctoberBusClient,
-  OctoberBusScopeClient,
+  AgentIntercomAgentSession,
+  AgentIntercomClient,
+  AgentIntercomScopeClient,
   newIdempotencyKey,
   pollInbox,
   requiredEnvironmentValue,
@@ -22,7 +22,7 @@ async function expectInternal(work) {
   }
 }
 
-await expectInternal(() => new OctoberBusClient('not a url', 'token').listPeers())
+await expectInternal(() => new AgentIntercomClient('not a url', 'token').listPeers())
 
 assert.equal(requiredEnvironmentValue({ OCTOBER_BUS_TOKEN: 'token' }, 'OCTOBER_BUS_TOKEN'), 'token')
 assert.throws(
@@ -35,7 +35,7 @@ const abortController = new AbortController()
 abortController.abort(new Error('stopped'))
 await assert.rejects(
   () =>
-    OctoberBusAgentSession.start({
+    AgentIntercomAgentSession.start({
       address: 'not a url',
       scopeToken: 'token',
       registration: { id: 'aborted', displayName: 'Aborted' },
@@ -45,7 +45,7 @@ await assert.rejects(
 )
 await assert.rejects(
   () =>
-    OctoberBusAgentSession.start({
+    AgentIntercomAgentSession.start({
       address: 'not a url',
       scopeToken: 'token',
       registration: { id: 'offline-ready', displayName: 'Offline Ready' },
@@ -89,7 +89,7 @@ assert.equal(polled.value[0].id, 'message_1')
 await inbox.return()
 await assert.rejects(() => pollInbox(pollingClient, { waitMs: 0 }).next(), /waitMs must be an integer between 1 and 25000/)
 await assert.rejects(
-  () => new OctoberBusScopeClient('not a url', 'token').watchEvents({ waitMs: 0 }).next(),
+  () => new AgentIntercomScopeClient('not a url', 'token').watchEvents({ waitMs: 0 }).next(),
   /waitMs must be an integer between 1 and 25000/
 )
 
@@ -104,7 +104,7 @@ try {
   const address = server.address()
   assert(address && typeof address === 'object')
   await expectInternal(() =>
-    new OctoberBusClient(`http://127.0.0.1:${address.port}`, 'token').listPeers()
+    new AgentIntercomClient(`http://127.0.0.1:${address.port}`, 'token').listPeers()
   )
 } finally {
   server.close()
@@ -118,7 +118,7 @@ await once(hangingServer, 'listening')
 try {
   const address = hangingServer.address()
   assert(address && typeof address === 'object')
-  const client = new OctoberBusClient(`http://127.0.0.1:${address.port}`, 'token')
+  const client = new AgentIntercomClient(`http://127.0.0.1:${address.port}`, 'token')
   await assert.rejects(() => client.listPeers({ timeoutMs: 10 }), /timed out after 10ms/)
   const cancelled = new AbortController()
   cancelled.abort(new Error('cancelled by caller'))

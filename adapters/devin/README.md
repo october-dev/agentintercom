@@ -2,7 +2,7 @@
 
 Experimental adapter 0.2.0. No current harness version is certified.
 
-Run `october-bus harness config devin --scope my-project --agent devin-reviewer` and review the result before adding the October Bus entry to Devin Customize > MCPs > Add custom MCP (STDIO fields). Never paste the raw placeholder template. See [shared setup](../README.md) for scope creation, linking and removal.
+Run `agentintercom harness config devin --scope my-project --agent devin-reviewer` and review the result before adding the Agent Intercom entry to Devin Customize > MCPs > Add custom MCP (STDIO fields). Never paste the raw placeholder template. See [shared setup](../README.md) for scope creation, linking and removal.
 
 Only a sandbox-colocated deployment is in scope. Generate this configuration inside that sandbox after starting Bus and creating its local scope. A laptop path or localhost address is not reachable from Devin. Account permissions and sandbox lifecycle are unverified.
 

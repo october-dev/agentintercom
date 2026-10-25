@@ -8,7 +8,7 @@ const viewCleanups = [];
 function clearView() { for (const cleanup of viewCleanups.splice(0)) cleanup(); }
 const params = new URLSearchParams(location.search);
 if (params.has('billing')) state.tab = 'billing';
-const pendingKey = 'october-bus-pending';
+const pendingKey = 'agentintercom-pending';
 let pending = {};
 try { const saved = JSON.parse(sessionStorage.getItem(pendingKey) || '{}'); if (saved.until > Date.now()) pending = saved; } catch {}
 if (params.get('authorization_id')) pending.authorization = params.get('authorization_id');
@@ -158,7 +158,7 @@ function signIn() {
 async function signedIn() {
   state.user = await api('/api/me');
   state.workspaces = await api('/api/workspaces');
-  const wanted = (params.has('billing') && params.get('workspace')) || localStorage.getItem('october-bus-workspace');
+  const wanted = (params.has('billing') && params.get('workspace')) || localStorage.getItem('agentintercom-workspace');
   state.workspace = state.workspaces.find(w => w.id === wanted) || state.workspaces[0] || null;
   if (pending.invite) return invitation();
   if (pending.authorization) return consent();
@@ -170,7 +170,7 @@ function createWorkspace(onCreated) {
   const name = field('Workspace name', { name: 'name', placeholder: 'My team', maxlength: 100, required: true });
   return form([name.node, el('p', { class: 'help' }, 'Your first workspace starts a 14-day trial. Additional workspaces share its end date. Up to 5 people; no payment details needed.')], 'Create workspace', async data => {
     const workspace = await api('/api/workspaces', { method: 'POST', body: { name: data.get('name') } });
-    state.workspaces.push(workspace); state.workspace = workspace; localStorage.setItem('october-bus-workspace', workspace.id); await onCreated();
+    state.workspaces.push(workspace); state.workspace = workspace; localStorage.setItem('agentintercom-workspace', workspace.id); await onCreated();
   });
 }
 function firstWorkspace() {
@@ -178,7 +178,7 @@ function firstWorkspace() {
 }
 async function signOut() { const { error } = await state.auth.signOut({ scope: 'local' }); if (error) throw error; state.generation++; signIn(); }
 function workspaceSelect(onChange) {
-  const select = el('select', { 'aria-label': 'Workspace', onchange: e => { state.workspace = state.workspaces.find(w => w.id === e.target.value); localStorage.setItem('october-bus-workspace', state.workspace.id); action(null, onChange); } }, state.workspaces.map(w => el('option', { value: w.id, selected: w.id === state.workspace?.id }, w.name)));
+  const select = el('select', { 'aria-label': 'Workspace', onchange: e => { state.workspace = state.workspaces.find(w => w.id === e.target.value); localStorage.setItem('agentintercom-workspace', state.workspace.id); action(null, onChange); } }, state.workspaces.map(w => el('option', { value: w.id, selected: w.id === state.workspace?.id }, w.name)));
   return select;
 }
 async function consent() {
@@ -217,7 +217,7 @@ async function deviceConsent() {
 function invitation() {
   root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('h1', {}, 'Join a workspace'), el('p', {}, `You are signed in as ${state.user.email}. The invitation must match this address.`), el('div', { class: 'actions' }, button('Accept invitation', async () => {
     const result = await api('/api/invites/accept', { method: 'POST', body: { token: pending.invite } });
-    localStorage.setItem('october-bus-workspace', result.workspaceId); closePending('invite'); await signedIn();
+    localStorage.setItem('agentintercom-workspace', result.workspaceId); closePending('invite'); await signedIn();
   }, 'primary'), button('Use another account', signOut), button('Cancel', async () => { closePending('invite'); await signedIn(); })))));
 }
 
@@ -262,7 +262,7 @@ function connectView() {
       const connection = await api(scopePath + '/mcp-keys', { method: 'POST', body: { name: data.get('name') } });
       secretDialog('MCP connection key', connection.token, `Paste this into your app’s secret/API key field, or use Authorization: Bearer <key>. It is shown once and expires ${date(connection.expiresAt)}. Keep it out of chat, URLs and source control.`);
     }), el('p', { class: 'help' }, 'Choose OAuth instead if your app offers it. Neither connection method can make an unsupported app resume an idle conversation.')),
-    el('section', { class: 'card' }, el('h2', {}, 'Another machine or automation'), el('p', {}, 'Install the October Bus CLI on that machine, then run:'), el('pre', {}, 'october-bus hosted login --server ' + location.origin), el('p', {}, 'Open the link it prints, confirm the code and choose this workspace. For any app with a local MCP connection, run:'), el('pre', {}, 'october-bus connect --hosted default'), el('p', {}, 'Or start a terminal session with native message wake:'), el('pre', {}, 'october-bus session start claude --hosted default\noctober-bus session start codex --hosted default'), el('p', { class: 'help' }, 'Choose the app you use. Keep its terminal open; normal app permissions apply. Codex native wake is experimental.'), el('details', {}, el('summary', {}, 'Create a credential for custom automation'), form([field('Device name', { name: 'name', required: true, maxlength: 100, placeholder: 'My laptop' }).node], 'Create device credential', async data => {
+    el('section', { class: 'card' }, el('h2', {}, 'Another machine or automation'), el('p', {}, 'Install the Agent Intercom CLI on that machine, then run:'), el('pre', {}, 'agentintercom hosted login --server ' + location.origin), el('p', {}, 'Open the link it prints, confirm the code and choose this workspace. For any app with a local MCP connection, run:'), el('pre', {}, 'agentintercom connect --hosted default'), el('p', {}, 'Or start a terminal session with native message wake:'), el('pre', {}, 'agentintercom session start claude --hosted default\nagentintercom session start codex --hosted default'), el('p', { class: 'help' }, 'Choose the app you use. Keep its terminal open; normal app permissions apply. Codex native wake is experimental.'), el('details', {}, el('summary', {}, 'Create a credential for custom automation'), form([field('Device name', { name: 'name', required: true, maxlength: 100, placeholder: 'My laptop' }).node], 'Create device credential', async data => {
       const device = await api(path('/devices'), { method: 'POST', body: { name: data.get('name') } });
       secretDialog('Device credential', device.token, 'Save this in your device’s secret store. It is shown only once. Anyone with it can join sessions to this workspace as you.');
     }), el('p', { class: 'help' }, 'Keep credentials out of chat messages, shell history and source control.'))));
@@ -311,7 +311,7 @@ async function membersView() {
 async function start() {
   state.config = await api('/api/config');
   if (!state.config.authUrl || !state.config.authPublicKey) throw new Error('Sign-in is not configured on this server. Contact its operator.');
-  state.auth = new AuthClient({ url: state.config.authUrl + '/auth/v1', headers: { apikey: state.config.authPublicKey, Authorization: `Bearer ${state.config.authPublicKey}` }, storageKey: 'october-bus-auth', flowType: 'pkce', autoRefreshToken: true, persistSession: true, detectSessionInUrl: true });
+  state.auth = new AuthClient({ url: state.config.authUrl + '/auth/v1', headers: { apikey: state.config.authPublicKey, Authorization: `Bearer ${state.config.authPublicKey}` }, storageKey: 'agentintercom-auth', flowType: 'pkce', autoRefreshToken: true, persistSession: true, detectSessionInUrl: true });
   const { data, error } = await state.auth.getSession();
   if (error) throw error;
   if (data.session) await signedIn(); else signIn();
@@ -544,7 +544,7 @@ async function dataView() {
   result.append(el('section', { class: 'card' }, el('h2', {}, 'Download a portable archive'),
     el('p', {}, 'Includes retained messages, tasks, questions, channels, output values and file bytes. Does not contain account credentials or payment details. Pause sessions first so the archive is consistent.'),
     el('p', { class: 'help' }, 'Portable archives are limited to 64 MiB, including encoded files. Larger workspaces need an operator-assisted database and file export. File bytes in an archive count toward download allowance. Store the download privately.'),
-    button('Download workspace archive', async () => { const response = await fileRequest(scopePath + '/export'); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = el('a', { href: url, download: 'october-bus-workspace.json' }); document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); })));
+    button('Download workspace archive', async () => { const response = await fileRequest(scopePath + '/export'); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = el('a', { href: url, download: 'agentintercom-workspace.json' }); document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); })));
   const cutoff = field('Remove eligible history completed before', { name: 'before', type: 'date', required: true, value: new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10), max: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10) });
   result.append(el('section', { class: 'card' }, el('h2', {}, 'Prune completed history'), el('p', {}, 'Review a preview before deleting anything. Export first if you need to retain a copy. This does not remove unfinished work, files or your subscription.'),
     form([cutoff.node], 'Preview cleanup', async data => {

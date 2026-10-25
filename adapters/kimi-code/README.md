@@ -1,17 +1,17 @@
 # Kimi Code adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#45](https://github.com/october-dev/october-bus/issues/45).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#45](https://github.com/october-dev/agent-intercom/issues/45).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config kimi-code --scope my-project --agent kimi-code-reviewer --name "Kimi Code Reviewer"
-october-bus doctor --harness kimi-code --scope my-project
+agentintercom harness config kimi-code --scope my-project --agent kimi-code-reviewer --name "Kimi Code Reviewer"
+agentintercom doctor --harness kimi-code --scope my-project
 ```
 
-Configuration location: `.kimi-code/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.kimi-code/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { OctoberBusAgentSession } from '../dist/index.js'
+import { AgentIntercomAgentSession } from '../dist/index.js'
 
 const options = { address: 'http://session.invalid', scopeToken: 'synthetic', registration: { id: 'worker', displayName: 'Worker' } }
 const ok = (result) => new Response(JSON.stringify({ ok: true, result }), { status: 200 })
@@ -21,7 +21,7 @@ test('failed initial heartbeat retires registration without hiding the startup e
     if (url.endsWith('/retire')) { retired++; return ok({ retired: true }) }
     throw new Error('initial heartbeat failed')
   })
-  await assert.rejects(OctoberBusAgentSession.start(options), /initial heartbeat failed/)
+  await assert.rejects(AgentIntercomAgentSession.start(options), /initial heartbeat failed/)
   assert.equal(retired, 1)
 })
 
@@ -37,7 +37,7 @@ test('close drains setState, is shared, and rejects further operations', async (
     order.push(lifecycle)
     return ok({ lifecycle })
   })
-  const session = await OctoberBusAgentSession.start(options)
+  const session = await AgentIntercomAgentSession.start(options)
   t.after(() => session.close())
   const updating = session.setState('working', true)
   await workingStarted.promise
@@ -59,7 +59,7 @@ test('abort during registration retires once the committed result arrives', asyn
     if (url.endsWith('/retire')) { retired++; return ok({ retired: true }) }
     assert.fail('canceled startup must not heartbeat')
   })
-  const starting = OctoberBusAgentSession.start({ ...options, signal: controller.signal })
+  const starting = AgentIntercomAgentSession.start({ ...options, signal: controller.signal })
   await registering.promise
   controller.abort(new Error('canceled startup'))
   registered.resolve()
@@ -76,7 +76,7 @@ test('heartbeat failure still attempts retirement and preserves the error', asyn
     if (++beats > 1) throw new Error('authority lost')
     return ok({ lifecycle: 'starting' })
   })
-  const session = await OctoberBusAgentSession.start({ ...options, heartbeatIntervalMs: 5 })
+  const session = await AgentIntercomAgentSession.start({ ...options, heartbeatIntervalMs: 5 })
   t.after(() => session.close())
   await session.done
   assert.match(String(session.error), /authority lost/)
@@ -98,7 +98,7 @@ test('close cancels an in-flight background heartbeat without reporting failure'
       request.signal.addEventListener('abort', () => reject(request.signal.reason), { once: true })
     })
   })
-  const session = await OctoberBusAgentSession.start({ ...options, heartbeatIntervalMs: 5 })
+  const session = await AgentIntercomAgentSession.start({ ...options, heartbeatIntervalMs: 5 })
   t.after(() => session.close())
   await heartbeatStarted.promise
   await session.close()
@@ -115,7 +115,7 @@ test('incompatible health fails before sending credentials or replacing an execu
       assert.equal(request.headers.authorization, undefined)
       return ok(health)
     })
-    await assert.rejects(OctoberBusAgentSession.start(options), error => error.code === 'CONFLICT')
+    await assert.rejects(AgentIntercomAgentSession.start(options), error => error.code === 'CONFLICT')
     assert.equal(calls, 1)
     mock.mock.restore()
   }
@@ -134,7 +134,7 @@ test('failed state writes do not become background state; queued writes remain o
     if (state.lifecycle === 'working') throw new Error('state rejected')
     return ok(state)
   })
-  const session = await OctoberBusAgentSession.start(options)
+  const session = await AgentIntercomAgentSession.start(options)
   t.after(() => session.close())
   const ready = session.setState('ready', true)
   await started.promise

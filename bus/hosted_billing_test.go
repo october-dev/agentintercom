@@ -71,7 +71,7 @@ func (f *billingFixture) serve(w http.ResponseWriter, r *http.Request) {
 	var result any
 	switch {
 	case r.Method == "POST" && r.URL.Path == "/v1/customers":
-		if r.Header.Get("Idempotency-Key") != "october-bus-customer:"+f.scope {
+		if r.Header.Get("Idempotency-Key") != "agentintercom-customer:"+f.scope {
 			f.t.Error("customer missing stable retry key")
 		}
 		result = billingJSON{"id": f.customer, "metadata": billingJSON{"feature": hostedBillingFeature, "workspace_id": f.scope}}
@@ -93,7 +93,7 @@ func (f *billingFixture) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "POST" && r.URL.Path == "/v1/checkout/sessions":
 		f.attempt = r.Form.Get("metadata[checkout_attempt]")
 		f.interval = r.Form.Get("metadata[interval]")
-		if r.Header.Get("Idempotency-Key") != "october-bus-checkout:"+f.attempt || r.Form.Get("line_items[0][quantity]") != "1" || r.Form.Get("line_items[0][price]") != "price_"+f.interval {
+		if r.Header.Get("Idempotency-Key") != "agentintercom-checkout:"+f.attempt || r.Form.Get("line_items[0][quantity]") != "1" || r.Form.Get("line_items[0][price]") != "price_"+f.interval {
 			f.t.Error("checkout parameters not fixed")
 		}
 		if !strings.Contains(r.Form.Get("success_url"), "workspace="+f.scope) {

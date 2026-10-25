@@ -1,17 +1,17 @@
 # GitHub Copilot CLI adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#54](https://github.com/october-dev/october-bus/issues/54).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#54](https://github.com/october-dev/agent-intercom/issues/54).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config copilot-cli --scope my-project --agent copilot-cli-reviewer --name "GitHub Copilot CLI Reviewer"
-october-bus doctor --harness copilot-cli --scope my-project
+agentintercom harness config copilot-cli --scope my-project --agent copilot-cli-reviewer --name "GitHub Copilot CLI Reviewer"
+agentintercom doctor --harness copilot-cli --scope my-project
 ```
 
-Configuration location: `~/.copilot/mcp-config.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `~/.copilot/mcp-config.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

@@ -37,7 +37,7 @@ func AsBusError(err error) *BusError {
 	if databaseErrorState(err) == "55P03" {
 		return &BusError{Code: CodeBackpressure, Message: "Workspace is busy; retry shortly"}
 	}
-	return &BusError{Code: CodeInternal, Message: "Internal October Bus error"}
+	return &BusError{Code: CodeInternal, Message: "Internal Agent Intercom error"}
 }
 
 // SQLSTATE is safe operational context; driver messages, queries and arguments

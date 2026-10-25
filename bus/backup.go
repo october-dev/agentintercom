@@ -34,7 +34,7 @@ func (s *Server) backupDatabase(response http.ResponseWriter, request *http.Requ
 	if request.URL.Query().Get("bundle") == "1" {
 		return s.backupBundle(response, request)
 	}
-	file, err := os.CreateTemp("", "october-bus-backup-*.db")
+	file, err := os.CreateTemp("", "agentintercom-backup-*.db")
 	if err != nil {
 		return err
 	}
@@ -59,10 +59,10 @@ func (s *Server) backupDatabase(response http.ResponseWriter, request *http.Requ
 		return err
 	}
 	response.Header().Set("Content-Type", "application/vnd.sqlite3")
-	response.Header().Set("Content-Disposition", `attachment; filename="october-bus.db"`)
+	response.Header().Set("Content-Disposition", `attachment; filename="agentintercom.db"`)
 	response.Header().Set("Cache-Control", "no-store")
 	response.Header().Set("X-October-Bus-Backup-Includes", "database-only")
-	http.ServeContent(response, request, "october-bus.db", info.ModTime(), file)
+	http.ServeContent(response, request, "agentintercom.db", info.ModTime(), file)
 	return nil
 }
 
@@ -104,7 +104,7 @@ func (s *Store) BackupBundle(ctx context.Context, output io.Writer) error {
 	if s.Backend() != StorageBackendSQLite {
 		return Errorf(CodeInvalidArgument, "PostgreSQL backups must include pg_dump and the private attachment directory")
 	}
-	dir, err := os.MkdirTemp("", "october-bus-backup-")
+	dir, err := os.MkdirTemp("", "agentintercom-backup-")
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (s *Store) BackupBundle(ctx context.Context, output io.Writer) error {
 		_, err := io.CopyN(tarball, reader, size)
 		return err
 	}
-	manifest, _ := json.Marshal(map[string]any{"format": "october-bus.backup", "version": 1, "database": "bus.db", "attachments": "attachments/"})
+	manifest, _ := json.Marshal(map[string]any{"format": "agentintercom.backup", "version": 1, "database": "bus.db", "attachments": "attachments/"})
 	if err := write("manifest.json", int64(len(manifest)), strings.NewReader(string(manifest))); err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (s *Store) BackupBundle(ctx context.Context, output io.Writer) error {
 	return z.Close()
 }
 func (s *Server) backupBundle(w http.ResponseWriter, r *http.Request) error {
-	file, err := os.CreateTemp("", "october-bus-bundle-*.tar.gz")
+	file, err := os.CreateTemp("", "agentintercom-bundle-*.tar.gz")
 	if err != nil {
 		return err
 	}
@@ -201,9 +201,9 @@ func (s *Server) backupBundle(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", `attachment; filename="october-bus.tar.gz"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="agentintercom.tar.gz"`)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-October-Bus-Backup-Includes", "database-and-attachments")
-	http.ServeContent(w, r, "october-bus.tar.gz", info.ModTime(), file)
+	http.ServeContent(w, r, "agentintercom.tar.gz", info.ModTime(), file)
 	return nil
 }

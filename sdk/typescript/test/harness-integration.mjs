@@ -2,14 +2,14 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { OctoberBusAdminClient, OctoberBusClient, OctoberBusScopeClient } from '../dist/index.js'
+import { AgentIntercomAdminClient, AgentIntercomClient, AgentIntercomScopeClient } from '../dist/index.js'
 import { openBridge } from '../../../adapters/pi/bridge.mjs'
 
 export async function checkHarnessSetup(binary, run, env, root) {
   const cli = args => execFileSync(binary, args, { env, encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] })
   const scope = JSON.parse(cli(['scope', 'create', 'harness-integration']))
-  const owner = new OctoberBusScopeClient(run.address, scope.scopeToken)
-  const admin = new OctoberBusAdminClient(run.address, run.adminToken)
+  const owner = new AgentIntercomScopeClient(run.address, scope.scopeToken)
+  const admin = new AgentIntercomAdminClient(run.address, run.adminToken)
   let bridge
   try {
     const config = JSON.parse(cli(['harness', 'config', 'pi', '--scope', scope.scopeId, '--agent', 'pi']))
@@ -20,7 +20,7 @@ export async function checkHarnessSetup(binary, run, env, root) {
     assert.throws(() => cli(['harness', 'config', 'pi', '--scope', scope.scopeId, '--agent', 'pi', '--output', protectedFile]))
     assert.equal(await readFile(protectedFile, 'utf8'), 'user configuration')
     const peer = await owner.registerAgent({ id: 'peer', displayName: 'Peer', leaseMs: 30_000 })
-    const client = new OctoberBusClient(run.address, peer.agentToken)
+    const client = new AgentIntercomClient(run.address, peer.agentToken)
     bridge = await openBridge(config)
     assert.equal(bridge.tools.length, 23)
     cli(['link', '--scope', scope.scopeId, 'pi', 'peer'])

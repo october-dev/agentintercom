@@ -1,5 +1,5 @@
 {
-  "name": "@october-bus/workspace-ui",
+  "name": "@october-dev/agent-intercom-workspace-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",

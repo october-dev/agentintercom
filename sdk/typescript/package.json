@@ -1,19 +1,19 @@
 {
-  "name": "@october-dev/october-bus",
+  "name": "agentintercom",
   "version": "0.2.0",
-  "description": "October Bus native CLI and TypeScript client for agent coordination.",
+  "description": "Agent Intercom native CLI and TypeScript client for agent coordination.",
   "type": "module",
   "sideEffects": false,
   "license": "Apache-2.0",
   "author": "October",
-  "homepage": "https://github.com/october-dev/october-bus#readme",
+  "homepage": "https://github.com/october-dev/agent-intercom#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/october-dev/october-bus.git",
+    "url": "git+https://github.com/october-dev/agent-intercom.git",
     "directory": "sdk/typescript"
   },
   "bugs": {
-    "url": "https://github.com/october-dev/october-bus/issues"
+    "url": "https://github.com/october-dev/agent-intercom/issues"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -27,7 +27,7 @@
   ],
   "main": "./dist/index.js",
   "bin": {
-    "october-bus": "cli/october-bus.cjs"
+    "agentintercom": "cli/agentintercom.cjs"
   },
   "types": "./dist/index.d.ts",
   "exports": {
@@ -78,5 +78,6 @@
   },
   "devDependencies": {
     "typescript": "^7.0.2"
-  }
+  },
+  "mcpName": "io.github.october-dev/agent-intercom"
 }

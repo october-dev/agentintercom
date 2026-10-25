@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily October Bus backup integrity and retention
+Description=Daily Agent Intercom backup integrity and retention
 
 [Timer]
 OnCalendar=*-*-* 03:20:00 UTC

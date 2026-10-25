@@ -23,7 +23,7 @@ async function rehearse() {
   const candidate = realpathSync(process.env.OCTOBER_BUS_BINARY)
   assert.notEqual(old, candidate, 'Use distinct rc.4 and candidate executables')
   const version = binary => execFileSync(binary, ['version'], { encoding: 'utf8', timeout: 5000 }).trim()
-  assert.match(version(old), /^october-bus v?0\.1\.0-rc\.4 \(protocol 0\.1\)$/)
+  assert.match(version(old), /^agentintercom v?0\.1\.0-rc\.4 \(protocol 0\.1\)$/)
   const candidateVersion = version(candidate)
   assert.ok(!/\brc\.4\b|\bdev\b/.test(candidateVersion), 'Candidate must embed its release version')
   const root = mkdtempSync(join(tmpdir(), 'october-upgrade-'))

@@ -73,7 +73,7 @@ From the repository root on the build machine:
 ```sh
 mkdir -p dist/hosted
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
-  -o dist/hosted/october-bus ./cmd/october-bus
+  -o dist/hosted/october-bus ./cmd/agentintercom
 ```
 
 Use `GOARCH=arm64` for an ARM server. Copy that binary and this directory to the
@@ -245,14 +245,14 @@ Application fields after verification:
 | --- | --- |
 | Connection type | Existing MCP |
 | Hosted MCP endpoint | `https://bus.october.dev/mcp` |
-| API/MCP documentation | `https://github.com/october-dev/october-bus/blob/main/spec/0.1/mcp.md` after merge; link the reviewed commit before merge |
+| API/MCP documentation | `https://github.com/october-dev/agent-intercom/blob/main/spec/0.1/mcp.md` after merge; link the reviewed commit before merge |
 | Authentication | API keys, sent as Bearer credentials; no OAuth/PKCE claim |
 | OpenAPI | Not needed for the MCP option |
 
 Suggested access requirements:
 
 > Operator-provisioned pilot access with a private connector API key. Users run
-> an October Bus bridge on their computer and explicitly connect supported agent
+> an Agent Intercom bridge on their computer and explicitly connect supported agent
 > sessions. Their computer and receiving agents must be online and consuming
 > messages for work to execute. Existing coding-tool accounts, subscriptions, and
 > approvals still apply. Each connector is limited to its provisioned scope and

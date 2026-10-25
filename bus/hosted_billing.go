@@ -226,7 +226,7 @@ func (b *HostedBilling) prepareCheckout(ctx context.Context, user HostedUser, sc
 	}
 	if row.Customer == "" {
 		params := &stripe.CustomerCreateParams{Email: stripe.String(user.Email), Metadata: map[string]string{"feature": hostedBillingFeature, "workspace_id": scopeID}}
-		params.SetIdempotencyKey("october-bus-customer:" + scopeID)
+		params.SetIdempotencyKey("agentintercom-customer:" + scopeID)
 		customer, err := b.stripe.V1Customers.Create(ctx, params)
 		if err != nil {
 			return billingUnavailable()
@@ -301,7 +301,7 @@ func (b *HostedBilling) checkoutSession(ctx context.Context, row billingRow, att
 	}
 	metadata := map[string]string{"feature": hostedBillingFeature, "workspace_id": row.ScopeID, "checkout_attempt": attempt.ID, "interval": attempt.Interval}
 	input := &stripe.CheckoutSessionCreateParams{Mode: stripe.String("subscription"), Customer: stripe.String(row.Customer), ClientReferenceID: stripe.String(row.ScopeID), LineItems: []*stripe.CheckoutSessionCreateLineItemParams{{Price: stripe.String(attempt.PriceID), Quantity: stripe.Int64(1)}}, Metadata: metadata, SubscriptionData: &stripe.CheckoutSessionCreateSubscriptionDataParams{Metadata: metadata}, SuccessURL: stripe.String(b.options.PublicURL + "/app?billing=success&workspace=" + url.QueryEscape(row.ScopeID)), CancelURL: stripe.String(b.options.PublicURL + "/app?billing=cancelled&workspace=" + url.QueryEscape(row.ScopeID)), ExpiresAt: stripe.Int64(attempt.Expires / 1000), AllowPromotionCodes: stripe.Bool(false), AutomaticTax: &stripe.CheckoutSessionCreateAutomaticTaxParams{Enabled: stripe.Bool(b.options.AutomaticTax)}, CustomerUpdate: &stripe.CheckoutSessionCreateCustomerUpdateParams{Address: stripe.String("auto")}}
-	input.SetIdempotencyKey("october-bus-checkout:" + attempt.ID)
+	input.SetIdempotencyKey("agentintercom-checkout:" + attempt.ID)
 	session, err := b.stripe.V1CheckoutSessions.Create(ctx, input)
 	if err != nil {
 		return nil, Errorf(CodeInternal, "Checkout status could not be confirmed. Retry the same selection to recover it safely")

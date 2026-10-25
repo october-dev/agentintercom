@@ -1,6 +1,6 @@
 # Portable scope archives
 
-Portable scope archives move durable collaboration state between compatible October Bus implementations. The archive format is JSON and is defined by [scope-archive.schema.json](schemas/scope-archive.schema.json).
+Portable scope archives move durable collaboration state between compatible Agent Intercom implementations. The archive format is JSON and is defined by [scope-archive.schema.json](schemas/scope-archive.schema.json).
 
 An archive preserves:
 

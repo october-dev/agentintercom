@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agent-intercom/bus"
 )
 
 // ClientConfig maps one connector API key to one dedicated agent identity.
@@ -227,7 +227,7 @@ func failure(w http.ResponseWriter, status int, message string) {
 }
 
 func unauthenticated(w http.ResponseWriter, message string) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="october-bus"`)
+	w.Header().Set("WWW-Authenticate", `Bearer realm="agentintercom"`)
 	failure(w, http.StatusUnauthorized, message)
 }
 
@@ -382,7 +382,7 @@ func (g *Gateway) remoteAgentRoutes() *http.ServeMux {
 		"GET /v1/channel-posts", "POST /v1/channel-posts",
 		"GET /v1/attachments", "POST /v1/attachments", "GET /v1/attachments/{attachmentId}", "DELETE /v1/attachments/{attachmentId}", "GET /v1/attachments/{attachmentId}/content",
 		"POST /v1/messages", "GET /v1/messages/{messageId}", "POST /v1/messages/ack",
-		"POST /v1/inbox/reserve", "POST /v1/inbox/{reservationId}/commit", "POST /v1/inbox/{reservationId}/release",
+		"GET /v1/inbox/preview", "POST /v1/inbox/reserve", "POST /v1/inbox/{reservationId}/commit", "POST /v1/inbox/{reservationId}/release",
 		"GET /v1/tasks", "POST /v1/tasks", "GET /v1/tasks/page",
 		"POST /v1/tasks/{taskId}/claim", "POST /v1/tasks/{taskId}/release", "POST /v1/tasks/{taskId}/complete",
 		"GET /v1/tasks/{taskId}/progress", "POST /v1/tasks/{taskId}/progress",

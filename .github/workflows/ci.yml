@@ -27,9 +27,9 @@ jobs:
       - if: matrix.os == 'ubuntu-latest'
         run: go test -race -count=1 ./...
       - run: go vet ./...
-      - run: go build ./cmd/october-bus
-      - run: go build ./cmd/october-bus-conformance
-      - run: go run ./cmd/october-bus demo
+      - run: go build ./cmd/agentintercom
+      - run: go build ./cmd/agentintercom-conformance
+      - run: go run ./cmd/agentintercom demo
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -113,7 +113,7 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: sdk/typescript/package-lock.json
-      - run: go build -o /tmp/october-bus ./cmd/october-bus
+      - run: go build -o /tmp/agentintercom ./cmd/agentintercom
       - run: npm ci
         working-directory: sdk/typescript
       - run: npm run build
@@ -121,7 +121,7 @@ jobs:
       - run: npm run test:integration
         working-directory: sdk/typescript
         env:
-          OCTOBER_BUS_BINARY: /tmp/october-bus
+          OCTOBER_BUS_BINARY: /tmp/agentintercom
 
   hosted:
     timeout-minutes: 20
@@ -149,7 +149,7 @@ jobs:
           go-version: 1.27.x
           cache: true
       - name: PostgreSQL and hosted authorization regressions
-        run: go test -race -count=1 ./bus ./cmd/october-bus ./conformance -run 'Test(Postgres|Hosted)'
+        run: go test -race -count=1 ./bus ./cmd/agentintercom ./conformance -run 'Test(Postgres|Hosted)'
       - name: Verify shared identity lifecycle
         env:
           OCTOBER_BUS_TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}

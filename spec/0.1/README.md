@@ -1,8 +1,8 @@
-# October Bus protocol 0.1
+# Agent Intercom protocol 0.1
 
 Status: draft
 
-October Bus is a communication and coordination protocol for AI agents and harnesses. It defines identity, discovery, durable messages, shared tasks, and human escalation. It does not select agents, staff teams, route models, or supervise an overall operation.
+Agent Intercom is a communication and coordination protocol for AI agents and harnesses. It defines identity, discovery, durable messages, shared tasks, and human escalation. It does not select agents, staff teams, route models, or supervise an overall operation.
 
 ## Model
 
@@ -197,7 +197,7 @@ A scoped A2A credential grants no access to the Bus HTTP API, MCP endpoint, scop
 
 ### Durable A2A task correlation
 
-An A2A Task and an October Bus shared task are different resources. An A2A Task represents one remote delegated interaction. A Bus shared task is work that any eligible agent can claim.
+An A2A Task and an Agent Intercom shared task are different resources. An A2A Task represents one remote delegated interaction. A Bus shared task is work that any eligible agent can claim.
 
 The bridge stores each A2A task, its context ID, remote principal, publication, target agent, state, and message correlations. Every accepted A2A client message maps to one Bus request. That request can have at most one Bus response. A client can add the next message while the task is `input-required`, without weakening the Bus one-response rule.
 

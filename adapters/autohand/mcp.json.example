@@ -2,7 +2,7 @@
   "mcp": {
     "servers": [
       {
-        "name": "october_bus",
+        "name": "agent_intercom",
         "transport": "stdio",
         "command": "{{command}}",
         "args": [

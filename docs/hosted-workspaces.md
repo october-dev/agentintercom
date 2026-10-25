@@ -103,8 +103,8 @@ Supply these through an owner-only service environment file or secret manager:
 - `OCTOBER_BUS_ATTACHMENTS_DIR`: private persistent directory for file bytes.
 
 ```sh
-october-bus database migrate
-october-bus hosted serve --public-url https://bus.example.com \
+agentintercom database migrate
+agentintercom hosted serve --public-url https://bus.example.com \
   --allow-origin https://www.example.com
 ```
 

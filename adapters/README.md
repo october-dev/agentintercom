@@ -1,25 +1,25 @@
 # Harness adapters
 
-October Bus ships configuration candidates for 28 MCP hosts, a native Pi extension, and a managed-launch path for October Harness's existing native integration. Configuration count is **not** a verified-support count: adapter revision 0.2.0 is experimental until each released host completes the [runbook](../compatibility/RUNBOOK.md). Historical Codex 0.1.0 / rc.4 evidence is retained, not transferred to this revision.
+Agent Intercom ships configuration candidates for 28 MCP hosts, a native Pi extension, and a managed-launch path for October Harness's existing native integration. Configuration count is **not** a verified-support count: adapter revision 0.2.0 is experimental until each released host completes the [runbook](../compatibility/RUNBOOK.md). Historical Codex 0.1.0 / rc.4 evidence is retained, not transferred to this revision.
 
 ## Local setup
 
-Start `october-bus start` in one terminal (or a service supervisor). In another:
+Start `agentintercom start` in one terminal (or a service supervisor). In another:
 
 ```sh
-october-bus scope create my-project
-october-bus harness list
-october-bus harness config cursor --scope my-project --agent cursor-builder
-october-bus harness config claude-code --scope my-project --agent claude-reviewer
+agentintercom scope create my-project
+agentintercom harness list
+agentintercom harness config cursor --scope my-project --agent cursor-builder
+agentintercom harness config claude-code --scope my-project --agent claude-reviewer
 ```
 
-The scope command saves its credential in the private data directory. Do not export it into a host, paste it into configuration, or share its JSON output. Add only the generated October Bus entry to each host's documented configuration file, preserving existing entries. Raw `.example` files contain placeholders: render them with the CLI first. `--output <new-file>` creates a new file exclusively and never overwrites one.
+The scope command saves its credential in the private data directory. Do not export it into a host, paste it into configuration, or share its JSON output. Add only the generated Agent Intercom entry to each host's documented configuration file, preserving existing entries. Raw `.example` files contain placeholders: render them with the CLI first. `--output <new-file>` creates a new file exclusively and never overwrites one.
 
 Launch both hosts normally, approve the reviewed local tool server, then link their exact agent IDs:
 
 ```sh
-october-bus link --scope my-project cursor-builder claude-reviewer
-october-bus doctor --harness cursor --scope my-project --json
+agentintercom link --scope my-project cursor-builder claude-reviewer
+agentintercom doctor --harness cursor --scope my-project --json
 ```
 
 Both agents must have registered before linking. Links are reciprocal. A bridge may instead use repeatable `--connect-to <existing-peer>` at registration. Doctor checks local discovery, saved scope authority, executable version where possible, and a temporary bridge's 15 tools; it cannot certify a host's model account, UI or permissions.
@@ -38,7 +38,7 @@ The bridge owns heartbeats and retirement on EOF, host termination or lease fail
 | Native session extension | [Pi](pi): public session hooks, daemon tool schemas, cancellation and cleanup |
 | Existing native integration | [October Harness](october-harness): public launcher contract, no duplicate extension |
 
-Other launch targets remain in [tracking issue #62](https://github.com/october-dev/october-bus/issues/62) until their canonical released integration surface is established. Model providers alone are not additional harnesses. See [integration boundaries](../docs/harness-boundaries.md).
+Other launch targets remain in [tracking issue #62](https://github.com/october-dev/agent-intercom/issues/62) until their canonical released integration surface is established. Model providers alone are not additional harnesses. See [integration boundaries](../docs/harness-boundaries.md).
 
 ## Existing managed launchers
 
@@ -50,7 +50,7 @@ credential. See the [hosted deployment guide](../deploy/hosted/README.md#4-conne
 for token handling and setup. This transport path does not certify a named harness
 or wake an idle model.
 
-`october-bus agent run` remains supported. Its child receives `OCTOBER_BUS_ADDRESS` and an execution-bound `OCTOBER_BUS_AGENT_TOKEN`; scope credentials stay in the launcher. Such a child uses argument-free `october-bus mcp stdio` from [mcp-stdio.json.example](mcp-stdio.json.example). A host may need explicit environment forwarding for these values.
+`agentintercom agent run` remains supported. Its child receives `OCTOBER_BUS_ADDRESS` and an execution-bound `OCTOBER_BUS_AGENT_TOKEN`; scope credentials stay in the launcher. Such a child uses argument-free `agentintercom mcp stdio` from [mcp-stdio.json.example](mcp-stdio.json.example). A host may need explicit environment forwarding for these values.
 
 For a local scope, use `agent run --scope <id> --id <agent> --name <name> -- <host-command>`. This reads protected local discovery and the saved scope credential without a token export. It rejects explicit remote addresses or inherited scope/agent authority; the older `--scope-token-env` route remains available separately for remote/operator-managed launches.
 
@@ -58,4 +58,4 @@ Do not mix managed credentials with self-registering flags. Missing identity fai
 
 ## Removal and recovery
 
-Close the host/bridge and remove only its October Bus configuration entry. Keep the project scope and database if durable work is still useful. Lost credentials can be recovered with `scope rotate-token --id <scope>`; rotation revokes all current executions in that scope and refreshes the local token file. Deletion is destructive and separate from uninstall. See [operations](../docs/operations.md) for backup, recovery and local-account security limitations.
+Close the host/bridge and remove only its Agent Intercom configuration entry. Keep the project scope and database if durable work is still useful. Lost credentials can be recovered with `scope rotate-token --id <scope>`; rotation revokes all current executions in that scope and refreshes the local token file. Deletion is destructive and separate from uninstall. See [operations](../docs/operations.md) for backup, recovery and local-account security limitations.

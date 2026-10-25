@@ -1,17 +1,17 @@
 # Qwen Code adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#44](https://github.com/october-dev/october-bus/issues/44).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#44](https://github.com/october-dev/agent-intercom/issues/44).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config qwen-code --scope my-project --agent qwen-code-reviewer --name "Qwen Code Reviewer"
-october-bus doctor --harness qwen-code --scope my-project
+agentintercom harness config qwen-code --scope my-project --agent qwen-code-reviewer --name "Qwen Code Reviewer"
+agentintercom doctor --harness qwen-code --scope my-project
 ```
 
-Configuration location: `.qwen/settings.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.qwen/settings.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

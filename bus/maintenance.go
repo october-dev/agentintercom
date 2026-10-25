@@ -25,7 +25,7 @@ func (r *Runtime) StartMaintenance() func() {
 				_, err := r.store.CollectAttachmentGarbage(run)
 				stop()
 				if err != nil && ctx.Err() == nil {
-					log.Print("October Bus file maintenance failed; it will retry on the next run")
+					log.Print("Agent Intercom file maintenance failed; it will retry on the next run")
 				}
 				timer.Reset(time.Hour)
 			}

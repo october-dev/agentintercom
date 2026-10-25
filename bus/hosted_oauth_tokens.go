@@ -60,7 +60,7 @@ func (h *HostedServer) oauthToken(w http.ResponseWriter, r *http.Request) {
 	}
 	resource := r.PostForm.Get("resource")
 	if resource != "" && resource != h.publicURL+"/mcp" {
-		oauthFailure(w, 400, "invalid_target", "Resource must be this October Bus MCP endpoint")
+		oauthFailure(w, 400, "invalid_target", "Resource must be this Agent Intercom MCP endpoint")
 		return
 	}
 	if len(secret) < 20 || len(secret) > 256 || clientID == "" {
@@ -299,7 +299,7 @@ func (h *HostedServer) authenticateOAuthClient(r *http.Request) (string, string,
 
 func oauthClientFailure(w http.ResponseWriter, err error) {
 	if errors.Is(err, oautherrors.ErrInvalidClient) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="October Bus"`)
+		w.Header().Set("WWW-Authenticate", `Basic realm="Agent Intercom"`)
 		oauthFailure(w, 401, "invalid_client", "Client authentication failed")
 	} else {
 		oauthFailure(w, 503, "temporarily_unavailable", "Client authentication is unavailable")

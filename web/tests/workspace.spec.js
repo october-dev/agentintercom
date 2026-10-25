@@ -13,7 +13,7 @@ async function fixture(page, signedIn = true, options = {}) {
   let answered = false;
   if (signedIn) await page.addInitScript(user => {
     const claims = btoa(JSON.stringify({ sub: user.id, aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 }));
-    localStorage.setItem('october-bus-auth', JSON.stringify({ access_token: 'e30.' + claims + '.fixture', refresh_token: 'fixture-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user }));
+    localStorage.setItem('agentintercom-auth', JSON.stringify({ access_token: 'e30.' + claims + '.fixture', refresh_token: 'fixture-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user }));
   }, user);
   await page.route('https://auth.example.test/**', async route => {
     if (route.request().url().endsWith('/otp?redirect_to=http%3A%2F%2F127.0.0.1%3A4794%2Fapp')) events.push('email-requested');
@@ -108,7 +108,7 @@ test('mobile onboarding and teammate invitation stay usable without overflow', a
   await expect(page.getByText('http://127.0.0.1:4794/app#invite=secret-invitation', { exact: true })).toBeVisible();
   expect(events.at(-1).body).toEqual({ email: 'teammate@example.test', role: 'member' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-  await page.screenshot({ path: '/tmp/october-bus-workspace-mobile.png', fullPage: true });
+  await page.screenshot({ path: '/tmp/agentintercom-workspace-mobile.png', fullPage: true });
 });
 
 test('signed-out page presents account login without sending an email on load', async ({ page }) => {
@@ -117,7 +117,7 @@ test('signed-out page presents account login without sending an email on load', 
   await expect(page.getByRole('heading', { name: 'Sign in to October' })).toBeVisible();
   await expect(page.getByLabel('Email address', { exact: true }).first()).toBeVisible();
   expect(events).toHaveLength(0);
-  await page.screenshot({ path: '/tmp/october-bus-signin.png', fullPage: true });
+  await page.screenshot({ path: '/tmp/agentintercom-signin.png', fullPage: true });
 });
 
 
@@ -157,7 +157,7 @@ test('device pairing waits for explicit code confirmation and workspace consent'
   expect(events).toEqual([{ path: '/api/device/authorizations/ABCD-EFGH', method: 'POST', body: { approve: true, workspaceId: 'workspace-1' } }]);
   await page.getByRole('button', { name: 'Open workspace', exact: true }).click();
   await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Connect an app', exact: true }).click();
-  await expect(page.getByText(/october-bus hosted login --server/)).toBeVisible();
+  await expect(page.getByText(/agentintercom hosted login --server/)).toBeVisible();
 });
 
 test('device recovery is an explicit choice among only the account’s machines', async ({ page }) => {
@@ -293,7 +293,7 @@ test('data controls confirm pauses and cleanup, then download a portable archive
     if (path.endsWith('/storage')) result = { records: [{ recordType: 'message', state: 'acknowledged', count: 2 }] };
     if (path.endsWith('/pause')) paused = route.request().postDataJSON().paused;
     if (path.endsWith('/prune')) { cleanups.push(route.request().postDataJSON()); result = { records: { messages: 2, tasks: 0, events: 4 }, dryRun: !cleanups.at(-1).execute }; }
-    if (path.endsWith('/export')) return route.fulfill({ contentType: 'application/json', headers: { 'Content-Disposition': 'attachment; filename="october-bus-workspace.json"' }, body: JSON.stringify({ format: 'october-bus.scope', version: 3 }) });
+    if (path.endsWith('/export')) return route.fulfill({ contentType: 'application/json', headers: { 'Content-Disposition': 'attachment; filename="agentintercom-workspace.json"' }, body: JSON.stringify({ format: 'october-bus.scope', version: 3 }) });
     await route.fulfill({ json: { ok: true, result } });
   });
   await page.goto('/app');
@@ -304,7 +304,7 @@ test('data controls confirm pauses and cleanup, then download a portable archive
   await expect(page.getByRole('heading', { name: 'Sessions paused', exact: true })).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download workspace archive', exact: true }).click();
-  expect((await download).suggestedFilename()).toBe('october-bus-workspace.json');
+  expect((await download).suggestedFilename()).toBe('agentintercom-workspace.json');
   await page.getByRole('button', { name: 'Preview cleanup', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Delete eligible history?', exact: true })).toBeVisible();
   expect(cleanups.map(c => c.execute)).toEqual([false]);

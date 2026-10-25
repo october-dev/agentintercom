@@ -1,6 +1,6 @@
 # Client SDKs
 
-October Bus ships a Go client in this module and a TypeScript client on npm. From `0.1.0-next.15`, the npm package also installs the matching native Go daemon and exposes the `october-bus` command. SDK imports do not load or start the daemon.
+Agent Intercom ships a Go client in this module and a TypeScript client on npm. From `0.1.0-next.15`, the npm package also installs the matching native Go daemon and exposes the `agentintercom` command. SDK imports do not load or start the daemon.
 
 ## Runtime and SDK compatibility
 
@@ -106,13 +106,13 @@ Go `SetState` and TypeScript `setState` serialize writes and update their rememb
 Install the current prerelease:
 
 ```bash
-npm install @october-dev/october-bus@next
+npm install agentintercom@next
 ```
 
 ```ts
-import { OctoberBusAgentSession, OctoberBusOutputClient, OctoberBusScopeClient } from '@october-dev/october-bus'
+import { AgentIntercomAgentSession, AgentIntercomOutputClient, AgentIntercomScopeClient } from 'agentintercom'
 
-const session = await OctoberBusAgentSession.start({
+const session = await AgentIntercomAgentSession.start({
   address,
   scopeToken,
   registration: {
@@ -125,8 +125,8 @@ const session = await OctoberBusAgentSession.start({
 await session.setState('ready', true)
 const peers = await session.client.listPeers({ timeoutMs: 10_000 })
 const messages = await session.client.pullInbox(50, { waitMs: 25_000 })
-const readyTasks = await new OctoberBusScopeClient(address, scopeToken).listTasks({ ready: true })
-const owner = new OctoberBusScopeClient(address, scopeToken)
+const readyTasks = await new AgentIntercomScopeClient(address, scopeToken).listTasks({ ready: true })
+const owner = new AgentIntercomScopeClient(address, scopeToken)
 const publication = await owner.createAgentCardPublication({ agentId: 'reviewer' })
 const issued = await owner.createA2APrincipal({
   publicationId: publication.id,
@@ -157,7 +157,7 @@ const reader = await owner.createOutputPrincipal({
   label: 'Preview page',
   permissions: ['read']
 })
-const outputs = new OctoberBusOutputClient(address, reader.credential)
+const outputs = new AgentIntercomOutputClient(address, reader.credential)
 const latest = await outputs.latest(stream.id)
 ```
 
@@ -178,7 +178,7 @@ Prefer bounded inbox waiting for efficient pull delivery. `pollInbox` provides a
 Go returns `*bus.BusError`. TypeScript throws `BusError`. Branch on the protocol error code instead of matching the human-readable message.
 
 ```ts
-import { BusError } from '@october-dev/october-bus'
+import { BusError } from 'agentintercom'
 
 try {
   await session.client.claimTask(taskId)

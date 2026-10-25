@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/october-dev/october-bus/spec/0.1/schemas/protocol.schema.json",
-  "title": "October Bus protocol 0.1",
+  "$id": "https://github.com/october-dev/agent-intercom/spec/0.1/schemas/protocol.schema.json",
+  "title": "Agent Intercom protocol 0.1",
   "$defs": {
   "attachment": {
     "type": "object",

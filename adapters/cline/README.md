@@ -1,17 +1,17 @@
 # Cline adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#43](https://github.com/october-dev/october-bus/issues/43).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#43](https://github.com/october-dev/agent-intercom/issues/43).
 
 A configuration fixture is not a successful run in the actual host.
 
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config cline --scope my-project --agent cline-reviewer --name "Cline Reviewer"
-october-bus doctor --harness cline --scope my-project
+agentintercom harness config cline --scope my-project --agent cline-reviewer --name "Cline Reviewer"
+agentintercom doctor --harness cline --scope my-project
 ```
 
-Configuration location: `~/.cline/mcp.json (CLI); IDE: MCP Servers > Configure`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `~/.cline/mcp.json (CLI); IDE: MCP Servers > Configure`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

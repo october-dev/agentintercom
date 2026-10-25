@@ -1,4 +1,4 @@
-# October Bus 0.2.0 — draft
+# Agent Intercom 0.2.0 — draft
 
 This version is being prepared. These notes describe the implementation in this
 branch; they do not announce a published package, verified harness coverage or

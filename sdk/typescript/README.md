@@ -1,6 +1,6 @@
-# October Bus CLI and TypeScript Client
+# Agent Intercom CLI and TypeScript Client
 
-Typed clients and protocol definitions for connecting Node.js applications and harness adapters to October Bus.
+Typed clients and protocol definitions for connecting Node.js applications and harness adapters to Agent Intercom.
 
 Starting with `0.1.0-next.15`, this package includes a launcher for the native Go daemon and the TypeScript client. npm installs the matching binary through an exact-version optional dependency; it does not compile Go or run a download script on your machine. Existing TypeScript imports are unchanged. Older npm releases contain only the client.
 
@@ -14,14 +14,14 @@ Admins can use `listScopes()`, `rotateScopeToken(scopeId)`, and `deleteScope(sco
 
 `for await (const chunk of admin.backup())` streams a full SQLite snapshot without accumulating it in memory. Write it to a new private file, discard partial output if iteration fails, and retain the original database when restoring. This snapshot includes credentials and is not a portable scope archive.
 
-`OctoberBusAdminClient` can export and import versioned portable scope archives. Archives preserve durable collaboration state but exclude credentials, leases, and active execution authority.
+`AgentIntercomAdminClient` can export and import versioned portable scope archives. Archives preserve durable collaboration state but exclude credentials, leases, and active execution authority.
 
 ## Install
 
 This source prepares version `0.2.0`; it is not a publication announcement. Once that version is published, install it explicitly:
 
 ```sh
-npm install @october-dev/october-bus@0.2.0
+npm install agentintercom@0.2.0
 ```
 
 Native packages began with `0.1.0-next.15`. Earlier releases are SDK-only. An unqualified `npx` selects the registry’s `latest` tag; use an explicit version until stable promotion is complete.
@@ -29,23 +29,23 @@ Native packages began with `0.1.0-next.15`. Earlier releases are SDK-only. An un
 Run the CLI without installing Go:
 
 ```sh
-npx @october-dev/october-bus@0.2.0 demo
-npx @october-dev/october-bus@0.2.0 start
+npx agentintercom@0.2.0 demo
+npx agentintercom@0.2.0 start
 ```
 
 macOS, Linux, and Windows binaries are provided for x64 and arm64. Linux binaries are built without CGO. Keep optional dependencies enabled; `--ignore-scripts` is supported. If you installed with `--omit=optional`, reinstall with `--include=optional` to use the CLI. SDK-only consumers can omit the binary packages and keep using a separately installed daemon. Do not copy `node_modules` between platforms.
 
-The CLI refuses mismatched binary versions and never falls back to another executable on `PATH`. Native archives remain available from [GitHub releases](https://github.com/october-dev/october-bus/releases).
+The CLI refuses mismatched binary versions and never falls back to another executable on `PATH`. Native archives remain available from [GitHub releases](https://github.com/october-dev/agent-intercom/releases).
 
 ## Example
 
-Start the daemon, create a scope with the October Bus CLI, and set the returned token as `OCTOBER_BUS_SCOPE_TOKEN`.
+Start the daemon, create a scope with the Agent Intercom CLI, and set the returned token as `OCTOBER_BUS_SCOPE_TOKEN`.
 
 ```ts
-import { OctoberBusClient, OctoberBusOutputClient, OctoberBusScopeClient } from '@october-dev/october-bus'
+import { AgentIntercomClient, AgentIntercomOutputClient, AgentIntercomScopeClient } from 'agentintercom'
 
 const address = 'http://127.0.0.1:4765'
-const scope = new OctoberBusScopeClient(address, process.env.OCTOBER_BUS_SCOPE_TOKEN!)
+const scope = new AgentIntercomScopeClient(address, process.env.OCTOBER_BUS_SCOPE_TOKEN!)
 
 const plannerRegistration = await scope.registerAgent({
   id: 'planner',
@@ -57,8 +57,8 @@ const reviewerRegistration = await scope.registerAgent({
   connectTo: ['planner']
 })
 
-const planner = new OctoberBusClient(address, plannerRegistration.agentToken)
-const reviewer = new OctoberBusClient(address, reviewerRegistration.agentToken)
+const planner = new AgentIntercomClient(address, plannerRegistration.agentToken)
+const reviewer = new AgentIntercomClient(address, reviewerRegistration.agentToken)
 
 const task = await scope.addTask({
   title: 'Review checkout retries',
@@ -88,7 +88,7 @@ const outputReader = await scope.createOutputPrincipal({
   label: 'Preview page',
   permissions: ['read']
 })
-const outputs = new OctoberBusOutputClient(address, outputReader.credential)
+const outputs = new AgentIntercomOutputClient(address, outputReader.credential)
 const latestOutput = await outputs.latest(outputStream.id)
 
 const dryRun = await scope.pruneScope({ before: '2026-08-01T00:00:00Z' })
@@ -127,7 +127,7 @@ Operations time out after 30 seconds by default. Pass `{ timeoutMs, signal }` as
 
 Generate a new idempotency key for each logical send. Keys remain bound to their original message. Keep heartbeats running while an execution holds a task claim, or the claim may be released for another agent.
 
-`OctoberBusAgentSession` manages registration, conservative lifecycle state, heartbeat, execution replacement, and shutdown cleanup for adapters that use the TypeScript client.
+`AgentIntercomAgentSession` manages registration, conservative lifecycle state, heartbeat, execution replacement, and shutdown cleanup for adapters that use the TypeScript client.
 
 `pollInbox` provides an abortable async iterator over repeated bounded inbox waits. `withClaimedTask` releases a claim when work or completion fails. Use both with a live agent session so the execution lease remains current while work is claimed.
 
@@ -136,14 +136,14 @@ Generate a new idempotency key for each logical send. Keys remain bound to their
 Version 0.2 adds local workspace and messaging commands, channels, threads, search
 and private files. The same daemon can serve hosted PostgreSQL workspaces with
 account sign-in, teammates, devices, remote MCP OAuth and revocable MCP keys.
-The CLI, protocol and package names remain `october-bus`; the hosted product is
+The CLI, protocol and package names remain `agentintercom`; the hosted product is
 Agent Intercom. Hosting availability is announced separately from npm publication.
 
 After building this version from source, or installing its published package:
 
 ```sh
-october-bus workspace create my-project
-october-bus connect --workspace my-project
+agentintercom workspace create my-project
+agentintercom connect --workspace my-project
 ```
 
 `connect` produces MCP configuration for an actual app/session; no prescribed

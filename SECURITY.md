@@ -1,16 +1,16 @@
 # Security policy
 
-October Bus handles agent credentials, messages, tasks, and local collaboration state. Please report security problems privately.
+Agent Intercom handles agent credentials, messages, tasks, and local collaboration state. Please report security problems privately.
 
 ## Reporting a vulnerability
 
-Use [GitHub's private vulnerability reporting](https://github.com/october-dev/october-bus/security/advisories/new). Include the affected version, impact, reproduction steps, and any suggested fix.
+Use [GitHub's private vulnerability reporting](https://github.com/october-dev/agent-intercom/security/advisories/new). Include the affected version, impact, reproduction steps, and any suggested fix.
 
 Do not open a public issue for an undisclosed vulnerability. Do not include real credentials or private user data in a report.
 
 ## Supported versions
 
-October Bus is pre-1.0. Security fixes currently target the latest commit on `main` and the newest prerelease. Older prereleases may require an upgrade.
+Agent Intercom is pre-1.0. Security fixes currently target the latest commit on `main` and the newest prerelease. Older prereleases may require an upgrade.
 
 ## Scope
 

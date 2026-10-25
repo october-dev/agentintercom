@@ -7,27 +7,27 @@ workspace and administrator tokens from the child environment.
 For example, start two shell sessions in a local workspace:
 
 ```sh
-october-bus agent run --scope project --id first --name 'First session' -- bash
-october-bus agent run --scope project --id second --name 'Second session' --connect-to first -- bash
+agentintercom agent run --scope project --id first --name 'First session' -- bash
+agentintercom agent run --scope project --id second --name 'Second session' --connect-to first -- bash
 ```
 
 In the first shell:
 
 ```sh
-october-bus message send --to second --mode request --body 'Review the change' --key review-1
+agentintercom message send --to second --mode request --body 'Review the change' --key review-1
 ```
 
 In the second shell:
 
 ```sh
-october-bus inbox --wait 25s
+agentintercom inbox --wait 25s
 # Use the request's actual message ID below.
-october-bus message send --to first --reply-to MESSAGE_ID --body 'Reviewed' --key review-reply-1
-october-bus message ack MESSAGE_ID
+agentintercom message send --to first --reply-to MESSAGE_ID --body 'Reviewed' --key review-reply-1
+agentintercom message ack MESSAGE_ID
 ```
 
 The first shell can inspect the request's state with
-`october-bus message receipt MESSAGE_ID`, or receive its response with `inbox`.
+`agentintercom message receipt MESSAGE_ID`, or receive its response with `inbox`.
 Message IDs address exact requests; session IDs address exact peers. An owner
 must explicitly link peers. Labels are not mandatory roles.
 

@@ -16,7 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/october-dev/october-bus/deploy/hosted/migrations"
+	"github.com/october-dev/agent-intercom/deploy/hosted/migrations"
 )
 
 // OpenPostgres opens a migrated standalone Bus database. It never performs DDL
@@ -65,7 +65,7 @@ func postgresDatabase(ctx context.Context, connectionString string) (*sqlDatabas
 		}
 	}
 	config.RuntimeParams["search_path"] = "october_bus,pg_catalog"
-	config.RuntimeParams["application_name"] = "october-bus"
+	config.RuntimeParams["application_name"] = "agentintercom"
 	config.RuntimeParams["default_transaction_isolation"] = "read committed"
 	config.RuntimeParams["statement_timeout"] = "30000"
 	config.RuntimeParams["lock_timeout"] = "10000"
@@ -119,7 +119,7 @@ func migrationDigest(data []byte) string {
 func checkPostgresMigrations(ctx context.Context, db *sqlDatabase) error {
 	rows, err := db.QueryContext(ctx, "SELECT name,sha256 FROM schema_migrations ORDER BY name")
 	if err != nil {
-		return errors.New("PostgreSQL schema is unavailable; run october-bus database migrate before starting the service")
+		return errors.New("PostgreSQL schema is unavailable; run agentintercom database migrate before starting the service")
 	}
 	defer rows.Close()
 	names, err := migrationNames()

@@ -1,5 +1,5 @@
 [Unit]
-Description=October Bus private coordination runtime
+Description=Agent Intercom private coordination runtime
 After=network.target
 
 [Service]

@@ -10,7 +10,7 @@ test('artifact checks reject stale source, wrong package metadata and altered by
   t.after(() => rmSync(directory, { recursive: true }))
   const file = join(directory, 'package.tgz')
   writeFileSync(file, 'synthetic tarball')
-  const expected = { name: 'package', version: '1.0.0-next.1', requiredPath: 'bin/october-bus', source: { commit: 'a', sourceDigest: 'b' } }
+  const expected = { name: 'package', version: '1.0.0-next.1', requiredPath: 'bin/agentintercom', source: { commit: 'a', sourceDigest: 'b' } }
   const record = { ...expected, schemaVersion: 1, integrity: integrity(file) }
   assert.equal(validateArtifact(record, expected, file).name, 'package')
   for (const changed of [{ name: 'other' }, { version: 'old' }, { requiredPath: 'other' }, { source: { commit: 'old' } }, { schemaVersion: 2 }]) {
