@@ -48,7 +48,7 @@ function form(children, label, submit) {
   const send = el('button', { type: 'submit', class: 'primary' }, label);
   return el('form', { onsubmit: e => { e.preventDefault(); action(send, () => submit(new FormData(e.currentTarget))); } }, children, send);
 }
-const brand = () => el('div', { class: 'brand' }, el('span', { class: 'mark', 'aria-hidden': true }, 'o'), 'october bus');
+const brand = () => el('div', { class: 'brand' }, el('span', { class: 'mark', 'aria-hidden': true }, 'o'), 'agent intercom');
 const date = value => value ? new Date(value).toLocaleString() : '—';
 const path = suffix => `/api/workspaces/${encodeURIComponent(state.workspace.id)}${suffix}`;
 async function api(url, options = {}) {
@@ -152,7 +152,7 @@ function signIn() {
   });
   root.replaceChildren(el('main', { id: 'main', class: 'auth-wrap' }, brand(), el('div', { class: 'auth-layout' },
     el('div', { class: 'auth-copy' }, el('div', { class: 'eyebrow' }, 'One place to work together'), el('h1', {}, 'Your agents.\nA shared conversation.'), el('p', {}, 'Connect your AI apps, bring in another machine, and keep the work moving with your team.')),
-    el('section', { class: 'card auth-card', 'aria-labelledby': 'signin-title' }, el('h2', { id: 'signin-title' }, 'Sign in to October'), el('p', { class: 'help' }, 'Use your existing October account, or create one with your email.'), emailForm, el('details', {}, el('summary', {}, 'Use an existing password'), passwordForm), el('p', { class: 'help' }, 'Your AI subscriptions stay with your apps. October Bus connects the work.')))));
+    el('section', { class: 'card auth-card', 'aria-labelledby': 'signin-title' }, el('h2', { id: 'signin-title' }, 'Sign in to October'), el('p', { class: 'help' }, 'Use your existing October account, or create one with your email.'), emailForm, el('details', {}, el('summary', {}, 'Use an existing password'), passwordForm), el('p', { class: 'help' }, 'Your AI subscriptions stay with your apps. Agent Intercom connects the work.')))));
 }
 
 async function signedIn() {
@@ -195,7 +195,7 @@ async function consent() {
     closePending('authorization'); location.assign(result.redirectUrl);
   };
   const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(consent)), ownApps.length ? el('label', {}, 'App connection', replacement) : null, warning, el('div', { class: 'actions' }, button('Allow connection', () => approve(true), 'primary'), button('Cancel', () => approve(false)))) : createWorkspace(consent);
-  root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect an app'), el('h1', {}, request.clientName), el('p', {}, 'wants to connect to your October Bus workspace.'), el('p', { class: 'help' }, 'This app registered itself. October has not verified its publisher. Only continue if you started this connection in an app you trust.'), el('ul', { class: 'permission-list' }, el('li', {}, 'Read and share messages, files and channels in the selected workspace.'), el('li', {}, 'Discover connected sessions and coordinate shared tasks.'), el('li', {}, 'Remain connected until you revoke access or the connection expires.')), el('p', { class: 'help' }, 'You can revoke access at any time in Members & devices.'), el('p', { class: 'help' }, 'Returns to: ', el('code', {}, new URL(request.redirectUri).origin)), choice)));
+  root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect an app'), el('h1', {}, request.clientName), el('p', {}, 'wants to connect to your Agent Intercom workspace.'), el('p', { class: 'help' }, 'This app registered itself. October has not verified its publisher. Only continue if you started this connection in an app you trust.'), el('ul', { class: 'permission-list' }, el('li', {}, 'Read and share messages, files and channels in the selected workspace.'), el('li', {}, 'Discover connected sessions and coordinate shared tasks.'), el('li', {}, 'Remain connected until you revoke access or the connection expires.')), el('p', { class: 'help' }, 'You can revoke access at any time in Members & devices.'), el('p', { class: 'help' }, 'Returns to: ', el('code', {}, new URL(request.redirectUri).origin)), choice)));
 }
 async function deviceConsent() {
   const request = await api(`/api/device/authorizations/${encodeURIComponent(pending.device)}`);
@@ -252,12 +252,12 @@ async function sessionsView() {
   if (!page.sessions.length) return el('section', { class: 'card empty' }, el('h2', {}, 'Your first connection starts here.'), el('p', { class: 'muted' }, 'Connect an AI app or terminal session. It will appear here under its own name, ready for shared work.'), button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary'));
   append(page); container.append(list);
   if (page.nextCursor) { let cursor = page.nextCursor; const more = button('Show more sessions', async () => { const next = await api(path('/sessions') + '?after=' + encodeURIComponent(cursor)); append(next); cursor = next.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
-  container.append(el('p', { class: 'help' }, 'Connected means the app contacted October Bus recently. It does not mean the model is currently working.'), button('Refresh sessions', render)); return container;
+  container.append(el('p', { class: 'help' }, 'Connected means the app contacted Agent Intercom recently. It does not mean the model is currently working.'), button('Refresh sessions', render)); return container;
 }
 function connectView() {
   const url = state.config.mcpUrl;
   const scopePath = path('');
-  return el('div', { class: 'grid' }, el('section', { class: 'card' }, el('h2', {}, 'An app with remote MCP'), el('p', {}, 'In your app’s connectors or MCP settings, add October Bus using this address.'), el('pre', {}, url), button('Copy connector URL', () => copy(url)), el('ol', {}, el('li', {}, 'Add the connector in your app.'), el('li', {}, 'Sign in to October and choose this workspace.'), el('li', {}, 'Ask your app to check its Bus inbox or find connected sessions.')), el('p', { class: 'help' }, 'Works with compatible Streamable HTTP MCP clients. Your app controls which conversations can use tools and whether an idle conversation can resume.')),
+  return el('div', { class: 'grid' }, el('section', { class: 'card' }, el('h2', {}, 'An app with remote MCP'), el('p', {}, 'In your app’s connectors or MCP settings, add Agent Intercom using this address.'), el('pre', {}, url), button('Copy connector URL', () => copy(url)), el('ol', {}, el('li', {}, 'Add the connector in your app.'), el('li', {}, 'Sign in to October and choose this workspace.'), el('li', {}, 'Ask your app to check its Bus inbox or find connected sessions.')), el('p', { class: 'help' }, 'Works with compatible Streamable HTTP MCP clients. Your app controls which conversations can use tools and whether an idle conversation can resume.')),
     el('section', { class: 'card' }, el('h2', {}, 'An app that asks for an API key'), el('p', {}, 'Use the same remote MCP URL. Create a separate key for each app so you can revoke it independently.'), form([field('App connection name', { name: 'name', required: true, maxlength: 100, placeholder: 'My AI app' }).node, el('p', { class: 'help' }, 'The app can read and share workspace messages, files, channels and tasks. A key expires after 90 days and cannot manage your account or members.')], 'Create MCP key', async data => {
       const connection = await api(scopePath + '/mcp-keys', { method: 'POST', body: { name: data.get('name') } });
       secretDialog('MCP connection key', connection.token, `Paste this into your app’s secret/API key field, or use Authorization: Bearer <key>. It is shown once and expires ${date(connection.expiresAt)}. Keep it out of chat, URLs and source control.`);
