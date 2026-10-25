@@ -1,6 +1,6 @@
 {
   "name": "@october-dev/october-bus",
-  "version": "0.1.0-next.15",
+  "version": "0.2.0",
   "description": "October Bus native CLI and TypeScript client for agent coordination.",
   "type": "module",
   "sideEffects": false,

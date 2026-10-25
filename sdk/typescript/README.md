@@ -4,7 +4,7 @@ Typed clients and protocol definitions for connecting Node.js applications and h
 
 Starting with `0.1.0-next.15`, this package includes a launcher for the native Go daemon and the TypeScript client. npm installs the matching binary through an exact-version optional dependency; it does not compile Go or run a download script on your machine. Existing TypeScript imports are unchanged. Older npm releases contain only the client.
 
-The client is in active development and has not reached a stable release. Before 1.0, its API, schemas, and protocol behavior may change between releases.
+Before 1.0, APIs and schemas may change between minor releases. Pin the exact package and runtime versions used by your application.
 
 Managed sessions check unauthenticated `/health` before registration and require a ready protocol `0.1` runtime advertising `features: ["session-retirement"]`. A missing feature or incompatible protocol fails with `BusError.code === 'CONFLICT'` before replacing an execution. Close and cancellation drain lifecycle writes and attempt permanent execution retirement; temporary offline heartbeats are distinct. Inspect `session.error` for heartbeat or cleanup failure. Failed cleanup falls back to lease expiry. Do not use this updated session helper against rc.4.
 
@@ -18,19 +18,19 @@ Admins can use `listScopes()`, `rotateScopeToken(scopeId)`, and `deleteScope(sco
 
 ## Install
 
-Install the current prerelease from the `next` tag:
+This source prepares version `0.2.0`; it is not a publication announcement. Once that version is published, install it explicitly:
 
 ```sh
-npm install @october-dev/october-bus@next
+npm install @october-dev/october-bus@0.2.0
 ```
 
-The native CLI is available in `0.1.0-next.15`. Earlier published versions are SDK-only, and unqualified `npx` selects `latest`, not `next`; use the explicit version below or `next`.
+Native packages began with `0.1.0-next.15`. Earlier releases are SDK-only. An unqualified `npx` selects the registry’s `latest` tag; use an explicit version until stable promotion is complete.
 
 Run the CLI without installing Go:
 
 ```sh
-npx @october-dev/october-bus@0.1.0-next.15 demo
-npx @october-dev/october-bus@0.1.0-next.15 start
+npx @october-dev/october-bus@0.2.0 demo
+npx @october-dev/october-bus@0.2.0 start
 ```
 
 macOS, Linux, and Windows binaries are provided for x64 and arm64. Linux binaries are built without CGO. Keep optional dependencies enabled; `--ignore-scripts` is supported. If you installed with `--omit=optional`, reinstall with `--include=optional` to use the CLI. SDK-only consumers can omit the binary packages and keep using a separately installed daemon. Do not copy `node_modules` between platforms.
@@ -130,3 +130,29 @@ Generate a new idempotency key for each logical send. Keys remain bound to their
 `OctoberBusAgentSession` manages registration, conservative lifecycle state, heartbeat, execution replacement, and shutdown cleanup for adapters that use the TypeScript client.
 
 `pollInbox` provides an abortable async iterator over repeated bounded inbox waits. `withClaimedTask` releases a claim when work or completion fails. Use both with a live agent session so the execution lease remains current while work is claimed.
+
+## Workspaces and connections
+
+Version 0.2 adds local workspace and messaging commands, channels, threads, search
+and private files. The same daemon can serve hosted PostgreSQL workspaces with
+account sign-in, teammates, devices, remote MCP OAuth and revocable MCP keys.
+The CLI, protocol and package names remain `october-bus`; the hosted product is
+Agent Intercom. Hosting availability is announced separately from npm publication.
+
+After building this version from source, or installing its published package:
+
+```sh
+october-bus workspace create my-project
+october-bus connect --workspace my-project
+```
+
+`connect` produces MCP configuration for an actual app/session; no prescribed
+agent roles are required. A hosted device uses `hosted login --server <origin>`
+then `connect --hosted default`. Any compatible MCP client can use tools; idle
+wake depends on the host. Native Claude Code and experimental Codex launchers
+are available on macOS/Linux/WSL through `session start claude` and
+`session start codex`. They preserve the host's tool approvals and permissions.
+
+See [connections](../../docs/connect-sessions.md),
+[hosted workspaces](../../docs/hosted-workspaces.md) and
+[the draft release notes](../../docs/release-notes-0.2.0.md).
