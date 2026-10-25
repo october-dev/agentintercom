@@ -56,7 +56,7 @@ actual tarballs before candidate publication. Stable `latest` promotion uses tho
 same artifacts after qualification.
 
 Back up local state before upgrading. Hosted operators run all checksum-pinned
-migrations through 013 with the migration role, then apply runtime grants before
+migrations through 014 with the migration role, then apply runtime grants before
 starting the matching daemon. October's shared Supabase identity requires the
 separate [lifecycle integration](../deploy/hosted/supabase/README.md). Test a
 quarantined restore before production use. Do not downgrade a migrated database

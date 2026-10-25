@@ -22,6 +22,9 @@ DO $$ BEGIN
 END $$;
 CREATE ROLE october_bus_migrator LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD :'migration_password';
 CREATE ROLE october_bus_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 24 PASSWORD :'runtime_password';
+-- Managed PostgreSQL administrators need explicit owner-role membership;
+-- CREATEROLE alone does not permit creating a schema owned by the new role.
+GRANT october_bus_migrator TO CURRENT_USER WITH INHERIT TRUE, SET TRUE;
 CREATE SCHEMA october_bus AUTHORIZATION october_bus_migrator;
 REVOKE ALL ON SCHEMA october_bus FROM PUBLIC;
 GRANT USAGE ON SCHEMA october_bus TO october_bus_runtime;

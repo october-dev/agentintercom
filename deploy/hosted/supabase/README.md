@@ -6,7 +6,7 @@ its other products. Install [001_account_lifecycle.sql](001_account_lifecycle.sq
 as the project's database administrator before opening self-service hosting.
 It is a separate, privileged integration, not an embedded Bus migration.
 
-Prerequisites: standalone migrations 001–013, the `october_bus_migrator` and
+Prerequisites: standalone migrations 001–014, the `october_bus_migrator` and
 `october_bus_runtime` roles, and October's existing `account_storage_objects(uuid)`
 contract from the account deletion migration. The script checks that exact
 contract before replacing it and refuses to overwrite an unfamiliar version.

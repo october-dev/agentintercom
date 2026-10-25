@@ -153,10 +153,6 @@ func (a *HostedAccounts) CreateWorkspace(ctx context.Context, user HostedUser, n
 	if err != nil {
 		return Workspace{}, err
 	}
-	sealed, err := a.seal(token, "workspace/"+id)
-	if err != nil {
-		return Workspace{}, err
-	}
 	// Account-level serialization bounds concurrent trial creation. The new
 	// workspace cannot be reached before this transaction commits.
 	tx, err := a.store.beginTx(ctx, "account/"+user.ID)
@@ -184,7 +180,7 @@ func (a *HostedAccounts) CreateWorkspace(ctx context.Context, user HostedUser, n
 	if _, err := tx.ExecContext(ctx, "INSERT INTO scopes(scope_id,token_hash,created_at) VALUES(?,?,?)", id, tokenDigest(token), now); err != nil {
 		return Workspace{}, err
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO hosted_workspaces(scope_id,name,owner_credential,created_at,trial_ends_at) VALUES(?,?,?,?,?)", id, strings.TrimSpace(name), sealed, now, trialEnd); err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO hosted_workspaces(scope_id,name,created_at,trial_ends_at) VALUES(?,?,?,?)", id, strings.TrimSpace(name), now, trialEnd); err != nil {
 		return Workspace{}, err
 	}
 	email, _ := normalizedEmail(user.Email)

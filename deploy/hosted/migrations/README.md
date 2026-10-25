@@ -159,3 +159,10 @@ once deletion starts. Private file bytes are reclaimed by the orphan collector.
 The optional [Supabase account integration](../supabase/README.md) is applied
 separately by the identity administrator. It guards shared account deletion and
 membership creation without granting the runtime privileges on Auth tables.
+
+## Unused workspace credential removal: 014_remove_unused_workspace_credentials.sql
+
+Drops the encrypted owner scope credential reserved by the original hosted
+schema. Hosted owner operations authorize verified membership directly; no code
+reads that credential. The opaque scope digest stays for the shared runtime's
+schema, while connection/session credentials keep their separate encryption.
