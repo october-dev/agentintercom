@@ -32,9 +32,18 @@ required. Other clients see the same conflict and can direct users to the web.
 An interrupted account deletion can be retried through the existing endpoint.
 If an operator must **cancel** an unfinished account deletion, first confirm no
 account-delete request is running and review whether its other steps already ran.
-Only then remove that user's row from `october_bus.supabase_account_deletions`.
+Only then remove that user's row from `october_bus_identity.account_deletions`.
 The Bus runtime cannot remove the fence. An actual Auth deletion removes it by
 foreign-key cascade; a missing Auth user still cannot receive a membership.
+
+Identity deletion intent lives in the separate `october_bus_identity` schema,
+which the runtime cannot access. This keeps Auth foreign keys out of a standalone
+Bus dump. During a quarantined Bus-only restore, use `restore-list.py --quarantine`
+to omit the membership trigger that references shared Auth functions. After
+reconciling the recovered memberships against current accounts, run
+[restore-membership-guard.sql](restore-membership-guard.sql) in the existing
+identity project before enabling any recovered workspace. A fresh identity
+project needs the full integration, not just the trigger repair.
 
 Future changes to `account_storage_objects` must retain this preflight before
 returning objects. Restoring or replacing shared Auth functions must requalify

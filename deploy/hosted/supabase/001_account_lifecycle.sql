@@ -28,12 +28,13 @@ BEGIN
  END IF;
 END $check$;
 
-CREATE TABLE october_bus.supabase_account_deletions (
+CREATE SCHEMA october_bus_identity;
+REVOKE ALL ON SCHEMA october_bus_identity FROM PUBLIC,anon,authenticated,october_bus_runtime;
+CREATE TABLE october_bus_identity.account_deletions (
  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
  started_at timestamptz NOT NULL DEFAULT now()
 );
-ALTER TABLE october_bus.supabase_account_deletions OWNER TO october_bus_migrator;
-REVOKE ALL ON october_bus.supabase_account_deletions FROM PUBLIC,anon,authenticated,october_bus_runtime;
+REVOKE ALL ON october_bus_identity.account_deletions FROM PUBLIC,anon,authenticated,october_bus_runtime;
 
 -- The existing account-delete handler calls account_storage_objects before
 -- canceling subscriptions, revoking devices or removing files. Fence new Bus
@@ -46,7 +47,7 @@ BEGIN
  IF EXISTS(SELECT 1 FROM october_bus.hosted_members WHERE user_id=p_user::text) THEN
   RAISE EXCEPTION 'OCTOBER_BUS_WORKSPACES_REMAIN' USING ERRCODE='23505';
  END IF;
- INSERT INTO october_bus.supabase_account_deletions(user_id) VALUES(p_user) ON CONFLICT DO NOTHING;
+ INSERT INTO october_bus_identity.account_deletions(user_id) VALUES(p_user) ON CONFLICT DO NOTHING;
 END $body$;
 REVOKE ALL ON FUNCTION public.bus_prepare_account_deletion(uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.bus_prepare_account_deletion(uuid) TO service_role;
@@ -58,7 +59,7 @@ BEGIN
  -- transaction wins, no membership can appear after successful preflight.
  PERFORM 1 FROM auth.users WHERE id=NEW.user_id::uuid FOR KEY SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Bus membership requires a live account' USING ERRCODE='23503'; END IF;
- IF EXISTS(SELECT 1 FROM october_bus.supabase_account_deletions WHERE user_id=NEW.user_id::uuid) THEN
+ IF EXISTS(SELECT 1 FROM october_bus_identity.account_deletions WHERE user_id=NEW.user_id::uuid) THEN
   RAISE EXCEPTION 'Account deletion is in progress' USING ERRCODE='40001';
  END IF;
  RETURN NEW;

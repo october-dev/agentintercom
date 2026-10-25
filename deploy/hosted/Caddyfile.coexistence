@@ -1,0 +1,79 @@
+# Replace ONLY the Bus site after standalone service, identity and backup
+# qualification. Keep every other site (including the worker gateway) unchanged.
+# Change this public hostname and the marketing upstream for your deployment.
+bus.october.dev {
+	header {
+		X-Content-Type-Options nosniff
+		Strict-Transport-Security "max-age=31536000"
+	}
+	request_body {
+		max_size 17MiB
+	}
+
+	# These explicit handles must precede the marketing /assets/* catch-all.
+	@workspace_assets path /app /app/ /assets/app.js /assets/style.css /assets/app.js.LEGAL.txt
+	@legacy_mcp {
+		path /mcp
+		header_regexp Authorization "(?i:^Bearer)[ \\t]+obg_[A-Za-z0-9_-]+$"
+	}
+	@legacy_api path /bus /bus/*
+	@marketing {
+		method GET HEAD
+		path / /styles.css /site.js /hero-video.js /assets/* /robots.txt /sitemap.xml
+	}
+	@marketing_home path /
+	@marketing_robots path /robots.txt
+	@marketing_sitemap path /sitemap.xml
+
+	# route preserves this order; automatic matcher sorting must not put the
+	# broad marketing asset matcher before the workspace's exact asset paths.
+	route {
+		handle @workspace_assets {
+			reverse_proxy 127.0.0.1:4780
+		}
+		handle @legacy_mcp {
+			reverse_proxy 127.0.0.1:8787 {
+				flush_interval -1
+				transport http {
+					dial_timeout 3s
+					response_header_timeout 35s
+				}
+			}
+		}
+		handle @legacy_api {
+			reverse_proxy 127.0.0.1:8787 {
+				flush_interval -1
+				transport http {
+					dial_timeout 3s
+					response_header_timeout 35s
+				}
+			}
+		}
+		handle @marketing {
+			rewrite @marketing_home /bus
+			rewrite @marketing_robots /bus-robots.txt
+			rewrite @marketing_sitemap /bus-sitemap.xml
+			reverse_proxy https://october-products.vercel.app {
+				header_up Host october-products.vercel.app
+				header_up -Authorization
+				header_up -Cookie
+				transport http {
+					tls_server_name october-products.vercel.app
+					dial_timeout 5s
+					response_header_timeout 30s
+				}
+			}
+		}
+		# New MCP (including unauthenticated OAuth discovery), account APIs,
+		# protocol routes and default readiness use the PostgreSQL service.
+		handle {
+			reverse_proxy 127.0.0.1:4780 {
+				flush_interval -1
+				transport http {
+					dial_timeout 3s
+					response_header_timeout 35s
+				}
+			}
+		}
+	}
+}

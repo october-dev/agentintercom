@@ -148,9 +148,12 @@ path and the SHA-256 of the matching executable. Verify the binary digest before
 running it. Do not restore files over a live daemon's directory or open a restored
 database with an unrelated release.
 
-Provision an empty target schema and roles using bootstrap. PostgreSQL's restore
-list includes `CREATE SCHEMA`; omit only the `SCHEMA - october_bus` entry from
-`pg_restore --list bus.dump` because bootstrap already created it. Restore the
+Provision an empty target schema and roles using bootstrap. Prepare the restore
+list with `pg_restore --list bus.dump | python3 restore-list.py --quarantine`.
+The [filter](restore-list.py) omits the schema creation entry (bootstrap already
+created it) and, if present, the optional shared Auth membership trigger. All
+other triggers and constraints remain. Shared Auth objects belong to the identity
+provider's separate backup, so a private Bus recovery must not require them. Restore the
 remaining list as the migration owner with `--single-transaction --exit-on-error
 --no-owner --no-privileges --use-list <filtered-list>`. Apply runtime grants, then
 run the matching binary's `database check`. No `--clean` or schema drop is needed.
@@ -163,6 +166,10 @@ reconnection: a backup can predate a revocation. This disables restored workspac
 and invalidates device/MCP authority while retaining history and work. Review
 memberships and operator suspensions changed since the backup,
 and reconcile Stripe's current subscriptions/refunds before enabling payments.
+For October's Supabase deployment, restore the shared identity project if needed,
+then [reinstall the membership guard](supabase/restore-membership-guard.sql).
+It refuses memberships for deleted or deleting accounts until they are reconciled.
+Never enable recovered workspaces with that guard omitted.
 An operator re-enables only reviewed workspaces, preserving prior suspensions.
 Members reconnect their own machines/apps with fresh grants. Use explicit
 connection replacement during device pairing/OAuth consent, or **Replace key**
@@ -189,3 +196,45 @@ requires users to leave or close their Intercom workspaces, and prevents concurr
 membership creation for an account being deleted. Run its disposable database
 rehearsal and deploy the matching website explanation before opening hosting.
 Keep these shared Auth functions in the identity deployment's recovery procedure.
+
+## Preserve older Bus connections during cutover
+
+If this origin already serves operator-provisioned Bus connectors and laptop
+bridges, use [Caddyfile.coexistence](Caddyfile.coexistence) after standalone
+qualification. Replace only that site's block; preserve unrelated sites such as
+the worker gateway. The configuration routes `obg_` connector keys at `/mcp` and
+all `/bus/*` requests to the legacy gateway. New MCP keys, OAuth, account APIs and
+protocol requests use the new service. Unauthenticated `/mcp` advertises its OAuth
+metadata. The `/health/ready` endpoint now checks the standalone service; monitor
+the legacy gateway on loopback separately while clients still depend on it.
+
+Exact workspace asset paths take precedence over the marketing `/assets/*`
+matcher. Marketing receives only GET/HEAD requests, with Authorization and Cookie
+removed. The 17 MiB proxy limit allows a 16 MiB file upload; each runtime retains
+its own smaller JSON limits. Validate the combined configuration and reload Caddy
+only after both backends are healthy. Keep a private copy of the prior site block
+for rollback. Test routing without touching a running site using
+`python3 scripts/test-hosted-proxy.py` on a host with Caddy installed; it starts
+three synthetic loopback backends and a temporary proxy, then stops them all.
+
+## Backup retention
+
+Use a dedicated private Restic repository for this deployment. After a successful
+backup and restore rehearsal, install
+[october-bus-backup-maintenance.service](october-bus-backup-maintenance.service) and
+[its timer](october-bus-backup-maintenance.timer). The daily job checks repository
+structure before expiring snapshots outside the newest snapshot's 30-day window
+and reclaiming their unreferenced data. It groups by the deployment tag rather
+than temporary dump paths or host names. New backups must keep running for this
+window to advance; monitor both backup freshness and the maintenance unit's exit
+status. Restic locking prevents overlapping backup/prune from modifying the
+repository unsafely; a failed operation needs retry and investigation.
+
+Deleted workspace content may remain in retained private backups for up to that
+window plus scheduling delay. A restored service stays quarantined until newer
+revocations/deletions are reconciled. A repository structure check does not read
+all file content: run `restic check --read-data` periodically and perform an
+isolated application restore at least monthly and after backup-format changes.
+For a retired deployment, make an explicit retention/removal decision; a stopped
+backup job cannot expire its own final snapshots. Monitor the host and backup
+jobs externally; systemd exit status alone is not an on-call notification.

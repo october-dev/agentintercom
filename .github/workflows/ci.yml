@@ -151,6 +151,8 @@ jobs:
       - name: PostgreSQL and hosted authorization regressions
         run: go test -race -count=1 ./bus ./cmd/october-bus ./conformance -run 'Test(Postgres|Hosted)'
       - name: Verify shared identity lifecycle
+        env:
+          OCTOBER_BUS_TEST_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: python3 scripts/test-supabase-account-lifecycle.py
 
   workspace-ui:

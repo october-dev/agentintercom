@@ -20,6 +20,11 @@ env = dict(os.environ, PGHOST=url.hostname, PGPORT=str(url.port or 5432),
 args = ['psql', '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose']
 created_roles = []
 database = 'october_bus_identity_test_' + uuid.uuid4().hex[:12]
+restore_database = database + '_restore'
+dump_path = '/tmp/' + database + '.dump'
+container = os.environ.get('OCTOBER_BUS_TEST_POSTGRES_CONTAINER', '')
+if container and not re.fullmatch(r'[a-f0-9]+', container):
+    raise SystemExit('Expected a test PostgreSQL container ID')
 u1, u2, u3 = [str(uuid.uuid4()) for _ in range(3)]
 
 
@@ -35,6 +40,19 @@ def query(sql, db=None, failure=None):
 
 def member(user, scope='fixture'):
     return f"SET ROLE october_bus_runtime; INSERT INTO october_bus.hosted_members VALUES('{scope}','{user}');"
+
+
+def pgtool(name, *arguments, db=None, input=None):
+    command = [name, *arguments]
+    if container:
+        # Use the service container's matching PostgreSQL version in CI. No
+        # database passwords are interpolated into process arguments.
+        command = ['docker', 'exec', '-i', *sum((['--env', key] for key in ('PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE', 'PGSSLMODE')), []), container, *command]
+    result = subprocess.run(command, env=dict(env, PGDATABASE=db or database), input=input,
+                            text=True, capture_output=True, timeout=20)
+    if result.returncode:
+        raise RuntimeError(result.stderr)
+    return result.stdout
 
 
 def race(sql, follower, expected):
@@ -88,13 +106,13 @@ $$;
     # does after every embedded migration. It must not reopen identity fencing.
     query('SET ROLE october_bus_migrator;\n' + (ROOT / 'deploy/hosted/database-runtime-grants.sql').read_text())
     query('SET ROLE october_bus_runtime; SELECT * FROM auth.users;', failure='42501')
-    query('SET ROLE october_bus_runtime; DELETE FROM october_bus.supabase_account_deletions;', failure='42501')
+    query('SET ROLE october_bus_runtime; DELETE FROM october_bus_identity.account_deletions;', failure='42501')
     query(f"SET ROLE anon; SELECT public.bus_prepare_account_deletion('{u1}');", failure='42501')
     query(member(u1))
     query(member(str(uuid.uuid4())), failure='23503')
     query(f"SET ROLE service_role; SELECT * FROM public.account_storage_objects('{u1}');", failure='OCTOBER_BUS_WORKSPACES_REMAIN')
     query(f"DELETE FROM auth.users WHERE id='{u1}';", failure='OCTOBER_BUS_WORKSPACES_REMAIN')
-    assert query('SELECT count(*) FROM october_bus.supabase_account_deletions') == '0'
+    assert query('SELECT count(*) FROM october_bus_identity.account_deletions') == '0'
     query('DELETE FROM october_bus.hosted_members;')
     canvas = str(uuid.uuid4())
     query(f"""INSERT INTO public.desktop_canvases VALUES('{canvas}','{u1}');
@@ -104,14 +122,38 @@ INSERT INTO storage.objects VALUES('october-code','{u1}/file'),('code-sync','{ca
     assert len(result.splitlines()) == 3, 'preflight changed the storage object contract'
     query(member(u1), failure='40001')
     query(f"DELETE FROM auth.users WHERE id='{u1}';")
-    assert query('SELECT count(*) FROM october_bus.supabase_account_deletions') == '0'
+    assert query('SELECT count(*) FROM october_bus_identity.account_deletions') == '0'
     query(member(u1), failure='23503')
     race(f"SELECT public.bus_prepare_account_deletion('{u2}');", member(u2), '40001')
     race(member(u3), f"SET ROLE service_role; SELECT * FROM public.account_storage_objects('{u3}');", 'OCTOBER_BUS_WORKSPACES_REMAIN')
+    pgtool('pg_dump', '--format=custom', '--schema=october_bus', '--role=october_bus_runtime', '--file='+dump_path)
+    listing = pgtool('pg_restore', '--list', dump_path)
+    assert 'TRIGGER october_bus hosted_members bus_member_account' in listing
+    assert not any(re.search(r'\boctober_bus_identity\b', line) for line in listing.splitlines() if not line.startswith(';')), 'identity metadata leaked into the standalone archive'
+    filtered = subprocess.run(['python3', str(ROOT / 'deploy/hosted/restore-list.py'), '--quarantine'],
+                              input=listing, capture_output=True, text=True, check=True).stdout
+    assert 'TRIGGER october_bus hosted_members bus_member_account' not in filtered
+    query(f'CREATE DATABASE {restore_database}', env['PGDATABASE'])
+    query('CREATE SCHEMA october_bus AUTHORIZATION october_bus_migrator;', restore_database)
+    pgtool('pg_restore', '--dbname='+restore_database, '--role=october_bus_migrator', '--single-transaction',
+           '--exit-on-error', '--no-owner', '--no-privileges', '--use-list=/dev/stdin', dump_path,
+           db=restore_database, input=filtered)
+    assert query('SELECT count(*) FROM october_bus.hosted_members', restore_database) == '1'
+    assert query("SELECT count(*) FROM pg_namespace WHERE nspname='auth'", restore_database) == '0'
+    repair = (ROOT / 'deploy/hosted/supabase/restore-membership-guard.sql').read_text()
+    query(repair, restore_database, failure='Shared identity integration missing')
+    query('DROP TRIGGER bus_member_account ON october_bus.hosted_members;')
+    query(repair)
+    query(member(u1), failure='23503')
     # A later migration must not silently overwrite a changed storage contract.
     query(migration, failure='Account storage contract changed or is missing')
-    print('Supabase identity lifecycle: membership, deletion, storage, privileges and both race orders passed')
+    print('Supabase identity lifecycle: membership, deletion, storage, privileges, both race orders and standalone backup/restore passed')
 finally:
+    if container:
+        subprocess.run(['docker', 'exec', container, 'rm', '-f', dump_path], check=True)
+    else:
+        pathlib.Path(dump_path).unlink(missing_ok=True)
+    query(f'DROP DATABASE IF EXISTS {restore_database} WITH (FORCE)', env['PGDATABASE'])
     query(f'DROP DATABASE IF EXISTS {database} WITH (FORCE)', env['PGDATABASE'])
     for role in reversed(created_roles):
         query(f'DROP ROLE {role}', env['PGDATABASE'])
