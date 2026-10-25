@@ -85,7 +85,7 @@ func TestWorkspaceConnectionConfiguration(t *testing.T) {
 func TestNewMCPSessionsDoNotReplaceEachOther(t *testing.T) {
 	ctx, owner := startWorkspaceTest(t)
 	connect := func() *mcp.ClientSession {
-		stderr := new(bytes.Buffer)
+		stderr := new(syncBuffer)
 		command := mcpBridgeCommand("", "", stderr)
 		args, _ := json.Marshal([]string{"--scope", "project", "--new-session", "--name", "My app"})
 		command.Env = setEnvironment(command.Env, "OCTOBER_BUS_MCP_STDIO_TEST_ARGS", string(args))

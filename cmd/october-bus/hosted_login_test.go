@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,11 @@ import (
 func TestHostedProfileAndConnectionKeepSecretsPrivate(t *testing.T) {
 	t.Setenv("OCTOBER_BUS_DATA_DIR", t.TempDir())
 	path, err := hostedProfilePath("team", true)
+	if runtime.GOOS == "windows" {
+		require(t, err != nil && strings.Contains(err.Error(), "remote MCP connector"), "Windows must reject unsupported credential storage with a connection alternative")
+		require(t, path == "", "unsupported credential storage returned a path")
+		return
+	}
 	requireNoError(t, err)
 	profile := hostedProfile{Version: 1, Server: "https://bus.example.test", WorkspaceID: "workspace", DeviceID: "device", Token: "obd_" + strings.Repeat("A", 43), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
 	requireNoError(t, saveHostedProfile(path, profile))

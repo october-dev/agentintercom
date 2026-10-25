@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -134,7 +135,10 @@ func TestAttachmentPrivateFilesAndBundleRestore(t *testing.T) {
 	location := filepath.Join(store.files.directory, file.ID)
 	info, err := os.Stat(location)
 	requireNoError(t, err)
-	require(t, info.Mode().Perm() == 0600, "file is not private")
+	// Windows exposes DOS attributes through Mode, not the file's ACL.
+	if runtime.GOOS != "windows" {
+		require(t, info.Mode().Perm() == 0600, "file is not private")
+	}
 	another, err := OpenWithOptions(":memory:", RuntimeOptions{AttachmentDir: store.files.directory})
 	if another != nil {
 		another.Close()
