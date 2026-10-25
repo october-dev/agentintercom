@@ -11,10 +11,15 @@ import (
 type scopeCredentialKey struct{}
 type executionKey struct{}
 type hostedMemberKey struct{}
+type hostedOwnerKey struct{}
 
 // The HTTP identity verifier supplies this context, never a request body.
 func withHostedMember(ctx context.Context, user HostedUser) context.Context {
 	return context.WithValue(ctx, hostedMemberKey{}, user)
+}
+
+func withHostedOwner(ctx context.Context, user HostedUser) context.Context {
+	return context.WithValue(withHostedMember(ctx, user), hostedOwnerKey{}, true)
 }
 
 func withExecution(ctx context.Context, p Principal) context.Context {
@@ -59,9 +64,14 @@ func (s *Store) beginTx(ctx context.Context, scopeID string) (*sqlTransaction, e
 		}
 	}
 	if user, ok := ctx.Value(hostedMemberKey{}).(HostedUser); ok {
-		if _, err := hostedMember(ctx, tx, scopeID, user.ID); err != nil {
+		role, err := hostedMember(ctx, tx, scopeID, user.ID)
+		if err != nil {
 			tx.Rollback()
 			return nil, err
+		}
+		if ctx.Value(hostedOwnerKey{}) == true && role != "owner" {
+			tx.Rollback()
+			return nil, Errorf(CodePermissionDenied, "Only a workspace owner can manage retained data")
 		}
 	}
 	return tx, nil

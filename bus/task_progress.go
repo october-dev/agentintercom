@@ -77,6 +77,9 @@ func (s *Store) AddTaskProgress(ctx context.Context, principal Principal, taskID
 		return TaskProgress{}, err
 	}
 	defer tx.Rollback()
+	if err := requireHostedTextAllowance(ctx, tx, principal.ScopeID); err != nil {
+		return TaskProgress{}, err
+	}
 	now := nowMillis()
 	if err := requireCurrentExecution(ctx, tx, principal, now); err != nil {
 		return TaskProgress{}, err

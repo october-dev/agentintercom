@@ -45,7 +45,21 @@ func appendEvent(ctx context.Context, tx sqlExecutor, scopeID, eventType, subjec
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO events(event_id,scope_id,revision,event_type,subject_id,attributes_json,created_at) VALUES(?,?,?,?,?,?,?)`,
 		eventID, scopeID, revision, eventType, subjectID, string(data), createdAt)
-	return err
+	if err != nil {
+		return err
+	}
+	// A bounded notification log is distinct from retained messages and tasks.
+	// Clients already handle a cursor below the floor by resynchronizing.
+	if isPostgresQuery(tx) && revision > 100000 && revision%100 == 0 {
+		floor := revision - 100000
+		if _, err := tx.ExecContext(ctx, "DELETE FROM events WHERE scope_id=? AND revision<=? AND event_type!='scope.imported' AND EXISTS(SELECT 1 FROM hosted_workspaces WHERE scope_id=?)", scopeID, floor, scopeID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE scopes SET event_floor_revision=GREATEST(event_floor_revision,?) WHERE scope_id=? AND EXISTS(SELECT 1 FROM hosted_workspaces WHERE scope_id=?)", floor, scopeID, scopeID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func scanEvent(row rowScanner) (BusEvent, error) {

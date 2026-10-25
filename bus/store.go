@@ -1584,6 +1584,9 @@ func (s *Store) AskHuman(ctx context.Context, principal Principal, input AskHuma
 		return HumanEscalation{}, err
 	}
 	defer tx.Rollback()
+	if err := requireHostedTextAllowance(ctx, tx, principal.ScopeID); err != nil {
+		return HumanEscalation{}, err
+	}
 	if err := requireCurrentExecution(ctx, tx, principal, nowMillis()); err != nil {
 		return HumanEscalation{}, err
 	}

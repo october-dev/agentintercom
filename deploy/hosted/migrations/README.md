@@ -130,3 +130,11 @@ immutable checkout attempts, verified funded invoice periods and webhook receipt
 Existing workspace owners seed their first trial window from existing workspaces.
 All tables remain in `october_bus`; no existing product billing schema is changed.
 See [billing configuration](../../../docs/hosted-billing.md).
+
+## Retained-data accounting: 011_hosted_storage.sql
+
+Adds customer pause state, logical storage counters and maintenance timestamps.
+Two child tables persist their parent scope for correct cascading-delete accounting;
+triggers supply it for existing runtime inserts. Counter functions run with the
+caller’s privileges and a fixed schema search path. No external Auth or product
+ledger is modified. See [workspace data](../../../docs/workspace-data.md).

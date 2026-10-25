@@ -222,3 +222,34 @@ test('billing shows actual entitlement and owner controls, never trusts a checko
   await expect(page.getByRole('button', { name: 'Payment settings & cancellation', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '$19 / month', exact: true })).toHaveCount(0);
 });
+
+test('data controls confirm pauses and cleanup, then download a portable archive', async ({ page }) => {
+  await fixture(page);
+  let paused = false;
+  const cleanups = [];
+  await page.route('**/api/workspaces', route => route.fulfill({ json: { ok: true, result: [{ id: 'workspace-1', name: 'My workspace', role: 'owner', paused }] } }));
+  await page.route(/\/api\/workspaces\/workspace-1\/(storage|pause|prune|export)$/, async route => {
+    const path = new URL(route.request().url()).pathname;
+    let result = {};
+    if (path.endsWith('/storage')) result = { records: [{ recordType: 'message', state: 'acknowledged', count: 2 }] };
+    if (path.endsWith('/pause')) paused = route.request().postDataJSON().paused;
+    if (path.endsWith('/prune')) { cleanups.push(route.request().postDataJSON()); result = { records: { messages: 2, tasks: 0, events: 4 }, dryRun: !cleanups.at(-1).execute }; }
+    if (path.endsWith('/export')) return route.fulfill({ contentType: 'application/json', headers: { 'Content-Disposition': 'attachment; filename="october-bus-workspace.json"' }, body: JSON.stringify({ format: 'october-bus.scope', version: 3 }) });
+    await route.fulfill({ json: { ok: true, result } });
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Data & recovery', exact: true }).click();
+  await page.getByRole('button', { name: 'Pause sessions', exact: true }).click();
+  expect(paused).toBe(false);
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Sessions paused', exact: true })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download workspace archive', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('october-bus-workspace.json');
+  await page.getByRole('button', { name: 'Preview cleanup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Delete eligible history?', exact: true })).toBeVisible();
+  expect(cleanups.map(c => c.execute)).toEqual([false]);
+  await page.getByRole('button', { name: 'Delete eligible history', exact: true }).click();
+  await expect(page.getByText('Completed history pruned.', { exact: true })).toBeVisible();
+  expect(cleanups.map(c => c.execute)).toEqual([false, true]);
+});

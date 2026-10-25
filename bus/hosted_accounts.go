@@ -27,6 +27,7 @@ type Workspace struct {
 	CreatedAt   string `json:"createdAt"`
 	TrialEndsAt string `json:"trialEndsAt"`
 	PaidUntil   string `json:"paidUntil,omitempty"`
+	Paused      bool   `json:"paused"`
 	Disabled    bool   `json:"disabled"`
 	MemberLimit int    `json:"memberLimit"`
 }
@@ -196,7 +197,7 @@ func (a *HostedAccounts) ListWorkspaces(ctx context.Context, user HostedUser) ([
 	if err := validateHostedUser(user); err != nil {
 		return nil, err
 	}
-	rows, err := a.store.db.QueryContext(ctx, `SELECT w.scope_id,w.name,m.role,w.created_at,w.trial_ends_at,w.paid_until,w.disabled_at,w.member_limit
+	rows, err := a.store.db.QueryContext(ctx, `SELECT w.scope_id,w.name,m.role,w.created_at,w.trial_ends_at,w.paid_until,w.disabled_at,w.paused_at,w.member_limit
 FROM hosted_workspaces w JOIN hosted_members m ON m.scope_id=w.scope_id WHERE m.user_id=? ORDER BY w.created_at,w.scope_id`, user.ID)
 	if err != nil {
 		return nil, err
@@ -205,11 +206,11 @@ FROM hosted_workspaces w JOIN hosted_members m ON m.scope_id=w.scope_id WHERE m.
 	values := []Workspace{}
 	for rows.Next() {
 		var v Workspace
-		var created, trial, paid, disabled int64
-		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &created, &trial, &paid, &disabled, &v.MemberLimit); err != nil {
+		var created, trial, paid, disabled, paused int64
+		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &created, &trial, &paid, &disabled, &paused, &v.MemberLimit); err != nil {
 			return nil, err
 		}
-		v.CreatedAt, v.TrialEndsAt, v.PaidUntil, v.Disabled = instant(created), instant(trial), instant(paid), disabled != 0
+		v.CreatedAt, v.TrialEndsAt, v.PaidUntil, v.Disabled, v.Paused = instant(created), instant(trial), instant(paid), disabled != 0, paused != 0
 		values = append(values, v)
 	}
 	return values, rows.Err()

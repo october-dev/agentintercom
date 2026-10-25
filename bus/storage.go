@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -271,9 +272,14 @@ func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, ex
 		return PruneScopeResult{}, err
 	}
 	var taskProgressCount int64
-	for _, taskID := range tasks {
+	for first := 0; first < len(tasks); first += 500 {
+		ids := tasks[first:min(first+500, len(tasks))]
+		args := []any{scopeID}
+		for _, id := range ids {
+			args = append(args, id)
+		}
 		var count int64
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_progress WHERE scope_id=? AND task_id=?`, scopeID, taskID).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM task_progress WHERE scope_id=? AND task_id IN ("+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+")", args...).Scan(&count); err != nil {
 			return PruneScopeResult{}, err
 		}
 		taskProgressCount += count
@@ -290,43 +296,26 @@ func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, ex
 		},
 	}
 	if execute {
-		for _, root := range channelRoots {
-			if _, err := tx.ExecContext(ctx, "DELETE FROM channel_posts WHERE scope_id=? AND thread_id=?", scopeID, root); err != nil {
-				return PruneScopeResult{}, err
-			}
-			if _, err := tx.ExecContext(ctx, "DELETE FROM channel_posts WHERE scope_id=? AND post_id=?", scopeID, root); err != nil {
-				return PruneScopeResult{}, err
-			}
-		}
-		// Deleting tasks cascades their correlations before either message is removed.
-		for _, id := range a2aTasks {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM a2a_tasks WHERE scope_id=? AND task_id=?`, scopeID, id); err != nil {
-				return PruneScopeResult{}, err
-			}
-		}
-		for _, message := range messages {
-			if message.mode != MessageResponse {
-				continue
-			}
-			if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE scope_id=? AND message_id=?`, scopeID, message.id); err != nil {
-				return PruneScopeResult{}, err
-			}
-		}
+		// Batch deletes keep a large retention pass from needing one database round
+		// trip per record. References are removed before their parents.
+		var replies, requests []string
 		for _, message := range messages {
 			if message.mode == MessageResponse {
-				continue
-			}
-			if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE scope_id=? AND message_id=?`, scopeID, message.id); err != nil {
-				return PruneScopeResult{}, err
-			}
-		}
-		for _, taskID := range tasks {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM tasks WHERE scope_id=? AND task_id=?`, scopeID, taskID); err != nil {
-				return PruneScopeResult{}, err
+				replies = append(replies, message.id)
+			} else {
+				requests = append(requests, message.id)
 			}
 		}
-		for _, escalationID := range escalations {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM escalations WHERE scope_id=? AND escalation_id=?`, scopeID, escalationID); err != nil {
+		batches := []struct {
+			table, column string
+			ids           []string
+		}{
+			{"channel_posts", "thread_id", channelRoots}, {"channel_posts", "post_id", channelRoots},
+			{"a2a_tasks", "task_id", a2aTasks}, {"messages", "message_id", replies}, {"messages", "message_id", requests},
+			{"tasks", "task_id", tasks}, {"escalations", "escalation_id", escalations},
+		}
+		for _, batch := range batches {
+			if err := deleteRetentionRows(ctx, tx, scopeID, batch.table, batch.column, batch.ids); err != nil {
 				return PruneScopeResult{}, err
 			}
 		}
@@ -343,4 +332,19 @@ func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, ex
 		return PruneScopeResult{}, err
 	}
 	return result, nil
+}
+
+// Table and column names are static call-site constants, never request input.
+func deleteRetentionRows(ctx context.Context, tx sqlExecutor, scopeID, table, column string, ids []string) error {
+	for first := 0; first < len(ids); first += 500 {
+		batch := ids[first:min(first+500, len(ids))]
+		args := []any{scopeID}
+		for _, id := range batch {
+			args = append(args, id)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE scope_id=? AND "+column+" IN ("+strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")+")", args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }

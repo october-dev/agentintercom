@@ -68,6 +68,8 @@ func hostedCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	stopAccounts := accounts.StartMaintenance()
+	defer stopAccounts()
 	var billing *bus.HostedBilling
 	if os.Getenv("OCTOBER_BUS_STRIPE_SECRET_KEY") != "" {
 		billing, err = bus.NewHostedBilling(accounts, bus.HostedBillingOptions{SecretKey: os.Getenv("OCTOBER_BUS_STRIPE_SECRET_KEY"), WebhookSecret: os.Getenv("OCTOBER_BUS_STRIPE_WEBHOOK_SECRET"), MonthlyPriceID: os.Getenv("OCTOBER_BUS_STRIPE_MONTHLY_PRICE"), AnnualPriceID: os.Getenv("OCTOBER_BUS_STRIPE_ANNUAL_PRICE"), PortalConfigurationID: os.Getenv("OCTOBER_BUS_STRIPE_PORTAL_CONFIGURATION"), PublicURL: *public, AutomaticTax: os.Getenv("OCTOBER_BUS_STRIPE_AUTOMATIC_TAX") == "true"})

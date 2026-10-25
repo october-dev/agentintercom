@@ -271,7 +271,7 @@ func (a *HostedAccounts) startSessionTx(ctx context.Context, tx sqlExecutor, d h
 	var err error
 	var trial, paid, disabled int64
 	var limit int
-	if err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,disabled_at,session_limit FROM hosted_workspaces WHERE scope_id=?", d.ScopeID).Scan(&trial, &paid, &disabled, &limit); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,GREATEST(disabled_at,paused_at),session_limit FROM hosted_workspaces WHERE scope_id=?", d.ScopeID).Scan(&trial, &paid, &disabled, &limit); err != nil {
 		return RegisterAgentResult{}, err
 	}
 	now := nowMillis()

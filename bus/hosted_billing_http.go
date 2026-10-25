@@ -9,6 +9,9 @@ import (
 )
 
 type WorkspaceBilling struct {
+	RetainedBytes     int64  `json:"retainedBytes"`
+	TextLimit         int64  `json:"textLimit"`
+	RetentionDays     int    `json:"retentionDays"`
 	Configured        bool   `json:"configured"`
 	Live              bool   `json:"live"`
 	CanManage         bool   `json:"canManage"`
@@ -39,7 +42,7 @@ type WorkspaceBilling struct {
 }
 
 func (a *HostedAccounts) BillingSummary(ctx context.Context, user HostedUser, scopeID string, configured, live bool) (WorkspaceBilling, error) {
-	result := WorkspaceBilling{Configured: configured, Live: live, MonthlyPriceCents: 1900, AnnualPriceCents: 19000, Currency: "usd", Month: time.Now().UTC().Format("2006-01"), Status: "none"}
+	result := WorkspaceBilling{Configured: configured, Live: live, MonthlyPriceCents: 1900, AnnualPriceCents: 19000, Currency: "usd", Month: time.Now().UTC().Format("2006-01"), Status: "none", RetentionDays: 90}
 	tx, err := a.store.beginTx(withHostedMember(ctx, user), scopeID)
 	if err != nil {
 		return result, err
@@ -51,7 +54,10 @@ func (a *HostedAccounts) BillingSummary(ctx context.Context, user HostedUser, sc
 	}
 	result.CanManage = role == "owner"
 	var trial, paid, disabled int64
-	if err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,disabled_at,delivery_limit,member_limit,session_limit FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&trial, &paid, &disabled, &result.DeliveryLimit, &result.MemberLimit, &result.SessionLimit); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,GREATEST(disabled_at,paused_at),delivery_limit,member_limit,session_limit FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&trial, &paid, &disabled, &result.DeliveryLimit, &result.MemberLimit, &result.SessionLimit); err != nil {
+		return result, err
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(u.retained_bytes,0),w.text_limit FROM hosted_workspaces w LEFT JOIN hosted_storage_usage u ON u.scope_id=w.scope_id WHERE w.scope_id=?", scopeID).Scan(&result.RetainedBytes, &result.TextLimit); err != nil {
 		return result, err
 	}
 	result.TrialEndsAt = instant(trial)

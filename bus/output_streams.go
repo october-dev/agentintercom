@@ -96,6 +96,9 @@ func (s *Store) CreateOutputStream(ctx context.Context, scopeID string, input Cr
 		return OutputStream{}, err
 	}
 	defer tx.Rollback()
+	if err := requireHostedNewWork(ctx, tx, scopeID); err != nil {
+		return OutputStream{}, err
+	}
 	var count int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM output_streams WHERE scope_id=?`, scopeID).Scan(&count); err != nil {
 		return OutputStream{}, err
@@ -378,6 +381,9 @@ func (s *Store) PublishOutput(ctx context.Context, authority outputPublisher, st
 			return OutputValue{}, "", Errorf(CodeUnauthenticated, "Invalid output credential")
 		}
 		producerType, producerID = "principal", credential.ID
+	}
+	if err := requireHostedNewWork(ctx, tx, record.ScopeID); err != nil {
+		return OutputValue{}, "", err
 	}
 	now := nowMillis()
 	if err := consumeOutputQuota(ctx, tx, record.ScopeID, producerType, producerID, true, now); err != nil {

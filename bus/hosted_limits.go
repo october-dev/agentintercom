@@ -28,7 +28,7 @@ func requireHostedExecution(ctx context.Context, q sqlExecutor, p Principal, now
 		return nil
 	}
 	var denied int
-	err := q.QueryRowContext(ctx, `SELECT 1 FROM hosted_workspaces w WHERE w.scope_id=? AND (w.disabled_at<>0 OR NOT EXISTS(
+	err := q.QueryRowContext(ctx, `SELECT 1 FROM hosted_workspaces w WHERE w.scope_id=? AND (w.disabled_at<>0 OR w.paused_at<>0 OR NOT EXISTS(
 SELECT 1 FROM hosted_sessions s JOIN hosted_devices d ON d.device_id=s.device_id
 JOIN hosted_members m ON m.scope_id=d.scope_id AND m.user_id=d.user_id
 WHERE s.scope_id=w.scope_id AND s.agent_id=? AND d.scope_id=w.scope_id AND d.revoked_at=0 AND d.expires_at>?))`, p.ScopeID, p.AgentID, now).Scan(&denied)
@@ -49,7 +49,7 @@ func consumeHostedDelivery(ctx context.Context, tx sqlExecutor, scopeID string, 
 		return nil
 	}
 	var trial, paid, disabled, limit int64
-	err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,disabled_at,delivery_limit FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&trial, &paid, &disabled, &limit)
+	err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,GREATEST(disabled_at,paused_at),delivery_limit FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&trial, &paid, &disabled, &limit)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -58,6 +58,9 @@ func consumeHostedDelivery(ctx context.Context, tx sqlExecutor, scopeID string, 
 	}
 	if disabled != 0 || (trial <= now && paid <= now) {
 		return Errorf(CodePermissionDenied, "Workspace hosting is inactive; existing work can still be replied to and exported")
+	}
+	if err := requireHostedTextAllowance(ctx, tx, scopeID); err != nil {
+		return err
 	}
 	if paid <= now && limit > 2000 {
 		limit = 2000
@@ -88,7 +91,7 @@ func requireHostedNewWork(ctx context.Context, tx sqlExecutor, scopeID string) e
 		return nil
 	}
 	var trial, paid, disabled int64
-	err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,disabled_at FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&trial, &paid, &disabled)
+	err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,GREATEST(disabled_at,paused_at) FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&trial, &paid, &disabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -97,6 +100,26 @@ func requireHostedNewWork(ctx context.Context, tx sqlExecutor, scopeID string) e
 	}
 	if disabled != 0 || (trial <= nowMillis() && paid <= nowMillis()) {
 		return Errorf(CodePermissionDenied, "Workspace hosting is inactive; existing work remains available to read and export")
+	}
+	return requireHostedTextAllowance(ctx, tx, scopeID)
+}
+
+// This is a new-work threshold, not a barrier to acknowledgements, replies or
+// cleanup. Finalizing already accepted work may temporarily exceed it.
+func requireHostedTextAllowance(ctx context.Context, tx sqlExecutor, scopeID string) error {
+	if !isPostgresQuery(tx) {
+		return nil
+	}
+	var used, limit int64
+	err := tx.QueryRowContext(ctx, "SELECT COALESCE(u.retained_bytes,0),w.text_limit FROM hosted_workspaces w LEFT JOIN hosted_storage_usage u ON u.scope_id=w.scope_id WHERE w.scope_id=?", scopeID).Scan(&used, &limit)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if used >= limit {
+		return Errorf(CodeBackpressure, "Workspace retained-data allowance is full; export and prune completed history to accept new work")
 	}
 	return nil
 }

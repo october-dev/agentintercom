@@ -153,6 +153,7 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 	h.registerChannelRoutes()
 	h.registerAttachmentRoutes()
 	h.registerBillingRoutes()
+	h.registerDataRoutes()
 	return h, nil
 }
 

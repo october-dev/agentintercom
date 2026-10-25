@@ -528,6 +528,17 @@ func (s *Store) ExportScope(ctx context.Context, scopeID string) (ScopeArchive, 
 	if err := checkEncodedArchiveSize(archive); err != nil {
 		return ScopeArchive{}, err
 	}
+	if ctx.Value(hostedOwnerKey{}) == true {
+		var bytes int64
+		for _, file := range archive.Attachments {
+			bytes += file.Size
+		}
+		if bytes > 0 {
+			if err := consumeAttachmentTransfer(ctx, tx, scopeID, bytes, false); err != nil {
+				return ScopeArchive{}, err
+			}
+		}
+	}
 	return archive, tx.Commit()
 }
 

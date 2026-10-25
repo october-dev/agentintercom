@@ -151,3 +151,10 @@ inside the transaction that reads or changes shared work.
 controls. The service owns workspace subscriptions independently of other product
 plans. See [hosted billing](hosted-billing.md) for prices, retry behavior, Stripe
 configuration and the required real-provider qualification.
+
+## Data and recovery
+
+Owners can pause sessions, export portable archives and preview/confirm cleanup
+under **Data & recovery**. Hosted completed history is eligible after 90 days;
+new work pauses at a 5 GiB retained-data estimate. See [workspace data and recovery](workspace-data.md)
+for dependency preservation, the 64 MiB portable export bound and operator backups.

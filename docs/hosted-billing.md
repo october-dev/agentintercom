@@ -4,6 +4,8 @@ A workspace subscription costs **US$19 per month or US$190 per year**, plus
 applicable tax. It includes five members, 50 concurrent sessions, 100,000 new
 recipient deliveries per UTC calendar month, 5 GiB of files, and 25 GiB each of
 uploads and downloads per UTC calendar month. Files are limited to 16 MiB each.
+Hosted completed history is eligible for cleanup after 90 days. New work pauses
+at a 5 GiB estimate of retained coordination data; see [data and recovery](workspace-data.md).
 Model and compute charges are separate. There are no automatic usage overages.
 Self-hosted and local use do not require this subscription.
 

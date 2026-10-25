@@ -207,7 +207,7 @@ function invitation() {
   }, 'primary'), button('Use another account', signOut), button('Cancel', async () => { closePending('invite'); await signedIn(); })))));
 }
 
-const titles = { sessions: ['Sessions', 'Choose the connected session you want to work with.'], messages: ['Conversations', 'Messages and receipts shared with this workspace.'], channels: ['Channels', 'Shared discussions and threads for this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], files: ['Files', 'Private files shared with your workspace.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'], billing: ['Billing & usage', 'Your workspace plan, payment details and included usage.'] };
+const titles = { sessions: ['Sessions', 'Choose the connected session you want to work with.'], messages: ['Conversations', 'Messages and receipts shared with this workspace.'], channels: ['Channels', 'Shared discussions and threads for this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], files: ['Files', 'Private files shared with your workspace.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'], data: ['Data & recovery', 'Export your workspace and manage retained history.'], billing: ['Billing & usage', 'Your workspace plan, payment details and included usage.'] };
 async function render() {
   clearView();
   if (!state.workspace) return firstWorkspace();
@@ -219,7 +219,7 @@ async function render() {
   main.append(el('header', { class: 'topline' }, el('div', {}, el('div', { class: 'eyebrow' }, state.workspace.name), el('h1', {}, titles[state.tab][0]), el('p', { class: 'muted' }, titles[state.tab][1])), state.tab === 'sessions' ? button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary') : null));
   const loading = el('p', { class: 'progress' }, 'Loading…'); main.append(loading);
   try {
-    const view = await ({ billing: billingView, files: filesView, channels: channelsView, messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
+    const view = await ({ data: dataView, billing: billingView, files: filesView, channels: channelsView, messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
     if (generation !== state.generation) return;
     loading.replaceWith(view);
   } catch (error) { if (generation === state.generation) loading.replaceWith(el('div', { class: 'card' }, el('p', {}, error.message), button('Try again', render))); }
@@ -494,10 +494,35 @@ async function billingView() {
     summary.pendingCheckout ? el('p', { class: 'notice-inline' }, `An unfinished ${summary.pendingInterval === 'year' ? 'annual' : 'monthly'} checkout is saved. Choosing the same plan resumes it; choosing the other plan closes it before starting another.`) : null,
     !summary.configured ? el('p', {}, 'Paid hosting is not available on this service yet.') : !summary.canManage ? el('p', {}, 'Only a workspace owner can manage payments.') : controls));
   const usage = el('section', { class: 'card' }, el('h2', {}, 'Included usage'), el('p', { class: 'help' }, paid ? `Delivery and file-transfer counters reset each calendar month (UTC). Current month: ${summary.month}.` : 'The trial includes 2,000 new deliveries in total, 256 MiB of files and 1 GiB in each transfer direction per calendar month.'));
-  for (const [name, used, limit, format] of [['New deliveries', summary.deliveries, summary.deliveryLimit, count], ['People', summary.members, summary.memberLimit, count], ['Concurrent sessions', summary.sessions, summary.sessionLimit, count], ['File storage', summary.fileBytes, summary.fileStorageLimit, bytes], ['Uploads this month', summary.uploadedBytes, summary.fileTransferLimit, bytes], ['Downloads this month', summary.downloadedBytes, summary.fileTransferLimit, bytes]]) {
+  for (const [name, used, limit, format] of [['New deliveries', summary.deliveries, summary.deliveryLimit, count], ['People', summary.members, summary.memberLimit, count], ['Concurrent sessions', summary.sessions, summary.sessionLimit, count], ['Retained coordination data', summary.retainedBytes || 0, summary.textLimit || 5 * 1024 ** 3, bytes], ['File storage', summary.fileBytes, summary.fileStorageLimit, bytes], ['Uploads this month', summary.uploadedBytes, summary.fileTransferLimit, bytes], ['Downloads this month', summary.downloadedBytes, summary.fileTransferLimit, bytes]]) {
     usage.append(el('div', { class: 'usage' }, el('div', { class: 'row' }, el('span', {}, name), el('span', {}, `${format(used)} / ${format(limit)}`)), el('progress', { max: limit, value: Math.min(used, limit), 'aria-label': name })));
   }
   usage.append(el('p', { class: 'help' }, 'A new message counts once per recipient. Channel notifications count per subscriber. Retries, acknowledgements and replies do not consume delivery allowance.'));
   result.append(usage);
+  return result;
+}
+
+
+async function dataView() {
+  const scopePath = path('');
+  const storage = await api(scopePath + '/storage');
+  const owner = state.workspace.role === 'owner';
+  const result = el('div', {}, el('section', { class: 'card' }, el('h2', {}, 'Retention'), el('p', {}, 'Completed conversations, completed tasks, resolved questions and quiet channel threads are eligible for removal after 90 days. Unfinished work and linked records that still need each other remain. Files stay until you delete them.'), el('p', { class: 'help' }, 'The notification log keeps roughly the latest 100,000 events or 90 days, whichever is shorter. This does not delete the corresponding messages or tasks. New work pauses when estimated retained coordination data reaches 5 GiB; final replies and acknowledgements remain available.')));
+  if (!owner) { result.append(el('p', {}, 'A workspace owner can pause sessions, export data and prune completed history.')); return result; }
+  result.append(el('section', { class: 'card' }, el('h2', {}, state.workspace.paused ? 'Sessions paused' : 'Pause sessions for an export'),
+    el('p', {}, 'Pausing disconnects all sessions and prevents new connections while you export. Members can still read history here. Resume and reconnect your apps when finished. Pausing does not cancel billing.'),
+    button(state.workspace.paused ? 'Resume sessions' : 'Pause sessions', () => modal(state.workspace.paused ? 'Resume this workspace?' : 'Disconnect workspace sessions?', close => el('div', {}, el('p', {}, state.workspace.paused ? 'Connected apps can rejoin when hosting is active.' : 'Every connected session will lose its current connection. Queued work and history are retained.'), button('Confirm', async () => { await api(scopePath + '/pause', { method: 'POST', body: { paused: !state.workspace.paused } }); close(); await signedIn(); }, 'primary'))))));
+  result.append(el('section', { class: 'card' }, el('h2', {}, 'Download a portable archive'),
+    el('p', {}, 'Includes retained messages, tasks, questions, channels, output values and file bytes. Does not contain account credentials or payment details. Pause sessions first so the archive is consistent.'),
+    el('p', { class: 'help' }, 'Portable archives are limited to 64 MiB, including encoded files. Larger workspaces need an operator-assisted database and file export. File bytes in an archive count toward download allowance. Store the download privately.'),
+    button('Download workspace archive', async () => { const response = await fileRequest(scopePath + '/export'); const blob = await response.blob(); const url = URL.createObjectURL(blob); const link = el('a', { href: url, download: 'october-bus-workspace.json' }); document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); })));
+  const cutoff = field('Remove eligible history completed before', { name: 'before', type: 'date', required: true, value: new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10), max: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10) });
+  result.append(el('section', { class: 'card' }, el('h2', {}, 'Prune completed history'), el('p', {}, 'Review a preview before deleting anything. Export first if you need to retain a copy. This does not remove unfinished work, files or your subscription.'),
+    form([cutoff.node], 'Preview cleanup', async data => {
+      const before = new Date(data.get('before') + 'T00:00:00Z').toISOString();
+      const preview = await api(scopePath + '/prune', { method: 'POST', body: { before, execute: false }, timeout: 30000 });
+      modal('Delete eligible history?', close => el('div', {}, el('p', {}, 'This permanently deletes eligible records before the selected date. Counts may change if work finishes before confirmation.'), el('pre', {}, JSON.stringify(preview.records, null, 2)), button('Delete eligible history', async () => { await api(scopePath + '/prune', { method: 'POST', body: { before, execute: true }, timeout: 30000 }); close(); await render(); inform('Completed history pruned.'); }, 'danger')));
+    })));
+  result.append(el('section', { class: 'card' }, el('h2', {}, 'Retained records'), el('p', { class: 'help' }, 'Payload estimates below exclude database indexes and some record overhead; billing usage includes a per-record estimate.'), (storage.records || []).map(record => el('div', { class: 'row' }, el('span', {}, `${record.recordType} · ${record.state}`), el('span', {}, Number(record.count).toLocaleString())))));
   return result;
 }
