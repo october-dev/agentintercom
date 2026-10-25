@@ -779,6 +779,7 @@
       "additionalProperties": false,
       "required": ["messages", "tasks", "taskProgress", "escalations", "events", "a2aTasks", "a2aMessages"],
       "properties": {
+        "channelPosts": { "type": "integer", "minimum": 0 },
         "a2aTasks": { "type": "integer", "minimum": 0 },
         "a2aMessages": { "type": "integer", "minimum": 0 },
         "messages": { "type": "integer", "minimum": 0 },

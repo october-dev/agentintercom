@@ -105,3 +105,13 @@ approved credentials. Browser approval is bound to a verified member and one
 workspace. Conditional approval prevents concurrent requests from issuing two
 devices; polling permits lost-response recovery within the same approval window.
 Expired requests are removed on subsequent registration, with a bounded table.
+
+## Shared channels: 008_channels.sql
+
+Adds shared channels, per-agent notification subscriptions and threaded posts.
+The same SQL defines SQLite schema 12. Search text is normalized in Go so Unicode
+lowercasing is consistent across storage backends. Post bodies are stored once;
+fan-out uses compact notifications in the existing message ledger. Archive
+version 3 includes channel content and subscriptions, and accepts old version 2
+archives without channel records. Retention removes whole quiet threads after
+both the requested cutoff and their seven-day notification lifetime.

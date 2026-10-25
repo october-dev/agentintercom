@@ -80,3 +80,23 @@ func consumeHostedDelivery(ctx context.Context, tx sqlExecutor, scopeID string, 
 ON CONFLICT(scope_id,month) DO UPDATE SET deliveries=hosted_usage.deliveries+1`, scopeID, month)
 	return err
 }
+
+// New shared work requires active hosting even when it has no recipients yet.
+// Reading retained work, completing it and exporting it remain available.
+func requireHostedNewWork(ctx context.Context, tx sqlExecutor, scopeID string) error {
+	if !isPostgresQuery(tx) {
+		return nil
+	}
+	var trial, paid, disabled int64
+	err := tx.QueryRowContext(ctx, "SELECT trial_ends_at,paid_until,disabled_at FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&trial, &paid, &disabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if disabled != 0 || (trial <= nowMillis() && paid <= nowMillis()) {
+		return Errorf(CodePermissionDenied, "Workspace hosting is inactive; existing work remains available to read and export")
+	}
+	return nil
+}

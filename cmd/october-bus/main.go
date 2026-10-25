@@ -22,6 +22,11 @@ import (
 const usage = `October Bus
 
 Usage:
+  october-bus channel list
+  october-bus channel create --name <name> [--description <text>]
+  october-bus channel join|leave --id <channel-id>
+  october-bus channel post --id <channel-id> --body <text> [--thread <root-post-id>] [--key <retry-key>]
+  october-bus channel read [--id <channel-id>] [--thread <root-post-id>] [--query <text>] [--before <cursor>]
   october-bus session start claude --workspace <name> [--name <label>] -- [Claude arguments]
   october-bus session status
   october-bus session retry <message-id>
@@ -1022,6 +1027,8 @@ func run() error {
 	switch args[0] {
 	case "session":
 		return sessionCommand(args[1:])
+	case "channel":
+		return channelCommand(args[1:], os.Stdin, os.Stdout)
 	case "hosted":
 		return hostedCommand(args[1:])
 	case "database":

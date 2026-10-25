@@ -666,7 +666,7 @@ func Run(ctx context.Context, options Options) (result Result, runErr error) {
 		if err != nil {
 			return err
 		}
-		if len(tools.Tools) != 15 {
+		if len(tools.Tools) != 20 {
 			return fmt.Errorf("unexpected MCP tool count: %d", len(tools.Tools))
 		}
 		peers, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_peers", Arguments: map[string]any{}})

@@ -6,6 +6,7 @@ async function fixture(page, signedIn = true) {
   let revoked = false;
   const messages = [];
   const tasks = [];
+  const channels = [], posts = [];
   let answered = false;
   if (signedIn) await page.addInitScript(user => {
     const claims = btoa(JSON.stringify({ sub: user.id, aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 }));
@@ -26,6 +27,13 @@ async function fixture(page, signedIn = true) {
     else if (path.endsWith('/sessions')) result = { sessions: [{ id: 'session-1', displayName: '<img src=x onerror=alert(1)>', deviceId: 'device-1', deviceName: 'Laptop', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' }] };
     else if (path.endsWith('/messages')) {
       if (method === 'POST') { const data = route.request().postDataJSON(); messages.unshift({ id: 'message-1', from: user.id, fromKind: 'human', to: data.to, toKind: 'agent', body: data.body, mode: data.mode, state: 'queued', createdAt: new Date().toISOString() }); result = { messageId: 'message-1', state: 'queued' }; } else result = { messages };
+    }
+    else if (path.endsWith('/channels')) {
+      if (method === 'POST') { const item = { ...route.request().postDataJSON(), id: 'channel-' + (channels.length + 1), subscribers: 1 }; channels.push(item); result = item; } else result = channels;
+    }
+    else if (path.endsWith('/channel-posts')) {
+      if (method === 'POST') { const item = { ...route.request().postDataJSON(), id: 'post-' + (posts.length + 1), authorKind: 'human', authorId: user.id, createdAt: new Date().toISOString(), replies: 0 }; posts.unshift(item); result = item; }
+      else { const thread = url.searchParams.get('threadId'), search = url.searchParams.get('query'); result = { posts: posts.filter(p => p.channelId === url.searchParams.get('channelId') && (thread ? p.id === thread || p.threadId === thread : search ? p.body.toLowerCase().includes(search.toLowerCase()) : !p.threadId)).map(p => ({ ...p, replies: posts.filter(r => r.threadId === p.id).length })) }; }
     }
     else if (path.endsWith('/tasks')) { if (method === 'POST') { const task = { ...route.request().postDataJSON(), id: 'task-1', status: 'open', ready: true }; tasks.push(task); result = task; } else result = { tasks }; }
     else if (path.endsWith('/questions')) result = { escalations: answered ? [] : [{ id: 'ask-1', agentId: 'session-1', question: 'Which approach?', options: ['First', 'Second'] }] };
@@ -131,4 +139,28 @@ test('device pairing waits for explicit code confirmation and workspace consent'
   await page.getByRole('button', { name: 'Open workspace', exact: true }).click();
   await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Connect an app', exact: true }).click();
   await expect(page.getByText(/october-bus hosted login --server/)).toBeVisible();
+});
+
+test('channel creation, literal posts, thread replies and search share one conversation', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Channels', exact: true }).click();
+  await page.getByRole('button', { name: 'Create a channel', exact: true }).click();
+  await page.getByLabel('Channel name', { exact: true }).fill('release');
+  await page.getByLabel('Description', { exact: true }).fill('Release discussion');
+  await page.getByRole('button', { name: 'Create channel', exact: true }).click();
+  await page.getByLabel('Your post', { exact: true }).fill('<script>alert(1)</script> Release is ready');
+  await page.getByRole('button', { name: 'Post to channel', exact: true }).click();
+  await expect(page.getByText('<script>alert(1)</script> Release is ready', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open thread', exact: true }).click();
+  await page.getByLabel('Your reply', { exact: true }).fill('Reviewed the release notes');
+  await page.getByRole('button', { name: 'Reply in thread', exact: true }).click();
+  await expect(page.getByText('Reviewed the release notes', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to channel', exact: true }).click();
+  await expect(page.getByRole('button', { name: '1 replies', exact: true })).toBeVisible();
+  await page.getByLabel('Search channel', { exact: true }).fill('Reviewed');
+  await page.getByRole('button', { name: 'Search posts', exact: true }).click();
+  await expect(page.getByText('Reviewed the release notes', { exact: true })).toBeVisible();
+  expect(events.filter(e => e.path?.endsWith('/channel-posts'))).toHaveLength(2);
+  expect(events.filter(e => e.path?.endsWith('/channel-posts'))[1].body.threadId).toBe('post-1');
 });

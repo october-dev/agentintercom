@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	schemaVersion                = 11
+	schemaVersion                = 12
 	reservationTTL               = 30 * time.Second
 	messageBacklogCap            = 10000
 	activeTaskCap                = 5000
@@ -135,10 +135,19 @@ func (s *Store) initialize(ctx context.Context) error {
 		if err := s.migrateV9(ctx); err != nil {
 			return err
 		}
-		return s.migrateV10(ctx)
+		if err := s.migrateV10(ctx); err != nil {
+			return err
+		}
+		return s.migrateV11(ctx)
 	}
 	if version == 10 {
-		return s.migrateV10(ctx)
+		if err := s.migrateV10(ctx); err != nil {
+			return err
+		}
+		return s.migrateV11(ctx)
+	}
+	if version == 11 {
+		return s.migrateV11(ctx)
 	}
 	if version != 0 && version != schemaVersion {
 		return fmt.Errorf("database schema %d does not match %d", version, schemaVersion)
@@ -761,7 +770,8 @@ func sendMessageTx(ctx context.Context, tx sqlExecutor, scopeID string, senderKi
 	} else if input.ResponseTo != "" {
 		return Message{}, Errorf(CodeInvalidArgument, "responseTo is valid only for a response")
 	}
-	if senderKind == MessageParticipantAgent && toKind == MessageParticipantAgent {
+	channelNotification, _ := ctx.Value(channelNotificationKey{}).(bool)
+	if senderKind == MessageParticipantAgent && toKind == MessageParticipantAgent && !channelNotification {
 		linked, err := linkedAgents(ctx, tx, scopeID, senderID, input.To)
 		if err != nil {
 			return Message{}, err

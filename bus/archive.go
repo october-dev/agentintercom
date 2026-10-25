@@ -15,25 +15,28 @@ import (
 
 const (
 	ScopeArchiveFormat  = "october-bus.scope"
-	ScopeArchiveVersion = 2
+	ScopeArchiveVersion = 3
 )
 
 type ScopeArchive struct {
-	Format                string                 `json:"format"`
-	Version               int                    `json:"version"`
-	ExportedAt            string                 `json:"exportedAt"`
-	Scope                 ArchivedScope          `json:"scope"`
-	Agents                []ArchivedAgent        `json:"agents"`
-	Links                 []ArchivedPeerLink     `json:"links"`
-	Messages              []ArchivedMessage      `json:"messages"`
-	Tasks                 []ArchivedTask         `json:"tasks"`
-	TaskProgress          []ArchivedTaskProgress `json:"taskProgress"`
-	Escalations           []ArchivedEscalation   `json:"escalations"`
-	AgentCardPublications []ArchivedAgentCard    `json:"agentCardPublications"`
-	A2ATasks              []ArchivedA2ATask      `json:"a2aTasks"`
-	A2AMessages           []ArchivedA2AMessage   `json:"a2aMessages"`
-	OutputStreams         []ArchivedOutputStream `json:"outputStreams"`
-	OutputValues          []ArchivedOutputValue  `json:"outputValues"`
+	Channels              []ArchivedChannel             `json:"channels,omitempty"`
+	ChannelSubscriptions  []ArchivedChannelSubscription `json:"channelSubscriptions,omitempty"`
+	ChannelPosts          []ArchivedChannelPost         `json:"channelPosts,omitempty"`
+	Format                string                        `json:"format"`
+	Version               int                           `json:"version"`
+	ExportedAt            string                        `json:"exportedAt"`
+	Scope                 ArchivedScope                 `json:"scope"`
+	Agents                []ArchivedAgent               `json:"agents"`
+	Links                 []ArchivedPeerLink            `json:"links"`
+	Messages              []ArchivedMessage             `json:"messages"`
+	Tasks                 []ArchivedTask                `json:"tasks"`
+	TaskProgress          []ArchivedTaskProgress        `json:"taskProgress"`
+	Escalations           []ArchivedEscalation          `json:"escalations"`
+	AgentCardPublications []ArchivedAgentCard           `json:"agentCardPublications"`
+	A2ATasks              []ArchivedA2ATask             `json:"a2aTasks"`
+	A2AMessages           []ArchivedA2AMessage          `json:"a2aMessages"`
+	OutputStreams         []ArchivedOutputStream        `json:"outputStreams"`
+	OutputValues          []ArchivedOutputValue         `json:"outputValues"`
 }
 
 type ArchivedScope struct {
@@ -510,6 +513,9 @@ func (s *Store) ExportScope(ctx context.Context, scopeID string) (ScopeArchive, 
 	if archive.OutputStreams, archive.OutputValues, err = queryArchivedOutputs(ctx, tx, scopeID); err != nil {
 		return ScopeArchive{}, err
 	}
+	if err := exportChannels(ctx, tx, scopeID, &archive); err != nil {
+		return ScopeArchive{}, err
+	}
 	if err := validateArchive(&archive); err != nil {
 		return ScopeArchive{}, err
 	}
@@ -539,7 +545,7 @@ func validateArchive(archive *ScopeArchive) error {
 	if archive.Format != ScopeArchiveFormat {
 		return Errorf(CodeInvalidArgument, "Archive format is not supported")
 	}
-	if archive.Version != ScopeArchiveVersion {
+	if archive.Version != 2 && archive.Version != ScopeArchiveVersion {
 		return Errorf(CodeInvalidArgument, "Archive version is not supported")
 	}
 	if _, err := archiveTime(archive.ExportedAt, true); err != nil {
@@ -1007,7 +1013,7 @@ func validateArchive(archive *ScopeArchive) error {
 			return Errorf(CodeInvalidArgument, "Archive output history sequence has a gap")
 		}
 	}
-	return nil
+	return validateArchivedChannels(archive, agents)
 }
 
 func insertArchive(ctx context.Context, tx sqlExecutor, archive ScopeArchive, digest, tokenHash string, importedAt int64) error {
@@ -1139,6 +1145,9 @@ func insertArchive(ctx context.Context, tx sqlExecutor, archive ScopeArchive, di
 		if _, err := tx.ExecContext(ctx, `INSERT INTO output_values(stream_id,sequence,producer_type,producer_id,content_type,value_json,reference_json,created_at) VALUES(?,?,?,?,?,?,?,?)`, value.StreamID, value.Sequence, value.ProducerType, value.ProducerID, value.ContentType, valueJSON, reference, created); err != nil {
 			return err
 		}
+	}
+	if err := importChannels(ctx, tx, archive); err != nil {
+		return err
 	}
 	if err := appendEvent(ctx, tx, archive.Scope.ID, "scope.imported", digest, eventAttributes("archiveVersion", fmt.Sprintf("%d", archive.Version)), importedAt); err != nil {
 		return err

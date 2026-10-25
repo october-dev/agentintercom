@@ -62,6 +62,9 @@ CREATE INDEX IF NOT EXISTS tasks_page ON tasks(scope_id,task_id);
 // the streaming full-database snapshot remains available at any retained size.
 func checkPortableExportBudget(ctx context.Context, tx sqlExecutor, scopeID string) error {
 	queries := []string{
+		"SELECT COALESCE(SUM(octet_length(description)+2048),0) FROM channels WHERE scope_id=?",
+		"SELECT COUNT(*)*1024 FROM channel_subscriptions WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(body)+2048),0) FROM channel_posts WHERE scope_id=?",
 		"SELECT COALESCE(SUM(octet_length(body)+octet_length(context_json)+2048),0) FROM messages WHERE scope_id=?",
 		"SELECT COALESCE(SUM(octet_length(description)+octet_length(dependencies_json)+COALESCE(octet_length(note),0)+2048),0) FROM tasks WHERE scope_id=?",
 		"SELECT COALESCE(SUM(octet_length(text)+1024),0) FROM task_progress WHERE scope_id=?",

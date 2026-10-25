@@ -1,6 +1,7 @@
 import { BusError } from './errors.js'
 import type { BusErrorCode } from './errors.js'
 import type {
+  Channel, ChannelPost, CreateChannelInput, PostChannelInput, ChannelHistoryInput, ChannelPostPage,
   Agent,
   AgentCardPublication,
   A2APrincipal,
@@ -530,6 +531,24 @@ export class OctoberBusClient {
       input,
       options
     )
+  }
+
+  listChannels(options?: OperationOptions): Promise<Channel[]> {
+    return request(this.address, this.agentToken, 'GET', '/v1/channels', undefined, options)
+  }
+  createChannel(input: CreateChannelInput, options?: OperationOptions): Promise<Channel> {
+    return request(this.address, this.agentToken, 'POST', '/v1/channels', input, options)
+  }
+  async subscribeChannel(channelId: string, subscribe: boolean, options?: OperationOptions): Promise<void> {
+    await request(this.address, this.agentToken, 'POST', `/v1/channels/${encodeURIComponent(channelId)}/subscription`, { subscribe }, options)
+  }
+  postChannel(input: PostChannelInput, options?: OperationOptions): Promise<ChannelPost> {
+    return request(this.address, this.agentToken, 'POST', '/v1/channel-posts', input, options)
+  }
+  readChannel(input: ChannelHistoryInput, options?: OperationOptions): Promise<ChannelPostPage> {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value))
+    return request(this.address, this.agentToken, 'GET', `/v1/channel-posts?${query}`, undefined, options)
   }
 
   sendMessage(input: SendMessageInput, options?: OperationOptions): Promise<DeliveryReceipt> {

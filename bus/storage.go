@@ -25,6 +25,8 @@ func (s *Store) StorageSummary(ctx context.Context, scopeID string) (StorageSumm
 		recordType string
 		statement  string
 	}{
+		{"channelPost", `SELECT 'posted',COUNT(*),COALESCE(SUM(octet_length(body)+octet_length(search_body)),0),MIN(created_at) FROM channel_posts WHERE scope_id=? HAVING COUNT(*)>0`},
+		{"channel", `SELECT 'active',COUNT(*),COALESCE(SUM(octet_length(description)),0),MIN(created_at) FROM channels WHERE scope_id=? HAVING COUNT(*)>0`},
 		{"message", `SELECT state,COUNT(*),COALESCE(SUM(octet_length(body)+octet_length(context_json)),0),
 MIN(CASE state WHEN 'queued' THEN created_at WHEN 'reserved' THEN created_at WHEN 'delivered' THEN delivered_at WHEN 'acknowledged' THEN acknowledged_at WHEN 'expired' THEN expires_at END)
 FROM messages WHERE scope_id=? GROUP BY state ORDER BY state`},
@@ -275,14 +277,26 @@ func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, ex
 		}
 		taskProgressCount += count
 	}
+	channelRoots, channelCount, err := channelRetentionCandidates(ctx, tx, scopeID, before)
+	if err != nil {
+		return PruneScopeResult{}, err
+	}
 	result := PruneScopeResult{
 		ScopeID: scopeID, Before: time.UnixMilli(before).UTC().Format(time.RFC3339Nano), DryRun: !execute,
-		Records: RetentionCounts{
+		Records: RetentionCounts{ChannelPosts: channelCount,
 			A2ATasks: int64(len(a2aTasks)), A2AMessages: a2aMessages,
 			Messages: int64(len(messages)), Tasks: int64(len(tasks)), TaskProgress: taskProgressCount, Escalations: int64(len(escalations)), Events: eventCount,
 		},
 	}
 	if execute {
+		for _, root := range channelRoots {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM channel_posts WHERE scope_id=? AND thread_id=?", scopeID, root); err != nil {
+				return PruneScopeResult{}, err
+			}
+			if _, err := tx.ExecContext(ctx, "DELETE FROM channel_posts WHERE scope_id=? AND post_id=?", scopeID, root); err != nil {
+				return PruneScopeResult{}, err
+			}
+		}
 		// Deleting tasks cascades their correlations before either message is removed.
 		for _, id := range a2aTasks {
 			if _, err := tx.ExecContext(ctx, `DELETE FROM a2a_tasks WHERE scope_id=? AND task_id=?`, scopeID, id); err != nil {

@@ -199,7 +199,7 @@ func requireEndedBridge(t *testing.T, ctx context.Context, bridge *selfRegistere
 		require(t, err == nil && isEndedBridgeResult(result), "terminal result changed: %#v, %v", result, err)
 	}
 	tools, err := bridge.ListTools(ctx, nil)
-	require(t, err == nil && len(tools.Tools) == 15, "terminal bridge stopped serving tools/list: %v", err)
+	require(t, err == nil && len(tools.Tools) == 20, "terminal bridge stopped serving tools/list: %v", err)
 	// The diagnostic reaches stderr asynchronously, independent of MCP replies.
 	for deadline := time.Now().Add(5 * time.Second); !strings.Contains(bridge.stderr.String(), mcpBridgeEndedMessage) && time.Now().Before(deadline); {
 		time.Sleep(50 * time.Millisecond)

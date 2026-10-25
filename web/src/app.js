@@ -2,7 +2,7 @@ import { AuthClient } from '@supabase/auth-js';
 
 const root = document.querySelector('#app');
 const notice = document.querySelector('#notice');
-const state = { auth: null, config: null, user: null, workspaces: [], workspace: null, tab: 'sessions', generation: 0, conversationAgent: '', search: '' };
+const state = { auth: null, config: null, user: null, workspaces: [], workspace: null, tab: 'sessions', generation: 0, conversationAgent: '', search: '', channelId: '', threadId: '', channelSearch: '' };
 let noticeTimer;
 const viewCleanups = [];
 function clearView() { for (const cleanup of viewCleanups.splice(0)) cleanup(); }
@@ -148,7 +148,7 @@ function invitation() {
   }, 'primary'), button('Use another account', signOut), button('Cancel', async () => { closePending('invite'); await signedIn(); })))));
 }
 
-const titles = { messages: ['Conversations', 'Messages and receipts shared with this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], sessions: ['Sessions', 'Choose the connected session you want to work with.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'] };
+const titles = { channels: ['Channels', 'Shared discussions and threads for this workspace.'], messages: ['Conversations', 'Messages and receipts shared with this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], sessions: ['Sessions', 'Choose the connected session you want to work with.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'] };
 async function render() {
   clearView();
   if (!state.workspace) return firstWorkspace();
@@ -160,7 +160,7 @@ async function render() {
   main.append(el('header', { class: 'topline' }, el('div', {}, el('div', { class: 'eyebrow' }, state.workspace.name), el('h1', {}, titles[state.tab][0]), el('p', { class: 'muted' }, titles[state.tab][1])), state.tab === 'sessions' ? button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary') : null));
   const loading = el('p', { class: 'progress' }, 'Loading…'); main.append(loading);
   try {
-    const view = await ({ messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
+    const view = await ({ channels: channelsView, messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
     if (generation !== state.generation) return;
     loading.replaceWith(view);
   } catch (error) { if (generation === state.generation) loading.replaceWith(el('div', { class: 'card' }, el('p', {}, error.message), button('Try again', render))); }
@@ -238,6 +238,7 @@ async function start() {
 start().catch(error => { root.replaceChildren(el('main', { id: 'main', class: 'auth-wrap' }, brand(), el('section', { class: 'card consent' }, el('h1', {}, 'Couldn’t open your workspace'), el('p', {}, error.message), button('Try again', () => location.reload())))); });
 
 async function messagesView() {
+  const generation = state.generation;
   const scopePath = path('');
   const [sessionsPage, members] = await Promise.all([api(scopePath + '/sessions'), api(scopePath + '/members')]);
   const sessions = sessionsPage.sessions;
@@ -275,6 +276,7 @@ async function messagesView() {
   append(page);
   const refreshQuery = query.toString();
   const timer = setInterval(async () => {
+    if (state.generation !== generation) { clearInterval(timer); return; }
     if (!live || polling || document.hidden) return;
     polling = true;
     try { const next = await api(scopePath + '/messages?' + refreshQuery); if (live) { if (next.messages.length) list.querySelector('.empty')?.remove(); append(next, true); } }
@@ -335,4 +337,62 @@ async function questionsView() {
   if (!page.escalations.length) container.append(el('section', { class: 'card empty' }, el('h2', {}, 'Nothing waiting on you.'), el('p', { class: 'muted' }, 'When an agent asks for a decision, you can answer it here.')));
   if (page.nextCursor) { let cursor = page.nextCursor; const more = button('More questions', async () => { const next = await api(scopePath + '/questions?after=' + encodeURIComponent(cursor)); append(next); cursor = next.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
   container.append(button('Refresh questions', render)); return container;
+}
+
+
+async function channelsView() {
+  const generation = state.generation;
+  const scopePath = path('');
+  const channels = await api(scopePath + '/channels');
+  const channel = channels.find(c => c.id === state.channelId) || channels[0];
+  if (channel?.id !== state.channelId) state.threadId = '';
+  state.channelId = channel?.id || '';
+  const create = () => modal('Create a channel', close => form([
+    field('Channel name', { name: 'name', required: true, maxlength: 64, pattern: '[a-z0-9][a-z0-9_-]*', placeholder: 'project-updates' }).node,
+    field('Description', { name: 'description', maxlength: 2000 }).node,
+    el('p', { class: 'help' }, 'All workspace members and connected sessions can read this channel.')
+  ], 'Create channel', async data => {
+    const created = await api(scopePath + '/channels', { method: 'POST', body: { name: data.get('name'), description: data.get('description') } });
+    state.channelId = created.id; state.threadId = ''; state.channelSearch = ''; close(); await render();
+  }));
+  if (!channel) return el('section', { class: 'card empty' }, el('h2', {}, 'Give a discussion its own space.'), el('p', {}, 'Create a channel for a project or topic. Sessions can subscribe to receive new posts in their inbox.'), button('Create a channel', create, 'primary'));
+  const select = el('select', { 'aria-label': 'Channel', onchange: e => { state.channelId = e.target.value; state.threadId = ''; state.channelSearch = ''; action(null, render); } }, channels.map(c => el('option', { value: c.id, selected: c.id === channel.id }, '#' + c.name)));
+  const search = form([field('Search channel', { name: 'query', type: 'search', value: state.channelSearch, maxlength: 256 }).node], 'Search posts', async data => { state.channelSearch = data.get('query').trim(); state.threadId = ''; await render(); });
+  const container = el('div', {}, el('section', { class: 'card' }, el('div', { class: 'actions' }, el('label', {}, 'Channel', select), button('New channel', create)), el('p', {}, channel.description), el('p', { class: 'help' }, `${channel.subscribers} subscribed sessions. Ask a connected session to join #${channel.name} using subscribe_channel to receive future notifications.`), search));
+  if (state.threadId) container.append(el('div', { class: 'actions' }, el('h2', {}, 'Thread'), button('Back to channel', async () => { state.threadId = ''; await render(); })));
+  const query = new URLSearchParams({ channelId: channel.id });
+  if (state.threadId) query.set('threadId', state.threadId);
+  if (state.channelSearch) query.set('query', state.channelSearch);
+  const [page, members, directory] = await Promise.all([api(scopePath + '/channel-posts?' + query), api(scopePath + '/members'), api(scopePath + '/sessions')]);
+  const names = new Map(members.map(m => ['human:' + m.userId, m.email]));
+  for (const session of directory.sessions) names.set('agent:' + session.id, session.displayName);
+  const list = el('div', { class: 'conversation-list', 'aria-label': 'Channel posts' });
+  const rendered = new Map();
+  const append = (page, fresh = false) => {
+    const posts = fresh ? [...page.posts].reverse() : page.posts;
+    for (const post of posts) {
+      const fingerprint = JSON.stringify(post), previous = rendered.get(post.id);
+      if (previous?.fingerprint === fingerprint) continue;
+      const item = el('article', { class: 'card' }, el('div', { class: 'row' }, el('strong', {}, names.get(post.authorKind + ':' + post.authorId) || post.authorId), el('small', {}, date(post.createdAt))), el('p', { class: 'message' }, post.body));
+      if (!state.threadId || state.channelSearch) item.append(button(post.replies ? `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'}` : 'Open thread', async () => { state.threadId = post.threadId || post.id; state.channelSearch = ''; await render(); }));
+      if (previous) previous.node.replaceWith(item); else if (fresh) list.prepend(item); else list.append(item);
+      rendered.set(post.id, { fingerprint, node: item });
+    }
+  };
+  append(page);
+  if (!page.posts.length) list.append(el('section', { class: 'card empty' }, el('p', {}, state.channelSearch ? 'No matching posts.' : 'No posts yet. Start the discussion below.')));
+  container.append(list);
+  if (page.nextCursor) { let cursor = page.nextCursor; const more = button('Earlier posts', async () => { const nextQuery = new URLSearchParams(query); nextQuery.set('before', cursor); const older = await api(scopePath + '/channel-posts?' + nextQuery); append(older); cursor = older.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
+  const body = field(state.threadId ? 'Your reply' : 'Your post', { name: 'body', multiline: true, required: true, maxlength: 65536 });
+  let key = crypto.randomUUID(), draft = '';
+  container.append(el('section', { class: 'card' }, form([body.node, el('p', { class: 'help' }, 'Shared with the workspace. Subscribed sessions receive an inbox notification; delivery does not mean a model has acted.')], state.threadId ? 'Reply in thread' : 'Post to channel', async data => {
+    const text = data.get('body'); if (draft && draft !== text) key = crypto.randomUUID(); draft = text;
+    await api(scopePath + '/channel-posts', { method: 'POST', body: { channelId: channel.id, body: text, threadId: state.threadId || undefined, idempotencyKey: key } });
+    state.channelSearch = ''; await render();
+  })));
+  let live = true, polling = false;
+  const timer = setInterval(async () => { if (state.generation !== generation) { clearInterval(timer); return; }
+    if (!live || polling || document.hidden) return; polling = true; try { const next = await api(scopePath + '/channel-posts?' + query); if (live) { if (next.posts.length) list.querySelector('.empty')?.remove(); append(next, true); } } catch (error) { if (live) inform('Channel refresh failed. ' + error.message, true); } finally { polling = false; } }, 5000);
+  viewCleanups.push(() => { live = false; clearInterval(timer); });
+  return container;
 }

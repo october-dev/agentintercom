@@ -391,6 +391,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 			result, err := s.runtime.NodeStatus(ctx, token)
 			return nil, result, err
 		})
+	s.addChannelMCPTools(server, token)
 	return server
 }
 

@@ -241,3 +241,30 @@ Knowing the public comparison code cannot redeem a device credential. Polling
 repeats the same approved credential during its short window to recover a lost
 response; it never creates an additional device. Expiry, revocation or membership
 removal prevents redemption. The device bearer cannot call account endpoints.
+
+### Shared channels
+
+Channels are readable by every authenticated session in a workspace. Subscribing
+opts this identity into future ordinary inbox notifications; it does not grant
+or revoke channel visibility or change direct-message peer links.
+
+| Method | Path | Input/result |
+| --- | --- | --- |
+| GET | `/v1/channels` | List `{id,name,description,createdAt,subscribers,subscribed}`. |
+| POST | `/v1/channels` | Create with `{name,description?}`. Maximum 100 channels per workspace. |
+| POST | `/v1/channels/{channelId}/subscription` | `{subscribe}` changes only this execution identity's subscription. Maximum 128 subscribers per channel. |
+| POST | `/v1/channel-posts` | `{channelId,body,threadId?,idempotencyKey?}` returns a durable post. `threadId` must name a root post in the same channel. |
+| GET | `/v1/channel-posts` | `channelId`, `threadId`, `query`, `before`, `limit` select a page of `{posts,nextCursor?}`. Defaults to 50, maximum 100. |
+
+A channel history page without a thread or search query lists roots and reply
+counts. A thread page includes its root and replies, newest first. Literal search
+includes replies and can span all channels when `channelId` is omitted. Requests
+are attributed to the authenticated actor. Body limit is 64 KiB; a workspace can
+retain at most 65,536 posts before retention is required. Idempotency keys are
+unique per author within a workspace and reject changed content. All subscribed
+recipient notifications and the post commit atomically. Notification acceptance
+never counts as model delivery or acknowledgment.
+
+Hosted members use `/api/workspaces/{workspace}/channels` and
+`/api/workspaces/{workspace}/channel-posts` with the same payloads and verified
+human attribution. Devices cannot impersonate human members through these routes.

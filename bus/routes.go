@@ -70,6 +70,9 @@ func (s *Server) newRouter() http.Handler {
 	registerRoute(router, "/v1/me/wake/claim", routeMethod{http.MethodPost, s.claimWake})
 	registerRoute(router, "/v1/me/wake/attempts/{attemptId}", routeMethod{http.MethodPost, s.finishWake})
 	registerRoute(router, "/v1/me/wake/retry", routeMethod{http.MethodPost, s.retryWake})
+	registerRoute(router, "/v1/channels", routeMethod{http.MethodGet, s.channels}, routeMethod{http.MethodPost, s.createChannel})
+	registerRoute(router, "/v1/channels/{channelId}/subscription", routeMethod{http.MethodPost, s.subscribeChannel})
+	registerRoute(router, "/v1/channel-posts", routeMethod{http.MethodGet, s.channelHistory}, routeMethod{http.MethodPost, s.postChannel})
 	registerRoute(router, "/v1/admin/shutdown",
 		routeMethod{http.MethodPost, s.shutdownServer},
 	)

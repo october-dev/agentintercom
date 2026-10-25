@@ -36,6 +36,12 @@ type storageBackend interface {
 	WakeStatus(context.Context, Principal) (WakeStatus, error)
 	RetryWake(context.Context, Principal, []string) error
 
+	CreateChannel(context.Context, string, CreateChannelInput) (Channel, error)
+	Channels(context.Context, string) ([]Channel, error)
+	SubscribeChannel(context.Context, Principal, string, bool) error
+	PostChannel(context.Context, string, PostChannelInput) (ChannelPost, error)
+	ChannelHistory(context.Context, string, ChannelHistoryInput) (ChannelPostPage, error)
+
 	SendMessage(context.Context, Principal, SendMessageInput) (DeliveryReceipt, error)
 	Receipt(context.Context, Principal, string) (DeliveryReceipt, error)
 	ReserveInbox(context.Context, Principal, int) (*InboxReservation, error)

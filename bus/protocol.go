@@ -348,6 +348,7 @@ type PruneScopeInput struct {
 }
 
 type RetentionCounts struct {
+	ChannelPosts int64 `json:"channelPosts"`
 	A2ATasks     int64 `json:"a2aTasks"`
 	A2AMessages  int64 `json:"a2aMessages"`
 	Messages     int64 `json:"messages"`

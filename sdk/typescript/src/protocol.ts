@@ -401,8 +401,11 @@ export interface ArchivedOutputValue {
 }
 
 export interface ScopeArchive {
+  channels?: Array<Omit<Channel, 'subscribers' | 'subscribed'>>
+  channelSubscriptions?: Array<{ channelId: string; agentId: string; createdAt: string }>
+  channelPosts?: Array<ChannelPost & { idempotencyKey?: string }>
   format: 'october-bus.scope'
-  version: 2
+  version: 2 | 3
   exportedAt: string
   scope: ArchivedScope
   agents: ArchivedAgent[]
@@ -510,6 +513,7 @@ export interface PruneScopeInput {
 }
 
 export interface RetentionCounts {
+  channelPosts: number
   a2aTasks: number
   a2aMessages: number
   messages: number
@@ -558,3 +562,27 @@ export interface BusLiveness {
   status: 'alive'
   startedAt: string
 }
+
+
+export interface Channel {
+  id: string
+  name: string
+  description: string
+  createdAt: string
+  subscribers: number
+  subscribed: boolean
+}
+export interface CreateChannelInput { name: string; description?: string }
+export interface ChannelPost {
+  id: string
+  channelId: string
+  authorKind: 'agent' | 'human'
+  authorId: string
+  body: string
+  threadId?: string
+  createdAt: string
+  replies: number
+}
+export interface PostChannelInput { channelId: string; body: string; threadId?: string; idempotencyKey?: string }
+export interface ChannelHistoryInput { channelId?: string; threadId?: string; query?: string; before?: string; limit?: number }
+export interface ChannelPostPage { posts: ChannelPost[]; nextCursor?: string }

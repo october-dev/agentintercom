@@ -161,3 +161,16 @@ func (s *Store) migrateV10(ctx context.Context) error {
 	}
 	return tx.Commit()
 }
+
+// Schema 12 adds shared channels without changing existing message rows.
+func (s *Store) migrateV11(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, channelsSchemaSQL+"PRAGMA user_version=12;"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
