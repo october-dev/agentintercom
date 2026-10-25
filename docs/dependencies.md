@@ -15,6 +15,12 @@ OAuth authorization-code/PKCE validation and token rotation. Its storage adapter
 uses the existing workspace transaction and encrypted credentials. Source and
 release: [go-oauth2](https://github.com/go-oauth2/oauth2/releases/tag/v4.6.0).
 
+Hosted workspace billing uses the official `github.com/stripe/stripe-go/v87`
+**v87.0.0** client and webhook signature verifier, pinned to Stripe API version
+`2026-09-30.endive`. The service uses a separate workspace billing flow and does
+not modify subscriptions belonging to another product. Release:
+[stripe-go v87.0.0](https://github.com/stripe/stripe-go/releases/tag/v87.0.0).
+
 The workspace browser uses `@supabase/auth-js` **2.118.0** for account-session
 handling; it does not load Supabase database or realtime clients. `web/package-lock.json`
 pins its dependency graph, the `esbuild` **0.28.2** build tool and

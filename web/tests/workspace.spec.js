@@ -200,3 +200,25 @@ test('files upload, download, attach to conversations and require confirmation t
   await expect(page.getByRole('heading', { name: 'report.txt', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'review.txt', exact: true })).toBeVisible();
 });
+
+test('billing shows actual entitlement and owner controls, never trusts a checkout return', async ({ page }) => {
+  await fixture(page);
+  let refreshed = false;
+  const summary = { configured: true, live: false, canManage: true, active: true, status: 'none', trialEndsAt: new Date(Date.now() + 86400000).toISOString(), paidUntil: '', pendingCheckout: true, pendingInterval: 'month', monthlyPriceCents: 1900, annualPriceCents: 19000, currency: 'usd', deliveries: 23, deliveryLimit: 2000, month: '2026-10', fileBytes: 0, fileStorageLimit: 256 * 1024 ** 2, uploadedBytes: 0, downloadedBytes: 0, fileTransferLimit: 1024 ** 3, members: 1, memberLimit: 5, sessions: 2, sessionLimit: 50 };
+  await page.route('**/api/workspaces/workspace-1/billing**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/refresh')) { refreshed = true; Object.assign(summary, { status: 'active', paidUntil: new Date(Date.now() + 30 * 86400000).toISOString(), pendingCheckout: false, deliveryLimit: 100000 }); }
+    await route.fulfill({ json: { ok: true, result: summary } });
+  });
+  await page.goto('/app?billing=success&workspace=workspace-1');
+  await expect(page.getByRole('heading', { name: 'Workspace trial', exact: true })).toBeVisible();
+  await expect(page.getByText(/returning from checkout does not confirm a payment/)).toBeVisible();
+  await expect(page.getByText(/Test billing/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '$19 / month', exact: true })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'New deliveries', exact: true })).toHaveAttribute('value', '23');
+  await page.getByRole('button', { name: 'Check payment status', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Paid workspace', exact: true })).toBeVisible();
+  expect(refreshed).toBe(true);
+  await expect(page.getByRole('button', { name: 'Payment settings & cancellation', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '$19 / month', exact: true })).toHaveCount(0);
+});

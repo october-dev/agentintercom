@@ -11,7 +11,7 @@ October Bus welcomes protocol improvements, adapters, SDKs, examples, tests, and
 
 ## Development
 
-The Go module language floor is 1.25; `go.mod` selects the Go 1.27 toolchain and CI builds/tests with Go 1.27.x. Use Go 1.27 for reproducible development. The TypeScript SDK requires Node.js 20 or newer; CI includes Node 20/22 compatibility checks and the primary Node 24 SDK/integration jobs.
+The Go module language floor is 1.26; `go.mod` selects the Go 1.27 toolchain and CI builds/tests with Go 1.27.x. Use Go 1.27 for reproducible development. The TypeScript SDK requires Node.js 20 or newer; CI includes Node 20/22 compatibility checks and the primary Node 24 SDK/integration jobs.
 
 ```bash
 go test -race -count=1 ./...

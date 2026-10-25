@@ -221,7 +221,7 @@ func TestSetEnvironmentReplacesExistingValues(t *testing.T) {
 }
 
 func TestRemoveEnvironmentRemovesCredentials(t *testing.T) {
-	result := removeEnvironment([]string{"PATH=/bin", "OCTOBER_BUS_SCOPE_TOKEN=secret", "OTHER=value"}, "october_bus_scope_token")
+	result := removeEnvironment([]string{"PATH=/bin", "OCTOBER_BUS_SCOPE_TOKEN=secret", "OCTOBER_BUS_STRIPE_SECRET_KEY=secret", "october_bus_stripe_webhook_secret=secret", "OTHER=value"}, "october_bus_scope_token")
 	require(t, len(result) == 2 && result[0] == "PATH=/bin" && result[1] == "OTHER=value", "unexpected environment: %#v", result)
 }
 

@@ -1,5 +1,11 @@
 # Hosted MCP connector pilot
 
+For the standalone PostgreSQL workspace service, use
+[hosted workspaces](../../docs/hosted-workspaces.md),
+[hosted billing](../../docs/hosted-billing.md) and
+[october-bus-hosted.service](october-bus-hosted.service). The instructions below
+preserve the older operator-provisioned SQLite gateway deployment.
+
 Deploy the Bus on a Linux server with systemd and an existing HTTPS reverse proxy.
 Use **Existing MCP** for a Muse application: the connector gets the Bus's agent
 tools directly, while registration, heartbeat, and credential handling remain

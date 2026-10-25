@@ -7,6 +7,7 @@ let noticeTimer;
 const viewCleanups = [];
 function clearView() { for (const cleanup of viewCleanups.splice(0)) cleanup(); }
 const params = new URLSearchParams(location.search);
+if (params.has('billing')) state.tab = 'billing';
 const pendingKey = 'october-bus-pending';
 let pending = {};
 try { const saved = JSON.parse(sessionStorage.getItem(pendingKey) || '{}'); if (saved.until > Date.now()) pending = saved; } catch {}
@@ -57,7 +58,7 @@ async function api(url, options = {}) {
     if (error) throw error;
     if (data.session) headers.Authorization = `Bearer ${data.session.access_token}`;
   }
-  const response = await fetch(url, { method: options.method || 'GET', credentials: 'omit', headers, body: options.body == null ? undefined : JSON.stringify(options.body), signal: AbortSignal.timeout(15000) });
+  const response = await fetch(url, { method: options.method || 'GET', credentials: 'omit', headers, body: options.body == null ? undefined : JSON.stringify(options.body), signal: AbortSignal.timeout(options.timeout || 15000) });
   const data = await response.json();
   if (!response.ok || data.ok === false || data.error) throw new Error(data.error?.message || 'The request could not be completed. Please try again.');
   return data.result;
@@ -157,7 +158,7 @@ function signIn() {
 async function signedIn() {
   state.user = await api('/api/me');
   state.workspaces = await api('/api/workspaces');
-  const wanted = localStorage.getItem('october-bus-workspace');
+  const wanted = (params.has('billing') && params.get('workspace')) || localStorage.getItem('october-bus-workspace');
   state.workspace = state.workspaces.find(w => w.id === wanted) || state.workspaces[0] || null;
   if (pending.invite) return invitation();
   if (pending.authorization) return consent();
@@ -167,7 +168,7 @@ async function signedIn() {
 }
 function createWorkspace(onCreated) {
   const name = field('Workspace name', { name: 'name', placeholder: 'My team', maxlength: 100, required: true });
-  return form([name.node, el('p', { class: 'help' }, 'Start a 14-day trial with up to 5 people. No payment details needed.')], 'Create workspace', async data => {
+  return form([name.node, el('p', { class: 'help' }, 'Your first workspace starts a 14-day trial. Additional workspaces share its end date. Up to 5 people; no payment details needed.')], 'Create workspace', async data => {
     const workspace = await api('/api/workspaces', { method: 'POST', body: { name: data.get('name') } });
     state.workspaces.push(workspace); state.workspace = workspace; localStorage.setItem('october-bus-workspace', workspace.id); await onCreated();
   });
@@ -206,7 +207,7 @@ function invitation() {
   }, 'primary'), button('Use another account', signOut), button('Cancel', async () => { closePending('invite'); await signedIn(); })))));
 }
 
-const titles = { files: ['Files', 'Private files shared with your workspace.'], channels: ['Channels', 'Shared discussions and threads for this workspace.'], messages: ['Conversations', 'Messages and receipts shared with this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], sessions: ['Sessions', 'Choose the connected session you want to work with.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'] };
+const titles = { sessions: ['Sessions', 'Choose the connected session you want to work with.'], messages: ['Conversations', 'Messages and receipts shared with this workspace.'], channels: ['Channels', 'Shared discussions and threads for this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], files: ['Files', 'Private files shared with your workspace.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'], billing: ['Billing & usage', 'Your workspace plan, payment details and included usage.'] };
 async function render() {
   clearView();
   if (!state.workspace) return firstWorkspace();
@@ -218,7 +219,7 @@ async function render() {
   main.append(el('header', { class: 'topline' }, el('div', {}, el('div', { class: 'eyebrow' }, state.workspace.name), el('h1', {}, titles[state.tab][0]), el('p', { class: 'muted' }, titles[state.tab][1])), state.tab === 'sessions' ? button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary') : null));
   const loading = el('p', { class: 'progress' }, 'Loading…'); main.append(loading);
   try {
-    const view = await ({ files: filesView, channels: channelsView, messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
+    const view = await ({ billing: billingView, files: filesView, channels: channelsView, messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
     if (generation !== state.generation) return;
     loading.replaceWith(view);
   } catch (error) { if (generation === state.generation) loading.replaceWith(el('div', { class: 'card' }, el('p', {}, error.message), button('Try again', render))); }
@@ -455,4 +456,48 @@ async function channelsView() {
     if (!live || polling || document.hidden) return; polling = true; try { const next = await api(scopePath + '/channel-posts?' + query); if (live) { if (next.posts.length) list.querySelector('.empty')?.remove(); append(next, true); } } catch (error) { if (live) inform('Channel refresh failed. ' + error.message, true); } finally { polling = false; } }, 5000);
   viewCleanups.push(() => { live = false; clearInterval(timer); });
   return container;
+}
+
+
+async function billingView() {
+  const scopePath = path('/billing');
+  const summary = await api(scopePath);
+  const paid = summary.paidUntil && Date.parse(summary.paidUntil) > Date.now();
+  const trial = !paid && Date.parse(summary.trialEndsAt) > Date.now();
+  const money = cents => new Intl.NumberFormat(undefined, { style: 'currency', currency: summary.currency.toUpperCase(), maximumFractionDigits: 0 }).format(cents / 100);
+  const bytes = n => n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GiB` : `${(n / 1024 ** 2).toFixed(1)} MiB`;
+  const count = n => Number(n).toLocaleString();
+  const result = el('div');
+  if (summary.configured && !summary.live) result.append(el('p', { class: 'notice-inline', role: 'status' }, 'Test billing — this service is not accepting real payments.'));
+  if (params.has('billing')) result.append(el('p', { class: 'notice-inline' }, 'Returned from billing. Check payment status below; returning from checkout does not confirm a payment.'));
+  result.append(el('section', { class: 'card' }, el('h2', {}, paid ? 'Paid workspace' : trial ? 'Workspace trial' : 'Hosting inactive'),
+    el('p', {}, paid ? `Hosting paid through ${date(summary.paidUntil)}.` : trial ? `Trial ends ${date(summary.trialEndsAt)}.` : 'New work is paused. Existing history remains available.'),
+    summary.cancelAtPeriodEnd ? el('p', {}, `Your subscription will end on ${date(summary.currentPeriodEnd)}. It will not renew.`) : null,
+    ['past_due', 'unpaid', 'incomplete'].includes(summary.status) ? el('p', { class: 'notice-inline' }, 'Your subscription needs payment attention. Open payment settings to review it.') : null));
+  const controls = el('div', { class: 'actions' });
+  async function follow(action, body) {
+    const link = await api(scopePath + '/' + action, { method: 'POST', body, timeout: 30000 });
+    const target = new URL(link.url);
+    if (target.protocol !== 'https:' || target.username || target.password || !['checkout.stripe.com', 'billing.stripe.com'].includes(target.host)) throw new Error('Payment destination could not be verified.');
+    location.assign(target.href);
+  }
+  if (summary.canManage && summary.configured) {
+    if (['none', 'canceled', 'incomplete_expired'].includes(summary.status)) {
+      controls.append(button(`${money(summary.monthlyPriceCents)} / month`, () => follow('checkout', { interval: 'month' }), 'primary'), button(`${money(summary.annualPriceCents)} / year`, () => follow('checkout', { interval: 'year' })));
+    } else controls.append(button('Payment settings & cancellation', () => follow('portal'), 'primary'));
+    controls.append(button('Check payment status', async () => { await api(scopePath + '/refresh', { method: 'POST', timeout: 30000 }); await render(); inform('Payment status checked.'); }));
+    if (summary.pendingCheckout) controls.append(button('Close unfinished checkout', async () => { await api(scopePath + '/cancel-checkout', { method: 'POST', timeout: 30000 }); await render(); }));
+  }
+  result.append(el('section', { class: 'card' }, el('h2', {}, `${money(summary.monthlyPriceCents)} per workspace per month`),
+    el('p', {}, `Or ${money(summary.annualPriceCents)} per year, billed annually. Applicable tax is shown at checkout. Includes 5 people, 50 concurrent sessions, 100,000 new deliveries per calendar month and 5 GiB of files.`),
+    el('p', { class: 'help' }, 'Includes 25 GiB of uploads and 25 GiB of downloads per calendar month. Each file can be up to 16 MiB. Model and compute costs are separate. No automatic usage overage charges.'),
+    summary.pendingCheckout ? el('p', { class: 'notice-inline' }, `An unfinished ${summary.pendingInterval === 'year' ? 'annual' : 'monthly'} checkout is saved. Choosing the same plan resumes it; choosing the other plan closes it before starting another.`) : null,
+    !summary.configured ? el('p', {}, 'Paid hosting is not available on this service yet.') : !summary.canManage ? el('p', {}, 'Only a workspace owner can manage payments.') : controls));
+  const usage = el('section', { class: 'card' }, el('h2', {}, 'Included usage'), el('p', { class: 'help' }, paid ? `Delivery and file-transfer counters reset each calendar month (UTC). Current month: ${summary.month}.` : 'The trial includes 2,000 new deliveries in total, 256 MiB of files and 1 GiB in each transfer direction per calendar month.'));
+  for (const [name, used, limit, format] of [['New deliveries', summary.deliveries, summary.deliveryLimit, count], ['People', summary.members, summary.memberLimit, count], ['Concurrent sessions', summary.sessions, summary.sessionLimit, count], ['File storage', summary.fileBytes, summary.fileStorageLimit, bytes], ['Uploads this month', summary.uploadedBytes, summary.fileTransferLimit, bytes], ['Downloads this month', summary.downloadedBytes, summary.fileTransferLimit, bytes]]) {
+    usage.append(el('div', { class: 'usage' }, el('div', { class: 'row' }, el('span', {}, name), el('span', {}, `${format(used)} / ${format(limit)}`)), el('progress', { max: limit, value: Math.min(used, limit), 'aria-label': name })));
+  }
+  usage.append(el('p', { class: 'help' }, 'A new message counts once per recipient. Channel notifications count per subscriber. Retries, acknowledgements and replies do not consume delivery allowance.'));
+  result.append(usage);
+  return result;
 }

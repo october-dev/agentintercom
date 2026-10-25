@@ -67,7 +67,8 @@ lease does not imply native wake support.
 
 ## Initial allowances
 
-A new workspace has a 14-day trial, five members and up to 50 concurrent sessions.
+The first workspace starts a 14-day account trial; additional workspaces share
+its end date. Each allows five members and up to 50 concurrent sessions.
 The trial allows 2,000 new deliveries in total, including when it crosses a month.
 An active paid entitlement permits 100,000 new deliveries per UTC calendar month.
 Counters are committed with messages. An idempotent retry, receipt, poll,
@@ -88,6 +89,7 @@ Supply these through an owner-only service environment file or secret manager:
 - `OCTOBER_BUS_ENCRYPTION_KEY`: base64 encoding of 32 cryptographically random bytes.
 - `OCTOBER_BUS_AUTH_URL`: trusted Supabase Auth origin.
 - `OCTOBER_BUS_AUTH_PUBLIC_KEY`: that project's public API key.
+- `OCTOBER_BUS_ATTACHMENTS_DIR`: private persistent directory for file bytes.
 
 ```sh
 october-bus database migrate
@@ -142,3 +144,10 @@ inside the transaction that reads or changes shared work.
 | GET / POST | `/api/workspaces/{id}/tasks` | Page or create shared tasks |
 | GET | `/api/workspaces/{id}/questions` | Page pending human questions |
 | POST | `/api/workspaces/{id}/questions/{question}/answer` | Resolve once with an answer |
+
+## Payments and usage
+
+**Billing & usage** shows current allowances, trial/paid access and owner payment
+controls. The service owns workspace subscriptions independently of other product
+plans. See [hosted billing](hosted-billing.md) for prices, retry behavior, Stripe
+configuration and the required real-provider qualification.

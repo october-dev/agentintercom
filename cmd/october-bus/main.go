@@ -892,6 +892,8 @@ func setEnvironment(base []string, values ...string) []string {
 }
 
 func removeEnvironment(base []string, names ...string) []string {
+	// Service credentials must never reach an agent subprocess, including future
+	// Stripe settings added to the hosted service environment.
 	removed := map[string]bool{}
 	for _, name := range names {
 		removed[strings.ToUpper(name)] = true
@@ -899,7 +901,7 @@ func removeEnvironment(base []string, names ...string) []string {
 	result := make([]string, 0, len(base))
 	for _, entry := range base {
 		key, _, _ := strings.Cut(entry, "=")
-		if !removed[strings.ToUpper(key)] {
+		if !removed[strings.ToUpper(key)] && !strings.HasPrefix(strings.ToUpper(key), "OCTOBER_BUS_STRIPE_") {
 			result = append(result, entry)
 		}
 	}

@@ -1306,6 +1306,9 @@ func (s *Store) addTask(ctx context.Context, scopeID, createdBy string, principa
 		return Task{}, err
 	}
 	defer tx.Rollback()
+	if err := requireHostedNewWork(ctx, tx, scopeID); err != nil {
+		return Task{}, err
+	}
 	if principal != nil {
 		if err := requireCurrentExecution(ctx, tx, *principal, nowMillis()); err != nil {
 			return Task{}, err

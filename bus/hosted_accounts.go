@@ -171,6 +171,14 @@ func (a *HostedAccounts) CreateWorkspace(ctx context.Context, user HostedUser, n
 	}
 	now := nowMillis()
 	trialEnd := now + (14 * 24 * time.Hour).Milliseconds()
+	// Additional workspaces share the account's original trial window. Deleting
+	// a workspace or creating another one cannot restart a free trial.
+	if _, err := tx.ExecContext(ctx, "INSERT INTO hosted_trial_accounts(user_id,started_at,ends_at) VALUES(?,?,?) ON CONFLICT(user_id) DO NOTHING", user.ID, now, trialEnd); err != nil {
+		return Workspace{}, err
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT ends_at FROM hosted_trial_accounts WHERE user_id=?", user.ID).Scan(&trialEnd); err != nil {
+		return Workspace{}, err
+	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO scopes(scope_id,token_hash,created_at) VALUES(?,?,?)", id, tokenDigest(token), now); err != nil {
 		return Workspace{}, err
 	}

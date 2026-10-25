@@ -15,6 +15,7 @@ type HostedServerOptions struct {
 	PublicURL      string
 	AllowedOrigins []string
 	Identity       HostedIdentityVerifier
+	Billing        *HostedBilling
 }
 
 type HostedServer struct {
@@ -30,6 +31,7 @@ type HostedServer struct {
 	oauthRegistration  *rate.Limiter
 	oauthAuthorization *rate.Limiter
 	oauthRequests      chan struct{}
+	billing            *HostedBilling
 }
 
 func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*HostedServer, error) {
@@ -38,6 +40,10 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 		return nil, errors.New("hosted service requires an HTTPS public origin, accounts and identity verifier")
 	}
 	h := &HostedServer{accounts: accounts, identity: options.Identity, routes: http.NewServeMux(), publicURL: strings.TrimRight(options.PublicURL, "/"), host: u.Host, origins: map[string]bool{}, requests: make(chan struct{}, 64)}
+	if options.Billing != nil && (options.Billing.accounts != accounts || options.Billing.options.PublicURL != h.publicURL) {
+		return nil, errors.New("billing must belong to this hosted service and origin")
+	}
+	h.billing = options.Billing
 	h.origins[h.publicURL] = true
 	for _, origin := range options.AllowedOrigins {
 		v, err := url.Parse(origin)
@@ -146,6 +152,7 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 	h.registerWorkRoutes()
 	h.registerChannelRoutes()
 	h.registerAttachmentRoutes()
+	h.registerBillingRoutes()
 	return h, nil
 }
 

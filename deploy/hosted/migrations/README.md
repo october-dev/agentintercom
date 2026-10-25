@@ -122,3 +122,11 @@ configure `OCTOBER_BUS_ATTACHMENTS_DIR` on persistent private storage before
 starting the hosted service. The supplied service unit creates that directory
 under `/var/lib/october-bus-hosted`. Only one service may own its attachment
 store. Back up both the database and files; a PostgreSQL dump alone is incomplete.
+
+## Workspace billing: 010_billing.sql
+
+Adds account trial windows, isolated workspace billing customers/subscriptions,
+immutable checkout attempts, verified funded invoice periods and webhook receipts.
+Existing workspace owners seed their first trial window from existing workspaces.
+All tables remain in `october_bus`; no existing product billing schema is changed.
+See [billing configuration](../../../docs/hosted-billing.md).
