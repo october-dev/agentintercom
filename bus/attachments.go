@@ -118,6 +118,29 @@ func (f *attachmentFiles) open(source string) error {
 		root.Close()
 		return Errorf(CodeConflict, "Attachment directory is already owned by another service")
 	}
+	backupPath := filepath.Join(f.directory, ".backup.lock")
+	if _, err := os.Lstat(backupPath); err == nil {
+		if err := checkPrivatePath(backupPath, false); err != nil {
+			lock.Close()
+			root.Close()
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		lock.Close()
+		root.Close()
+		return err
+	}
+	backup, err := root.OpenFile(".backup.lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		lock.Close()
+		root.Close()
+		return err
+	}
+	if err := backup.Close(); err != nil {
+		lock.Close()
+		root.Close()
+		return err
+	}
 	f.root, f.lock = root, lock
 	return nil
 }
@@ -140,6 +163,30 @@ func (s *Store) configureAttachments(directory string) error {
 	}
 	s.files.directory = directory
 	return s.files.open(s.source)
+}
+
+// A backup process holds this persistent lock while taking a PostgreSQL dump
+// and copying files. Messaging and reads continue; file writes return busy and
+// deletion becomes a tombstone until garbage collection can unlink safely.
+// Never unlink the lock file: all processes must agree on the same inode.
+func (f *attachmentFiles) backupLock() (*os.File, error) {
+	path := filepath.Join(f.directory, ".backup.lock")
+	if _, err := os.Lstat(path); err == nil {
+		if err := checkPrivatePath(path, false); err != nil {
+			return nil, err
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	file, err := f.root.OpenFile(".backup.lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err := lockFile(file); err != nil {
+		file.Close()
+		return nil, Errorf(CodeBackpressure, "File storage is being backed up; retry the upload shortly")
+	}
+	return file, nil
 }
 func validateAttachmentInput(input *UploadAttachmentInput) error {
 	if err := validateText(input.Name, "name", 255, false); err != nil {
@@ -318,6 +365,11 @@ func (s *Store) UploadAttachment(ctx context.Context, scopeID string, input Uplo
 
 // Caller owns files.mu and uses a validated/generated ID, never a user path.
 func (s *Store) writeAttachmentFile(id string, data []byte) error {
+	backup, err := s.files.backupLock()
+	if err != nil {
+		return err
+	}
+	defer backup.Close()
 	reserve := s.files.minimumFreeBytes
 	if reserve == 0 {
 		reserve = 256 * 1024 * 1024
@@ -510,7 +562,10 @@ func (s *Store) DeleteAttachment(ctx context.Context, scopeID, id string) error 
 	s.files.mu.Lock()
 	defer s.files.mu.Unlock()
 	if err := s.files.open(s.source); err == nil {
-		_ = s.files.root.Remove(id)
+		if backup, err := s.files.backupLock(); err == nil {
+			_ = s.files.root.Remove(id)
+			_ = backup.Close()
+		}
 	}
 	return nil
 }
@@ -537,6 +592,11 @@ func (s *Store) CollectAttachmentGarbage(ctx context.Context) (int, error) {
 			return 0, err
 		}
 	}
+	backup, err := s.files.backupLock()
+	if err != nil {
+		return 0, err
+	}
+	defer backup.Close()
 	dir, err := s.files.root.Open(".")
 	if err != nil {
 		return 0, err

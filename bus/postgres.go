@@ -166,7 +166,14 @@ func MigratePostgres(ctx context.Context, connectionString string) error {
 	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(6863746, 1)"); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `CREATE SCHEMA IF NOT EXISTS october_bus;
+	// CREATE SCHEMA IF NOT EXISTS still checks database-wide CREATE privilege.
+	// A provisioned migration role owns only this schema and need not have that
+	// broader privilege; only attempt creation when it is actually missing.
+	if _, err := tx.ExecContext(ctx, `DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname='october_bus') THEN
+    CREATE SCHEMA october_bus;
+  END IF;
+END $$;
 REVOKE ALL ON SCHEMA october_bus FROM PUBLIC;
 CREATE TABLE IF NOT EXISTS october_bus.schema_migrations(name TEXT PRIMARY KEY,sha256 TEXT NOT NULL,applied_at TIMESTAMPTZ NOT NULL DEFAULT now());`); err != nil {
 		return errors.New("cannot initialize PostgreSQL migration ledger; verify database owner permissions")

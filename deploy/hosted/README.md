@@ -1,6 +1,7 @@
 # Hosted MCP connector pilot
 
 For the standalone PostgreSQL workspace service, use
+[the deployment and recovery runbook](STANDALONE.md),
 [hosted workspaces](../../docs/hosted-workspaces.md),
 [hosted billing](../../docs/hosted-billing.md) and
 [october-bus-hosted.service](october-bus-hosted.service). The instructions below

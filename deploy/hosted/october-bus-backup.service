@@ -1,0 +1,32 @@
+[Unit]
+Description=Encrypted October Bus database and file backup
+After=network-online.target october-bus-hosted.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/october-bus/backup.env
+Environment=OCTOBER_BUS_ATTACHMENTS_DIR=/var/lib/october-bus-hosted/attachments
+Environment=OCTOBER_BUS_SERVICE_ENV=/etc/october-bus/hosted.env
+Environment=OCTOBER_BUS_BINARY=/opt/october-bus-hosted/current/october-bus
+Environment=OCTOBER_BUS_BACKUP_CACHE=/var/cache/october-bus-backup
+Environment=OCTOBER_BUS_BACKUP_STATE=/var/lib/october-bus-backup
+Environment=RESTIC_CACHE_DIR=/var/cache/october-bus-backup/restic
+Environment=GOMAXPROCS=2
+CacheDirectory=october-bus-backup
+CacheDirectoryMode=0700
+StateDirectory=october-bus-backup
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 /opt/october-bus-hosted/current/backup.py
+TimeoutStartSec=30min
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=512M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/october-bus-hosted/attachments
+

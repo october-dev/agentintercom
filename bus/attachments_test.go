@@ -323,3 +323,43 @@ func TestAttachmentDiskReserveRefusesWriteWithoutCharging(t *testing.T) {
 	requireNoError(t, store.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM attachments WHERE scope_id=?", a.scope.ScopeID).Scan(&count))
 	require(t, count == 1, "refused write committed metadata")
 }
+
+func TestAttachmentBackupLockPreservesBytesAndAllowsCoordination(t *testing.T) {
+	a := setupAgents(t, ":memory:")
+	defer a.runtime.Close()
+	ctx := context.Background()
+	store := a.runtime.store.(*Store)
+	input := UploadAttachmentInput{Name: "saved", IdempotencyKey: "saved"}
+	file, err := a.runtime.UploadAttachment(ctx, a.plannerToken, input, []byte("backup bytes"))
+	requireNoError(t, err)
+	backup, err := acquireFileLock(filepath.Join(store.files.directory, ".backup.lock"))
+	requireNoError(t, err)
+	defer backup.Close()
+	_, err = a.runtime.UploadAttachment(ctx, a.plannerToken, UploadAttachmentInput{Name: "wait"}, []byte("new bytes"))
+	requireCode(t, err, CodeBackpressure)
+	retried, err := a.runtime.UploadAttachment(ctx, a.plannerToken, input, []byte("backup bytes"))
+	requireNoError(t, err)
+	require(t, retried.ID == file.ID, "backup interrupted retry recovery")
+	read, err := a.runtime.ReadAttachment(ctx, a.plannerToken, file.ID, 0, 100)
+	requireNoError(t, err)
+	require(t, string(read.Data) == "backup bytes", "backup interrupted reads")
+	_, err = a.runtime.SendMessage(ctx, a.plannerToken, SendMessageInput{To: "reviewer", Body: "Coordination continues"})
+	requireNoError(t, err)
+	requireNoError(t, a.runtime.DeleteAttachment(ctx, a.plannerToken, file.ID))
+	_, err = a.runtime.ReadAttachment(ctx, a.plannerToken, file.ID, 0, 100)
+	requireCode(t, err, CodeNotFound)
+	_, err = os.Stat(filepath.Join(store.files.directory, file.ID))
+	requireNoError(t, err) // The database dump may still reference these bytes.
+	_, err = store.CollectAttachmentGarbage(ctx)
+	requireCode(t, err, CodeBackpressure)
+	var uploaded int64
+	requireNoError(t, store.db.QueryRowContext(ctx, "SELECT SUM(uploaded_bytes) FROM attachment_usage WHERE scope_id=?", a.scope.ScopeID).Scan(&uploaded))
+	require(t, uploaded == 12, "busy upload was charged")
+	requireNoError(t, backup.Close())
+	_, err = store.CollectAttachmentGarbage(ctx)
+	requireNoError(t, err)
+	_, err = os.Stat(filepath.Join(store.files.directory, file.ID))
+	require(t, os.IsNotExist(err), "deferred deletion did not complete")
+	_, err = a.runtime.UploadAttachment(ctx, a.plannerToken, UploadAttachmentInput{Name: "resumed"}, []byte("new bytes"))
+	requireNoError(t, err)
+}

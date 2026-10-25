@@ -100,6 +100,10 @@ october-bus hosted serve --public-url https://bus.example.com \
 The default listener is `127.0.0.1:4780`. Preserve the public Host through the TLS
 proxy. Additional trusted Auth issuers can be declared explicitly with repeated
 `--auth-issuer` flags when migrating a project's authentication domain.
+The supplied systemd unit reads `OCTOBER_BUS_PUBLIC_URL` from its private
+environment file and uses a separate release directory and system account. See
+the [deployment and recovery runbook](../deploy/hosted/STANDALONE.md) for schema
+roles, installation, encrypted off-host backups and isolated restore checks.
 
 Service-owned workspace/session credentials are encrypted with AES-256-GCM,
 including an identity-specific authenticated purpose. The runtime's credential

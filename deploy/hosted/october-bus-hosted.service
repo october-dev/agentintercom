@@ -5,13 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=october-bus
-Group=october-bus
+User=october-bus-hosted
+Group=october-bus-hosted
 EnvironmentFile=/etc/october-bus/hosted.env
 Environment=OCTOBER_BUS_ATTACHMENTS_DIR=/var/lib/october-bus-hosted/attachments
+Environment=GOMEMLIMIT=512MiB
+Environment=GOMAXPROCS=2
 StateDirectory=october-bus-hosted
 StateDirectoryMode=0700
-ExecStart=/usr/local/bin/october-bus hosted serve --public-url https://bus.example.com
+ExecStart=/opt/october-bus-hosted/current/october-bus hosted serve --public-url ${OCTOBER_BUS_PUBLIC_URL}
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20
@@ -20,6 +22,13 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+MemoryHigh=640M
+MemoryMax=768M
+TasksMax=256
+LimitNOFILE=8192
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
