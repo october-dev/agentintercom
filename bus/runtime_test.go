@@ -668,7 +668,9 @@ func TestAgentSessionHeartbeatsAndStops(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 		agents, err = owner.ListAgents(ctx)
 		requireNoError(t, err)
-		if agents[0].UpdatedAt != firstUpdate {
+		// The database commit can be visible before the heartbeat response has
+		// reached the session. Wait for both sides of the renewal handshake.
+		if agents[0].UpdatedAt != firstUpdate && session.LeaseExpiresAt().After(firstExpiry) {
 			break
 		}
 	}
