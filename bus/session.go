@@ -34,6 +34,7 @@ type AgentSession struct {
 	done           chan struct{}
 	beatMu         sync.Mutex
 	stateMu        sync.Mutex
+	leaseExpiresAt time.Time
 	lifecycle      AgentLifecycle
 	ready          bool
 	errMu          sync.Mutex
@@ -92,7 +93,8 @@ func StartAgentSession(ctx context.Context, options AgentSessionOptions) (*Agent
 		return nil, err
 	}
 	agentClient := Client{Address: options.Address, Token: registration.AgentToken, HTTP: options.HTTP}
-	if _, err := agentClient.Heartbeat(ctx, HeartbeatInput{Lifecycle: lifecycle, Ready: options.InitialReady, LeaseMS: leaseMS}); err != nil {
+	initial, err := agentClient.Heartbeat(ctx, HeartbeatInput{Lifecycle: lifecycle, Ready: options.InitialReady, LeaseMS: leaseMS})
+	if err != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = agentClient.Retire(cleanupCtx)
@@ -102,7 +104,7 @@ func StartAgentSession(ctx context.Context, options AgentSessionOptions) (*Agent
 	session := &AgentSession{
 		Address: options.Address, Registration: registration, Client: agentClient,
 		retryTransient: options.DeviceToken != "", leaseMS: leaseMS, context: heartbeatCtx, cancel: cancel, done: make(chan struct{}),
-		lifecycle: lifecycle, ready: options.InitialReady,
+		lifecycle: lifecycle, ready: options.InitialReady, leaseExpiresAt: heartbeatExpiry(initial, leaseMS),
 	}
 	go session.heartbeat(heartbeatCtx, interval)
 	return session, nil
@@ -165,7 +167,13 @@ func (s *AgentSession) sendHeartbeat(ctx context.Context) (Agent, error) {
 	}
 	lifecycle, ready := s.lifecycle, s.ready
 	s.stateMu.Unlock()
-	return s.Client.Heartbeat(ctx, HeartbeatInput{Lifecycle: lifecycle, Ready: ready, LeaseMS: s.leaseMS})
+	agent, err := s.Client.Heartbeat(ctx, HeartbeatInput{Lifecycle: lifecycle, Ready: ready, LeaseMS: s.leaseMS})
+	if err == nil {
+		s.stateMu.Lock()
+		s.leaseExpiresAt = heartbeatExpiry(agent, s.leaseMS)
+		s.stateMu.Unlock()
+	}
+	return agent, err
 }
 
 // SetState updates the lifecycle and readiness reported by this execution.
@@ -198,6 +206,7 @@ func (s *AgentSession) SetState(ctx context.Context, lifecycle AgentLifecycle, r
 	if err == nil {
 		s.stateMu.Lock()
 		s.lifecycle, s.ready = lifecycle, ready
+		s.leaseExpiresAt = heartbeatExpiry(agent, s.leaseMS)
 		s.stateMu.Unlock()
 	}
 	return agent, err
@@ -227,4 +236,23 @@ func (s *AgentSession) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func heartbeatExpiry(agent Agent, leaseMS int64) time.Time {
+	updated, err := time.Parse(time.RFC3339Nano, agent.UpdatedAt)
+	if err != nil {
+		return time.Time{}
+	}
+	return updated.Add(time.Duration(leaseMS) * time.Millisecond)
+}
+
+// LeaseExpiresAt reports only the most recently confirmed heartbeat lease. A
+// controller can renew an execution file without inventing extra authority.
+func (s *AgentSession) LeaseExpiresAt() time.Time {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if s.closed || s.lifecycle == LifecycleOffline {
+		return time.Time{}
+	}
+	return s.leaseExpiresAt
 }

@@ -31,13 +31,13 @@ Usage:
   october-bus channel join|leave --id <channel-id>
   october-bus channel post --id <channel-id> --body <text> [--thread <root-post-id>] [--key <retry-key>]
   october-bus channel read [--id <channel-id>] [--thread <root-post-id>] [--query <text>] [--before <cursor>]
-  october-bus session start claude --workspace <name> [--name <label>] -- [Claude arguments]
+  october-bus session start <claude|codex> --workspace <name> [--name <label>] -- [app arguments]
   october-bus session status
   october-bus session retry <message-id>
   october-bus hosted login [--server <https-origin>] [--profile <name>] [--name <device-label>]
   october-bus hosted logout [--profile <name>]
   october-bus connect --hosted <profile> [--name <session-label>] [--format json|toml|entry]
-  october-bus session start claude --hosted <profile> [--name <label>] -- [Claude arguments]
+  october-bus session start <claude|codex> --hosted <profile> [--name <label>] -- [app arguments]
   october-bus hosted serve --public-url <https-origin> [--listen 127.0.0.1:4780]
   october-bus database migrate [--url-env OCTOBER_BUS_DATABASE_URL]
   october-bus database check [--url-env OCTOBER_BUS_DATABASE_URL]

@@ -661,6 +661,8 @@ func TestAgentSessionHeartbeatsAndStops(t *testing.T) {
 	agents, err = owner.ListAgents(ctx)
 	require(t, err == nil && len(agents) == 1 && agents[0].Ready && agents[0].Lifecycle == LifecycleReady, "managed agent state did not update: %#v, %v", agents, err)
 	firstUpdate := agents[0].UpdatedAt
+	firstExpiry := session.LeaseExpiresAt()
+	require(t, firstExpiry.After(time.Now()), "initial confirmed lease missing")
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
@@ -673,9 +675,11 @@ func TestAgentSessionHeartbeatsAndStops(t *testing.T) {
 	if agents[0].UpdatedAt == firstUpdate {
 		t.Fatal("managed agent did not heartbeat")
 	}
+	require(t, session.LeaseExpiresAt().After(firstExpiry), "successful heartbeat did not renew confirmed lease")
 	closeCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	requireNoError(t, session.Close(closeCtx))
+	require(t, session.LeaseExpiresAt().IsZero(), "closed session retained a lease")
 	agents, err = owner.ListAgents(ctx)
 	require(t, err == nil && len(agents) == 1 && !agents[0].Ready && !agents[0].Reachable && agents[0].Lifecycle == LifecycleOffline, "managed agent did not stop cleanly: %#v, %v", agents, err)
 }

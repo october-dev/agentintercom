@@ -109,6 +109,49 @@ This integration uses Claude Code's documented
 It does not control arbitrary desktop conversations or change their permissions.
 Windows named-pipe wake is not implemented; standard MCP remains available.
 
+## Start a Codex session with native wake
+
+On macOS, Linux or WSL, after installing and signing in to a Codex CLI that
+supports `app-server --stdio`, `resume` and `queue`:
+
+```sh
+october-bus session start codex --workspace my-team --name "My Codex session"
+# On another machine with an approved hosted connection:
+october-bus session start codex --hosted default --name "My Codex session"
+```
+
+The launcher creates an empty Codex session without starting a model turn, then
+opens the normal Codex terminal interface. It prints that session's UUID. To
+resume a session you explicitly choose, pass `--thread <uuid>` before `--`.
+Use `--id <bus-id>` as well to resume its existing Bus inbox. This deliberately
+replaces that Bus identity's previous execution; other sessions keep their own
+identities.
+
+The persistent listener sends a static inbox reminder using
+[`codex queue --thread <uuid>`](https://learn.chatgpt.com/docs/developer-commands#codex-queue).
+Message bodies remain in the Bus until the agent retrieves them. The launcher
+does not read terminal screens, choose models, approve tools, or change sandbox
+permissions. Normal Codex arguments follow `--`. The connection uses a private
+file renewed only after confirmed Bus heartbeats; credentials never enter CLI
+arguments or shared Codex configuration. Closing the launcher retires its Bus
+execution and removes that file. It does not stop the shared Codex server.
+Wake begins only after this session's MCP client discovers its Bus tools, so
+messages arriving during startup remain queued until its own settings apply.
+
+This invocation owns the `october_bus` MCP transport table. Other app settings
+and MCP servers remain configured normally. Explicit
+`mcp_servers.october_bus.default_tools_approval_mode` settings are accepted;
+the launcher never supplies automatic approval itself. Remote-server flags,
+`--last`, `--all` and `--no-daemon` are incompatible with the owned session.
+Keep the Codex terminal open for native wake; a queued nudge does not prove a
+model read or acknowledged the message.
+
+This path is experimental because Codex's
+[app-server interface](https://learn.chatgpt.com/docs/developer-commands#codex-app-server)
+may change. It does not attach to arbitrary Codex Desktop chats or provide
+native wake to another MCP app. Generic stdio and remote OAuth connections
+remain available independently of this launcher.
+
 ## Connect another machine to a hosted workspace
 
 On each machine, use the current CLI:

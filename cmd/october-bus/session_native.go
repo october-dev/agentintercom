@@ -56,10 +56,10 @@ func sessionCommand(args []string) error {
 		defer cancel()
 		return client.RetryWake(ctx, args[1:])
 	}
-	if len(args) < 2 || args[0] != "start" || args[1] != "claude" {
-		return errors.New("use session start claude --workspace <name> [--name <label>] [--id <stable-id>] -- [Claude arguments], or session status/retry")
+	if len(args) < 2 || args[0] != "start" || (args[1] != "claude" && args[1] != "codex") {
+		return errors.New("use session start <claude|codex> --workspace <name> [--name <label>] [--id <stable-id>] -- [app arguments], or session status/retry")
 	}
-	return startClaudeSession(args[2:])
+	return startNativeSession(args[1], args[2:])
 }
 
 func nativePrivateDirectory(path string) error {
@@ -162,24 +162,41 @@ func bindNativeSession(args []string) error {
 func shellArgument(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'" }
 
 func startClaudeSession(args []string) error {
+	return startNativeSession("claude", args)
+}
+
+func startNativeSession(provider string, args []string) error {
 	if runtime.GOOS == "windows" {
-		return errors.New("native Claude session wake currently requires macOS, Linux or WSL; standard MCP remains available")
+		return errors.New("native session wake currently requires macOS, Linux or WSL; standard MCP remains available")
 	}
-	flags := flag.NewFlagSet("session start claude", flag.ContinueOnError)
+	label := "Claude Code"
+	if provider == "codex" {
+		label = "Codex"
+	}
+	flags := flag.NewFlagSet("session start "+provider, flag.ContinueOnError)
 	workspace := flags.String("workspace", "", "local workspace name")
 	hosted := flags.String("hosted", "", "saved hosted device profile")
-	name := flags.String("name", "Claude Code", "session label")
+	name := flags.String("name", label, "session label")
 	id := flags.String("id", "", "optional stable Bus identity to resume")
-	binary := flags.String("command", "claude", "Claude Code executable")
+	binary := flags.String("command", provider, "app executable")
+	thread := flags.String("thread", "", "Codex session UUID to resume instead of creating an empty session")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if (*workspace == "") == (*hosted == "") {
 		return errors.New("choose --workspace <local-name> or --hosted <profile>")
 	}
+	if *thread != "" && (provider != "codex" || !codexThreadID.MatchString(*thread)) {
+		return errors.New("--thread requires a Codex session UUID")
+	}
+	if provider == "codex" {
+		if err := validateCodexNativeArgs(flags.Args()); err != nil {
+			return err
+		}
+	}
 	for _, arg := range flags.Args() {
 		for _, owned := range []string{"--settings", "--mcp-config", "--bare"} {
-			if arg == owned || strings.HasPrefix(arg, owned+"=") {
+			if provider == "claude" && (arg == owned || strings.HasPrefix(arg, owned+"=")) {
 				return fmt.Errorf("%s is managed by this launcher; normal user and project settings are preserved", owned)
 			}
 		}
@@ -208,7 +225,7 @@ func startClaudeSession(args []string) error {
 		return err
 	}
 	if _, err := exec.LookPath(*binary); err != nil {
-		return errors.New("Claude Code executable was not found; install it and sign in first")
+		return fmt.Errorf("%s executable was not found; install it and sign in first", label)
 	}
 	paths, err := bus.DefaultDaemonPaths()
 	if err != nil {
@@ -225,14 +242,16 @@ func startClaudeSession(args []string) error {
 		return err
 	}
 	defer os.RemoveAll(dir)
-	settings := map[string]any{"hooks": map[string]any{"SessionStart": []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": shellArgument(executable) + " session bind claude", "timeout": 5}}}}}}
-	settings["hooks"].(map[string]any)["Stop"] = []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": shellArgument(executable) + " session guard", "timeout": 4}}}}
-	if err := writeNativeJSON(filepath.Join(dir, "settings.json"), settings); err != nil {
-		return err
-	}
-	config := map[string]any{"mcpServers": map[string]any{"october_bus": stdioConfig{Command: executable, Args: []string{"mcp", "stdio"}}}}
-	if err := writeNativeJSON(filepath.Join(dir, "mcp.json"), config); err != nil {
-		return err
+	if provider == "claude" {
+		settings := map[string]any{"hooks": map[string]any{"SessionStart": []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": shellArgument(executable) + " session bind claude", "timeout": 5}}}}}}
+		settings["hooks"].(map[string]any)["Stop"] = []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": shellArgument(executable) + " session guard", "timeout": 4}}}}
+		if err := writeNativeJSON(filepath.Join(dir, "settings.json"), settings); err != nil {
+			return err
+		}
+		config := map[string]any{"mcpServers": map[string]any{"october_bus": stdioConfig{Command: executable, Args: []string{"mcp", "stdio"}}}}
+		if err := writeNativeJSON(filepath.Join(dir, "mcp.json"), config); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -252,12 +271,58 @@ func startClaudeSession(args []string) error {
 	childCtx, stopChild := context.WithCancel(ctx)
 	defer stopChild()
 	providerArgs := append([]string{"--settings", filepath.Join(dir, "settings.json"), "--mcp-config", filepath.Join(dir, "mcp.json")}, flags.Args()...)
+	childEnv := removeEnvironment(os.Environ(), "OCTOBER_BUS_SCOPE_TOKEN", "OCTOBER_BUS_ADMIN_TOKEN", "OCTOBER_BUS_DATABASE_URL", "OCTOBER_BUS_ENCRYPTION_KEY", "OCTOBER_BUS_BILLING_SECRET", managedConnectionFileEnv, "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "OCTOBER_BUS_ADDRESS", "OCTOBER_BUS_MCP_URL", "OCTOBER_BUS_AGENT_TOKEN", "OCTOBER_BUS_AGENT_ID", "OCTOBER_BUS_EXECUTION_ID", nativeBindingFileEnv)
+	listener := nativewake.ListenerOptions{Client: session.Client, Binding: func() (nativewake.Binding, error) { return readNativeBinding(filepath.Join(dir, "binding.json")) }, Diagnostic: func(message string) { fmt.Fprintln(os.Stderr, "October Bus:", message) }}
+	var renewalDone <-chan error
+	if provider == "codex" {
+		connectionPath := filepath.Join(dir, "connection.json")
+		if err := writeSessionConnection(connectionPath, session); err != nil {
+			return err
+		}
+		config := codexConnectionConfig(executable, connectionPath)
+		if *thread == "" {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			// The bootstrap must not announce MCP readiness for the TUI or accept
+			// queued work before that TUI applies the user's invocation settings.
+			bootstrapConfig := append(append([]string(nil), config...), "-c", "mcp_servers.october_bus.enabled=false")
+			*thread, err = bootstrapCodexThread(childCtx, *binary, bootstrapConfig, childEnv, cwd)
+			if err != nil {
+				return err
+			}
+		}
+		providerArgs = append([]string{"resume", *thread}, config...)
+		providerArgs = append(providerArgs, flags.Args()...)
+		listener.Provider = "codex-app-server"
+		listener.Ready = func() error {
+			var ready nativeBridgeReady
+			if err := readPrivateSessionJSON(filepath.Join(dir, "ready.json"), &ready); err != nil {
+				return err
+			}
+			if ready.ExecutionID != session.Registration.ExecutionID {
+				return errors.New("MCP bridge belongs to another execution")
+			}
+			return nil
+		}
+		listener.Post = func(ctx context.Context, prompt string) (string, error) {
+			return postCodexQueue(ctx, *binary, *thread, childEnv, prompt)
+		}
+		renewalCtx, stopRenewal := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		go func() { defer close(done); done <- renewSessionConnection(renewalCtx, connectionPath, session) }()
+		renewalDone = done
+		defer func() { stopRenewal(); <-done }()
+		fmt.Fprintf(os.Stderr, "Codex session: %s. Native wake uses the experimental app-server integration.\n", *thread)
+	} else {
+		childEnv = setEnvironment(childEnv, "OCTOBER_BUS_ADDRESS", owner.Address, "OCTOBER_BUS_MCP_URL", owner.Address+"/mcp", "OCTOBER_BUS_AGENT_TOKEN", session.Registration.AgentToken, "OCTOBER_BUS_AGENT_ID", session.Registration.AgentID, "OCTOBER_BUS_EXECUTION_ID", session.Registration.ExecutionID, nativeBindingFileEnv, filepath.Join(dir, "binding.json"))
+	}
 	command := exec.CommandContext(childCtx, *binary, providerArgs...)
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 	command.Cancel = func() error { return command.Process.Signal(os.Interrupt) }
 	command.WaitDelay = 3 * time.Second
-	command.Env = setEnvironment(removeEnvironment(os.Environ(), "OCTOBER_BUS_SCOPE_TOKEN", "OCTOBER_BUS_ADMIN_TOKEN", "OCTOBER_BUS_DATABASE_URL", "OCTOBER_BUS_ENCRYPTION_KEY", "OCTOBER_BUS_BILLING_SECRET", managedConnectionFileEnv, "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN"),
-		"OCTOBER_BUS_ADDRESS", owner.Address, "OCTOBER_BUS_MCP_URL", owner.Address+"/mcp", "OCTOBER_BUS_AGENT_TOKEN", session.Registration.AgentToken, "OCTOBER_BUS_AGENT_ID", session.Registration.AgentID, "OCTOBER_BUS_EXECUTION_ID", session.Registration.ExecutionID, nativeBindingFileEnv, filepath.Join(dir, "binding.json"))
+	command.Env = childEnv
 	if err := command.Start(); err != nil {
 		return err
 	}
@@ -268,7 +333,7 @@ func startClaudeSession(args []string) error {
 	defer stopListener()
 	listenerDone := make(chan error, 1)
 	go func() {
-		listenerDone <- nativewake.Run(listenerCtx, nativewake.ListenerOptions{Client: session.Client, Binding: func() (nativewake.Binding, error) { return readNativeBinding(filepath.Join(dir, "binding.json")) }, Diagnostic: func(message string) { fmt.Fprintln(os.Stderr, "October Bus:", message) }})
+		listenerDone <- nativewake.Run(listenerCtx, listener)
 	}()
 	var result error
 	select {
@@ -281,6 +346,10 @@ func startClaudeSession(args []string) error {
 		stopChild()
 		<-childDone
 		return listenerErr
+	case renewalErr := <-renewalDone:
+		stopChild()
+		<-childDone
+		result = renewalErr
 	case <-ctx.Done():
 		stopChild()
 		<-childDone

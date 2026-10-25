@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -113,6 +114,7 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	dataDir := flags.String("data-dir", "", "local daemon data directory")
 	runtimeDir := flags.String("runtime-dir", "", "local daemon discovery directory")
 	connectionFile := flags.String("connection-file", "", "host-managed private execution connection file (Unix); defaults to $"+managedConnectionFileEnv)
+	readyFile := flags.String("ready-file", "", "optional private ready.json beside a managed connection; written after the host discovers tools")
 	remote := flags.String("remote", "", "HTTPS remote Bus base URL, including /bus for a hosted gateway")
 	scopeTokenFile := flags.String("scope-token-file", "", "private remote scope credential file, kept outside model context")
 	var peers stringList
@@ -145,6 +147,10 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	var endpoint string
 	var connectionSource func() (managedMCPConnection, error)
 	var sessionDone <-chan struct{}
+	var readyExecution string
+	if *readyFile != "" && (resolveManagedConnectionPath(*connectionFile) == "" || !filepath.IsAbs(*readyFile) || filepath.Base(*readyFile) != "ready.json" || filepath.Dir(*readyFile) != filepath.Dir(resolveManagedConnectionPath(*connectionFile))) {
+		return errors.New("--ready-file must be ready.json beside a managed connection file")
+	}
 	// Three exclusive identities: a controller-managed execution file, an
 	// explicit self-registration (local scope or hosted --remote), or launcher
 	// environment credentials. Mixing any two refuses.
@@ -158,6 +164,13 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		}
 		endpoint = connection.Endpoint
 		connectionSource = managedMCPConnectionSource(connectionPath, connection)
+		if *readyFile != "" {
+			readyExecution = connection.ExecutionID
+			if err := os.Remove(*readyFile); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			defer os.Remove(*readyFile)
+		}
 	} else if selfRegister {
 		if token != "" {
 			return errors.New("use either managed agent credentials or --scope/--agent, not both")
@@ -299,6 +312,24 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	}
 
 	server := newMCPBridgeServer(mcpBridgeInstructions)
+	if *readyFile != "" {
+		var announced sync.Once
+		server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+			return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+				result, err := next(ctx, method, request)
+				// tools/list is shared by the older initialization handshake and
+				// newer stateless MCP. An initialized notification alone is not.
+				if err == nil && method == "tools/list" {
+					announced.Do(func() {
+						if err := writeNativeJSON(*readyFile, nativeBridgeReady{ExecutionID: readyExecution}); err != nil {
+							fmt.Fprintln(os.Stderr, "October Bus: could not announce native bridge readiness; standard MCP remains connected")
+						}
+					})
+				}
+				return result, err
+			}
+		})
+	}
 	for cursor := ""; ; {
 		listCtx, listOutcome := withCallOutcome(connectContext)
 		result, err := upstream.ListTools(listCtx, &mcp.ListToolsParams{Cursor: cursor})
