@@ -66,6 +66,17 @@ func (s *Server) newRouter() http.Handler {
 		routeMethod{http.MethodGet, s.health},
 	)
 	registerAllMethods(router, "/mcp", s.serveMCP)
+	registerRoute(router, "/v1/inbox/preview", routeMethod{http.MethodGet, s.previewInbox})
+	registerRoute(router, "/v1/me/wake", routeMethod{http.MethodGet, s.wakeStatus})
+	registerRoute(router, "/v1/me/wake/claim", routeMethod{http.MethodPost, s.claimWake})
+	registerRoute(router, "/v1/me/wake/attempts/{attemptId}", routeMethod{http.MethodPost, s.finishWake})
+	registerRoute(router, "/v1/me/wake/retry", routeMethod{http.MethodPost, s.retryWake})
+	registerRoute(router, "/v1/channels", routeMethod{http.MethodGet, s.channels}, routeMethod{http.MethodPost, s.createChannel})
+	registerRoute(router, "/v1/channels/{channelId}/subscription", routeMethod{http.MethodPost, s.subscribeChannel})
+	registerRoute(router, "/v1/channel-posts", routeMethod{http.MethodGet, s.channelHistory}, routeMethod{http.MethodPost, s.postChannel})
+	registerRoute(router, "/v1/attachments", routeMethod{http.MethodGet, s.attachments}, routeMethod{http.MethodPost, s.uploadAttachment})
+	registerRoute(router, "/v1/attachments/{attachmentId}", routeMethod{http.MethodGet, s.readAttachment}, routeMethod{http.MethodDelete, s.deleteAttachment})
+	registerRoute(router, "/v1/attachments/{attachmentId}/content", routeMethod{http.MethodGet, s.downloadAttachment})
 	registerRoute(router, "/v1/admin/shutdown",
 		routeMethod{http.MethodPost, s.shutdownServer},
 	)
@@ -269,7 +280,7 @@ func (s *Server) health(response http.ResponseWriter, request *http.Request) err
 	writeJSON(response, httpStatus, Health{
 		Name: "october-bus", ProtocolVersion: ProtocolVersion, RuntimeVersion: Version,
 		Status: status, StartedAt: s.options.StartedAt, Storage: storage,
-		Features: []string{FeatureSessionRetirement},
+		Features: []string{FeatureSessionRetirement, FeatureNativeWake},
 	})
 	return nil
 }

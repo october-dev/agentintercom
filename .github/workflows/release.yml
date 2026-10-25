@@ -63,11 +63,11 @@ jobs:
       - name: Require exact-source launch-core evidence for a stable runtime tag
         if: ${{ !contains(github.ref_name, '-') }}
         run: node release-evidence/scripts/check-compatibility.mjs --runtime "${GITHUB_REF_NAME#v}" --source-commit "${GITHUB_SHA}" --require-attestation --launch-core
-      - run: go build -o /tmp/october-bus ./cmd/october-bus
+      - run: go build -o /tmp/agentintercom ./cmd/agentintercom
       - run: npm run test:integration
         working-directory: sdk/typescript
         env:
-          OCTOBER_BUS_BINARY: /tmp/october-bus
+          OCTOBER_BUS_BINARY: /tmp/agentintercom
       - name: Verify signed annotated release tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,12 +117,12 @@ jobs:
           set -euo pipefail
           test -z "$(git status --porcelain)"
           OCTOBER_BUS_VERSION="${OCTOBER_BUS_VERSION#v}"
-          OCTOBER_BUS_DIRECTORY="october-bus_${OCTOBER_BUS_VERSION}_${GOOS}_${GOARCH}"
+          OCTOBER_BUS_DIRECTORY="agentintercom_${OCTOBER_BUS_VERSION}_${GOOS}_${GOARCH}"
           mkdir -p "dist/${OCTOBER_BUS_DIRECTORY}"
           OCTOBER_BUS_SUFFIX=""
           if [[ "${GOOS}" == "windows" ]]; then OCTOBER_BUS_SUFFIX=".exe"; fi
-          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/october-bus/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/october-bus${OCTOBER_BUS_SUFFIX}" ./cmd/october-bus
-          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/october-bus/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/october-bus-conformance${OCTOBER_BUS_SUFFIX}" ./cmd/october-bus-conformance
+          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/october-bus/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/agentintercom${OCTOBER_BUS_SUFFIX}" ./cmd/agentintercom
+          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/october-bus/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/agentintercom-conformance${OCTOBER_BUS_SUFFIX}" ./cmd/agentintercom-conformance
           cp LICENSE README.md "dist/${OCTOBER_BUS_DIRECTORY}/"
           cp -R docs spec adapters compatibility assets "dist/${OCTOBER_BUS_DIRECTORY}/"
           if [[ "${GOOS}" == "windows" ]]; then
@@ -145,12 +145,12 @@ jobs:
         with:
           path: dist
           format: spdx-json
-          output-file: dist/october-bus_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.spdx.json
+          output-file: dist/agentintercom_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.spdx.json
           upload-artifact: false
           upload-release-assets: false
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: october-bus-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: agentintercom-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             dist/*.tar.gz
             dist/*.zip
@@ -179,7 +179,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: october-bus-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: agentintercom-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist
       - name: Smoke-test Unix archive
         if: matrix.goos != 'windows'
@@ -189,7 +189,7 @@ jobs:
           OCTOBER_BUS_ARCHIVE="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
           test -n "${OCTOBER_BUS_ARCHIVE}"
           tar -xzf "${OCTOBER_BUS_ARCHIVE}" -C dist
-          OCTOBER_BUS_BINARY="$(find dist -type f -name october-bus -print -quit)"
+          OCTOBER_BUS_BINARY="$(find dist -type f -name agentintercom -print -quit)"
           test -n "${OCTOBER_BUS_BINARY}"
           "${OCTOBER_BUS_BINARY}" version
           "${OCTOBER_BUS_BINARY}" version --json | jq -e --arg version "${GITHUB_REF_NAME#v}" '.runtimeVersion == $version and (.protocolVersion | type == "string")'
@@ -202,8 +202,8 @@ jobs:
           $archive = Get-ChildItem dist -Filter *.zip | Select-Object -First 1
           if (-not $archive) { throw "release archive not found" }
           Expand-Archive $archive.FullName -DestinationPath dist/unpacked
-          $binary = Get-ChildItem dist/unpacked -Recurse -Filter october-bus.exe | Select-Object -First 1
-          if (-not $binary) { throw "october-bus.exe not found" }
+          $binary = Get-ChildItem dist/unpacked -Recurse -Filter agentintercom.exe | Select-Object -First 1
+          if (-not $binary) { throw "agentintercom.exe not found" }
           & $binary.FullName version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $binary.FullName demo
@@ -227,12 +227,12 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: dist
-          pattern: october-bus-*
+          pattern: agentintercom-*
           merge-multiple: true
       - name: Verify Linux source metadata and generate the managed helper manifest
         run: |
           set -euo pipefail
-          protocol_version="$(go run ./cmd/october-bus version --json | jq -er .protocolVersion)"
+          protocol_version="$(go run ./cmd/agentintercom version --json | jq -er .protocolVersion)"
           node scripts/managed-runtime-manifest.mjs dist "${GITHUB_REF_NAME#v}" "${GITHUB_SHA}" "${protocol_version}"
           cp LICENSE dist/LICENSE
       - name: Create checksums

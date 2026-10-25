@@ -1,6 +1,6 @@
 {
   "amp.mcpServers": {
-    "october_bus": {
+    "agent_intercom": {
       "command": "{{command}}",
       "args": [
         "mcp",

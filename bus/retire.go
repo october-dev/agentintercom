@@ -10,7 +10,11 @@ import (
 // RetireAgent accepts even an expired current token, but never a replaced one.
 // Keeping its digest permits idempotent cleanup without granting renewable authority.
 func (s *Store) RetireAgent(ctx context.Context, token string) (Principal, error) {
-	tx, err := s.beginTx(ctx)
+	current, err := s.CurrentAgentToken(ctx, token)
+	if err != nil {
+		return Principal{}, err
+	}
+	tx, err := s.beginTx(ctx, current.ScopeID)
 	if err != nil {
 		return Principal{}, err
 	}
@@ -42,7 +46,7 @@ func (s *Store) RetireAgent(ctx context.Context, token string) (Principal, error
 	return p, tx.Commit()
 }
 
-func releaseAgentReservations(ctx context.Context, tx *sql.Tx, scopeID, agentID string) error {
+func releaseAgentReservations(ctx context.Context, tx sqlExecutor, scopeID, agentID string) error {
 	rows, err := tx.QueryContext(ctx, `SELECT reservation_id FROM reservations WHERE scope_id=? AND agent_id=?`, scopeID, agentID)
 	if err != nil {
 		return err

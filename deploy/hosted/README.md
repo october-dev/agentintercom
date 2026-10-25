@@ -1,5 +1,12 @@
 # Hosted MCP connector pilot
 
+For the standalone PostgreSQL workspace service, use
+[the deployment and recovery runbook](STANDALONE.md),
+[hosted workspaces](../../docs/hosted-workspaces.md),
+[hosted billing](../../docs/hosted-billing.md) and
+[october-bus-hosted.service](october-bus-hosted.service). The instructions below
+preserve the older operator-provisioned SQLite gateway deployment.
+
 Deploy the Bus on a Linux server with systemd and an existing HTTPS reverse proxy.
 Use **Existing MCP** for a Muse application: the connector gets the Bus's agent
 tools directly, while registration, heartbeat, and credential handling remain
@@ -66,7 +73,7 @@ From the repository root on the build machine:
 ```sh
 mkdir -p dist/hosted
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
-  -o dist/hosted/october-bus ./cmd/october-bus
+  -o dist/hosted/october-bus ./cmd/agentintercom
 ```
 
 Use `GOARCH=arm64` for an ARM server. Copy that binary and this directory to the
@@ -245,7 +252,7 @@ Application fields after verification:
 Suggested access requirements:
 
 > Operator-provisioned pilot access with a private connector API key. Users run
-> an October Bus bridge on their computer and explicitly connect supported agent
+> an Agent Intercom bridge on their computer and explicitly connect supported agent
 > sessions. Their computer and receiving agents must be online and consuming
 > messages for work to execute. Existing coding-tool accounts, subscriptions, and
 > approvals still apply. Each connector is limited to its provisioned scope and
@@ -267,6 +274,17 @@ to be tested. The form's API-key option is not evidence of end-to-end compatibil
 
 ## Operations, rotation, and recovery
 
+- If the proxy service has no restart policy, install
+  [caddy-restart.conf](caddy-restart.conf) as
+  `/etc/systemd/system/caddy.service.d/50-october-restart.conf` and run
+  `systemctl daemon-reload`. Check `systemctl show caddy --property=Restart`;
+  applying this policy does not require restarting the running proxy.
+- After verifying a separate public-key SSH connection, the optional
+  [sshd-key-only.conf](sshd-key-only.conf) disables password and keyboard-interactive
+  login. Back up existing configuration, validate with `sshd -t`, inspect the
+  effective settings with `sshd -T`, reload `ssh`, and verify a new connection
+  while retaining the original session. Authentication hardening is separate
+  from provider firewall rules and off-host backups.
 - Inspect `systemctl status october-bus october-bus-gateway` and their journals.
   Probe `/health/live` for process liveness and `/health/ready` for all connector
   sessions plus storage availability. A partial connector failure leaves other

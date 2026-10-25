@@ -14,12 +14,12 @@ import (
 
 func buildRuntimeCommand(t *testing.T) string {
 	t.Helper()
-	name := "october-bus"
+	name := "agentintercom"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
 	path := filepath.Join(t.TempDir(), name)
-	command := exec.Command("go", "build", "-o", path, "../cmd/october-bus")
+	command := exec.Command("go", "build", "-o", path, "../cmd/agentintercom")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build runtime command: %v\n%s", err, output)
 	}

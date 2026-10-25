@@ -7,11 +7,11 @@ A configuration fixture is not a successful run in the actual host.
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config continue --scope my-project --agent continue-reviewer --name "Continue Reviewer"
-october-bus doctor --harness continue --scope my-project
+agentintercom harness config continue --scope my-project --agent continue-reviewer --name "Continue Reviewer"
+agentintercom doctor --harness continue --scope my-project
 ```
 
-Configuration location: `.continue/mcpServers/october-bus.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.continue/mcpServers/agentintercom.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

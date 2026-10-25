@@ -221,9 +221,27 @@ func TestGatewayRoundTripAndScopeIsolation(t *testing.T) {
 	connector := f.mcp(t, f.keys[0])
 	tools, err := connector.ListTools(context.Background(), &mcp.ListToolsParams{})
 	must(t, err)
-	if len(tools.Tools) != 15 {
+	if len(tools.Tools) != 23 {
 		t.Fatalf("expected Bus tools, got %d", len(tools.Tools))
 	}
+	channel, err := worker.Client.CreateChannel(context.Background(), bus.CreateChannelInput{Name: "gateway"})
+	must(t, err)
+	must(t, worker.Client.SubscribeChannel(context.Background(), channel.ID, true))
+	post := call[bus.ChannelPost](t, connector, "post_channel", bus.PostChannelInput{ChannelID: channel.ID, Body: "Shared update"})
+	history, err := worker.Client.ChannelHistory(context.Background(), bus.ChannelHistoryInput{ChannelID: channel.ID})
+	must(t, err)
+	if len(history.Posts) != 1 || history.Posts[0].ID != post.ID {
+		t.Fatal("channel history did not cross the gateway")
+	}
+	notifications, err := worker.Client.PullInbox(context.Background(), 10, 0)
+	must(t, err)
+	if len(notifications) != 1 {
+		t.Fatal("channel notification did not cross the gateway")
+	}
+	_, err = worker.Client.AcknowledgeMessages(context.Background(), []string{notifications[0].ID})
+	must(t, err)
+	_, err = worker.Client.WakeStatus(context.Background())
+	must(t, err)
 	peers := call[struct{ Peers []bus.Agent }](t, connector, "list_peers", map[string]any{})
 	if len(peers.Peers) != 1 || peers.Peers[0].ID != "worker" {
 		t.Fatalf("wrong peers: %+v", peers)

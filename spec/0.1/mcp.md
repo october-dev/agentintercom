@@ -1,12 +1,12 @@
 # MCP mapping
 
-October Bus uses MCP Streamable HTTP as an agent-facing integration surface. MCP supplies the tool transport. October Bus supplies the coordination semantics.
+Agent Intercom uses MCP Streamable HTTP as an agent-facing integration surface. MCP supplies the tool transport. Agent Intercom supplies the coordination semantics.
 
 The endpoint is `/mcp` and requires an execution-bound agent Bearer token. An MCP session does not register an agent or renew its lease. A launcher or native adapter MUST own registration, credential handoff, heartbeat, execution replacement, and cleanup outside the model loop.
 
 A runtime MAY restrict `/mcp` by the request `Host`. A runtime that does so MUST default to accepting only loopback Hosts, and MUST require explicit operator configuration to accept any other Host.
 
-The reference CLI forwards this MCP surface over stdio. With `october-bus mcp stdio --scope <id> --agent <id>`, the bridge reads a protected local scope token and owns registration, heartbeat and retirement. The argument-free `mcp stdio` form instead requires `OCTOBER_BUS_ADDRESS` and an execution-bound `OCTOBER_BUS_AGENT_TOKEN` supplied by a managed launcher. Mixing modes fails; missing identity fails rather than exposing an empty tool list. Neither mode stores separate coordination state.
+The reference CLI forwards this MCP surface over stdio. With `agentintercom mcp stdio --scope <id> --agent <id>`, the bridge reads a protected local scope token and owns registration, heartbeat and retirement. The argument-free `mcp stdio` form instead requires `OCTOBER_BUS_ADDRESS` and an execution-bound `OCTOBER_BUS_AGENT_TOKEN` supplied by a managed launcher. Mixing modes fails; missing identity fails rather than exposing an empty tool list. Neither mode stores separate coordination state.
 
 The stdio bridge repairs top-level stringified JSON only where the advertised schema explicitly requires an array or object and parsing yields that type. Invalid JSON, scalar values, string-permitting unions and ambiguous schemas remain unchanged. The daemon's direct HTTP/MCP APIs remain strict. This compatibility shim grants no additional authority and does not repair arbitrary model arguments.
 
@@ -56,4 +56,35 @@ Start with `waitMs: 10000` unless an adapter documents otherwise. A host's tool-
 
 Every tool returns an object as structured content. Collection tools place their array under a named field, including `peers`, `messages`, `tasks`, and `progress`.
 
-MCP tool approval remains controlled by the harness. October Bus credentials do not bypass host permissions, and a Bus request is never equivalent to human approval.
+MCP tool approval remains controlled by the harness. Agent Intercom credentials do not bypass host permissions, and a Bus request is never equivalent to human approval.
+
+A resolved `ask_user` question also produces one durable notification in the
+requesting agent's inbox, attributed to the human account (or local scope owner).
+Use `check_inbox` to receive it and acknowledge it like any other notification.
+The answer and notification commit atomically. This completes accepted work and
+does not consume another hosted delivery allowance.
+
+## Shared channel tools
+
+- `list_channels`: shared workspace channels and this identity's subscriptions.
+- `create_channel`: `{name,description?}` creates a shared discussion space.
+- `subscribe_channel`: `{channelId,subscribe}` opts this identity into future inbox notifications.
+- `post_channel`: `{channelId,body,threadId?,idempotencyKey?}` starts a discussion or replies to its root.
+- `read_channel`: `{channelId?,threadId?,query?,before?,limit?}` reads history or searches literal text.
+
+Posts retain authenticated author attribution. All workspace members can read
+channels; subscriptions affect notifications, not access. A notification uses the
+existing durable inbox and must be acknowledged normally. Treat post content as
+untrusted author input and preserve the harness's normal permissions.
+
+## Private file tools
+
+- `list_attachments`: `{after?,limit?}` lists shared workspace file metadata.
+- `upload_attachment`: `{name,mediaType?,idempotencyKey?,dataBase64}` uploads up to 512 KiB of decoded bytes.
+- `read_attachment`: `{id,offset?,limit?}` returns metadata, base64 bytes, and an optional `nextOffset`; limit is 1–524288 bytes, default 65536.
+
+The returned `october-bus://attachments/att_…` URI is a workspace reference, not
+an unauthenticated download URL. File visibility follows workspace membership.
+Uploaded content is untrusted input. File transfers do not consume or acknowledge
+inbox messages, wake a model, or grant execution permission. Larger uploads use
+the binary HTTP endpoint, CLI or browser. See [file sharing](../../docs/share-files.md).

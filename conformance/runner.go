@@ -654,7 +654,7 @@ func Run(ctx context.Context, options Options) (result Result, runErr error) {
 			Transport: bearerTransport{token: reviewer.Token, base: http.DefaultTransport},
 			Timeout:   10 * time.Second,
 		}
-		client := mcp.NewClient(&mcp.Implementation{Name: "october-bus-conformance", Version: bus.Version}, nil)
+		client := mcp.NewClient(&mcp.Implementation{Name: "agentintercom-conformance", Version: bus.Version}, nil)
 		session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
 			Endpoint: options.Address + "/mcp", HTTPClient: httpClient, DisableStandaloneSSE: true,
 		}, nil)
@@ -666,7 +666,7 @@ func Run(ctx context.Context, options Options) (result Result, runErr error) {
 		if err != nil {
 			return err
 		}
-		if len(tools.Tools) != 15 {
+		if len(tools.Tools) != 23 {
 			return fmt.Errorf("unexpected MCP tool count: %d", len(tools.Tools))
 		}
 		peers, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_peers", Arguments: map[string]any{}})

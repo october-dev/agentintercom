@@ -8,7 +8,7 @@ export type TaskId = string
 
 export type AgentLifecycle = 'starting' | 'ready' | 'working' | 'idle' | 'needs_input' | 'offline'
 export type MessageMode = 'notify' | 'request' | 'response'
-export type MessageParticipantKind = 'agent' | 'a2aPrincipal'
+export type MessageParticipantKind = 'agent' | 'a2aPrincipal' | 'human'
 export type DeliveryState = 'queued' | 'reserved' | 'delivered' | 'acknowledged' | 'expired'
 export type TaskStatus = 'open' | 'claimed' | 'done'
 export type TaskProgressKind = 'progress' | 'note' | 'blocker'
@@ -401,8 +401,12 @@ export interface ArchivedOutputValue {
 }
 
 export interface ScopeArchive {
+  attachments?: Array<Attachment & { dataBase64: string; idempotencyKey?: string; requestHash: string }>
+  channels?: Array<Omit<Channel, 'subscribers' | 'subscribed'>>
+  channelSubscriptions?: Array<{ channelId: string; agentId: string; createdAt: string }>
+  channelPosts?: Array<ChannelPost & { idempotencyKey?: string }>
   format: 'october-bus.scope'
-  version: 2
+  version: 2 | 3
   exportedAt: string
   scope: ArchivedScope
   agents: ArchivedAgent[]
@@ -451,6 +455,7 @@ export interface RegisterAgentInput {
   capabilities?: AgentCapability[]
   connectTo?: AgentId[]
   leaseMs?: number
+  connectWorkspace?: boolean
 }
 
 export interface RegisterAgentResult extends AgentIdentity {
@@ -481,6 +486,11 @@ export interface AddTaskProgressInput {
 
 export interface StorageRecordSummary {
   recordType:
+    | 'attachment'
+    | 'channel'
+    | 'channelPost'
+    | 'a2aTask'
+    | 'a2aMessage'
     | 'message'
     | 'task'
     | 'taskProgress'
@@ -509,6 +519,7 @@ export interface PruneScopeInput {
 }
 
 export interface RetentionCounts {
+  channelPosts: number
   a2aTasks: number
   a2aMessages: number
   messages: number
@@ -556,4 +567,55 @@ export interface BusLiveness {
   name: 'october-bus'
   status: 'alive'
   startedAt: string
+}
+
+
+export interface Channel {
+  id: string
+  name: string
+  description: string
+  createdAt: string
+  subscribers: number
+  subscribed: boolean
+}
+export interface CreateChannelInput { name: string; description?: string }
+export interface ChannelPost {
+  id: string
+  channelId: string
+  authorKind: 'agent' | 'human'
+  authorId: string
+  body: string
+  threadId?: string
+  createdAt: string
+  replies: number
+}
+export interface PostChannelInput { channelId: string; body: string; threadId?: string; idempotencyKey?: string }
+export interface ChannelHistoryInput { channelId?: string; threadId?: string; query?: string; before?: string; limit?: number }
+export interface ChannelPostPage { posts: ChannelPost[]; nextCursor?: string }
+
+export interface Attachment {
+  id: string
+  name: string
+  mediaType: string
+  size: number
+  sha256: string
+  authorKind: 'agent' | 'human'
+  authorId: string
+  createdAt: string
+  uri: string
+}
+export interface UploadAttachmentInput {
+  name: string
+  mediaType?: string
+  idempotencyKey?: string
+}
+export interface AttachmentPage {
+  attachments: Attachment[]
+  nextCursor?: string
+}
+export interface AttachmentContent {
+  attachment: Attachment
+  offset: number
+  dataBase64: string
+  nextOffset?: number
 }

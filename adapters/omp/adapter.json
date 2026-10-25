@@ -24,9 +24,9 @@
   "repository": "https://github.com/october-dev/october-bus",
   "limitations": [
     "Experimental configuration, not named-harness certification.",
-    "OMP can discover other hosts’ configurations; disable duplicate October Bus entries to avoid replacing your own execution. The intended identity is can1357/oh-my-pi; confirm this matches issue #42."
+    "OMP can discover other hosts’ configurations; disable duplicate Agent Intercom entries to avoid replacing your own execution. The intended identity is can1357/oh-my-pi; confirm this matches issue #42."
   ],
-  "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
+  "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
     "file": "mcp.json.example",
     "format": "json",

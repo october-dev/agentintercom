@@ -2,10 +2,10 @@ package bus
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // migrateV2 is the supported upgrade from v0.1.0-rc.4. Unreleased intermediate
@@ -40,7 +40,7 @@ func (s *Store) migrateV2(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func migrateV2Tx(ctx context.Context, tx *sql.Tx) error {
+func migrateV2Tx(ctx context.Context, tx sqlExecutor) error {
 	// A write transaction covers renames, copies, validation and the version bump.
 	if _, err := tx.ExecContext(ctx, "UPDATE scopes SET created_at=created_at WHERE 0"); err != nil {
 		return err
@@ -88,4 +88,101 @@ func migrateV2Tx(ctx context.Context, tx *sql.Tx) error {
 		return fmt.Errorf("migrated database contains invalid foreign keys")
 	}
 	return rows.Err()
+}
+
+// migrateV9 expands participant attribution without changing execution credentials
+// or outstanding deliveries. Rebuilding only messages preserves its stable name
+// for all referencing tables; foreign keys are checked before committing.
+func (s *Store) migrateV9(ctx context.Context) error {
+	if s.source != ":memory:" {
+		backup, err := os.CreateTemp(filepath.Dir(s.source), filepath.Base(s.source)+".schema9-backup-")
+		if err != nil {
+			return err
+		}
+		path := backup.Name()
+		if err := backup.Close(); err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+			return fmt.Errorf("schema 9 backup failed: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return err
+	}
+	defer s.db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON")
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	start := strings.Index(schemaSQL, "CREATE TABLE messages (")
+	end := strings.Index(schemaSQL[start:], "CREATE TABLE reservations (") + start
+	ddl := schemaSQL[start:end]
+	// Keep the old table until its copy is complete. Do not rename the old table:
+	// SQLite would rewrite foreign keys in dependent tables to the temporary name.
+	definitionEnd := strings.Index(ddl, "CREATE INDEX")
+	create := strings.Replace(ddl[:definitionEnd], "CREATE TABLE messages (", "CREATE TABLE messages_next (", 1)
+	if _, err := tx.ExecContext(ctx, create); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO messages_next SELECT * FROM messages"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DROP TABLE messages; ALTER TABLE messages_next RENAME TO messages;"+ddl[definitionEnd:]+"CREATE INDEX messages_scope_history ON messages(scope_id,created_at DESC,message_id DESC); PRAGMA user_version=10;"); err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		return err
+	}
+	invalid := rows.Next()
+	scanErr := rows.Err()
+	rows.Close()
+	if invalid {
+		return fmt.Errorf("schema 9 migration contains invalid foreign keys")
+	}
+	if scanErr != nil {
+		return scanErr
+	}
+	return tx.Commit()
+}
+
+// Schema 10 to 11 is additive. The operational wake tables hold no model
+// transcripts or provider credentials and do not alter existing messages.
+func (s *Store) migrateV10(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, nativeWakeSchemaSQL+"PRAGMA user_version=11;"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Schema 12 adds shared channels without changing existing message rows.
+func (s *Store) migrateV11(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, channelsSchemaSQL+"PRAGMA user_version=12;"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) migrateV12(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, attachmentsSchemaSQL+"PRAGMA user_version=13;"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

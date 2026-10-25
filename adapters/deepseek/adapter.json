@@ -28,7 +28,7 @@
     "One MCP configuration is one execution; duplicate agent IDs replace earlier executions",
     "The DeepSeek Harness (dsh) is a developer preview with announced compatibility-breaking changes; re-verify this configuration against a pinned released version before relying on it"
   ],
-  "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
+  "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
     "file": "cordis.yml.example",
     "format": "yaml",

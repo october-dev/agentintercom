@@ -1,0 +1,19 @@
+# Stage this as a separate site until account, MCP and backup qualification pass.
+# Keep the existing worker gateway and legacy Bus routes on their current site.
+bus.example.com {
+	header {
+		X-Content-Type-Options nosniff
+		Strict-Transport-Security "max-age=31536000"
+	}
+	# The runtime applies smaller JSON limits and a 16 MiB file limit.
+	request_body {
+		max_size 17MiB
+	}
+	reverse_proxy 127.0.0.1:4780 {
+		flush_interval -1
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 35s
+		}
+	}
+}

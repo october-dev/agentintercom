@@ -2,7 +2,7 @@
 
 Experimental adapter 0.2.0. No released host version is certified.
 
-Run `october-bus harness config kimchi --scope my-project --agent kimchi-reviewer`. Review the output and add only its October Bus entry to `~/.config/kimchi/harness/mcp.json`, preserving existing settings. See [shared setup](../README.md) for scope creation, linking and removal.
+Run `agentintercom harness config kimchi --scope my-project --agent kimchi-reviewer`. Review the output and add only its Agent Intercom entry to `~/.config/kimchi/harness/mcp.json`, preserving existing settings. See [shared setup](../README.md) for scope creation, linking and removal.
 
 In /mcp, cache the schema with Ctrl-R, enable the reviewed server with Space, save with Ctrl-S and restart. Eager startup makes registration available before linking; keep-alive reconnection is not requested. Preserve Ferment planning restrictions: discovery/read operations may be available while messaging and task mutations are blocked. Imported Claude/Cursor/OpenCode entries must not start a second bridge with the same agent ID. This candidate covers local CLI mode, not teleport or cloud sessions.
 

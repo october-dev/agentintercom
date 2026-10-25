@@ -34,5 +34,5 @@ export class BusError extends Error {
 }
 
 export function asBusError(error: unknown): BusError {
-  return error instanceof BusError ? error : new BusError('INTERNAL', 'Internal October Bus error')
+  return error instanceof BusError ? error : new BusError('INTERNAL', 'Internal Agent Intercom error')
 }

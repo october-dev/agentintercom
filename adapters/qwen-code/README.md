@@ -7,11 +7,11 @@ A configuration fixture is not a successful run in the actual host.
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config qwen-code --scope my-project --agent qwen-code-reviewer --name "Qwen Code Reviewer"
-october-bus doctor --harness qwen-code --scope my-project
+agentintercom harness config qwen-code --scope my-project --agent qwen-code-reviewer --name "Qwen Code Reviewer"
+agentintercom doctor --harness qwen-code --scope my-project
 ```
 
-Configuration location: `.qwen/settings.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.qwen/settings.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

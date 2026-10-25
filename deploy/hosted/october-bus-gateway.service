@@ -1,5 +1,5 @@
 [Unit]
-Description=October Bus hosted MCP gateway
+Description=Agent Intercom hosted MCP gateway
 Requires=october-bus.service
 After=october-bus.service network.target
 PartOf=october-bus.service

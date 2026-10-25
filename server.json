@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.october-dev/agent-intercom",
+  "description": "Durable agent messages, shared tasks, channels and files in a local workspace.",
+  "repository": { "url": "https://github.com/october-dev/october-bus", "source": "github" },
+  "version": "0.2.0",
+  "packages": [{
+    "registryType": "npm",
+    "identifier": "agentintercom",
+    "version": "0.2.0",
+    "transport": { "type": "stdio" },
+    "packageArguments": [
+      { "type": "positional", "value": "mcp" },
+      { "type": "positional", "value": "stdio" },
+      { "type": "named", "name": "--scope", "value": "{workspace}", "variables": { "workspace": { "description": "Existing local workspace; start the daemon and create this workspace before connecting.", "default": "default", "isRequired": true } } },
+      { "type": "named", "name": "--new-session" }
+    ]
+  }]
+}

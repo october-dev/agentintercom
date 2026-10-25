@@ -7,11 +7,11 @@ A configuration fixture is not a successful run in the actual host.
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config kimi-code --scope my-project --agent kimi-code-reviewer --name "Kimi Code Reviewer"
-october-bus doctor --harness kimi-code --scope my-project
+agentintercom harness config kimi-code --scope my-project --agent kimi-code-reviewer --name "Kimi Code Reviewer"
+agentintercom doctor --harness kimi-code --scope my-project
 ```
 
-Configuration location: `.kimi-code/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.kimi-code/mcp.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

@@ -26,7 +26,7 @@
     "Experimental configuration, not named-harness certification.",
     "Only a sandbox-colocated deployment is in scope. Generate this configuration inside that sandbox after starting Bus and creating its local scope. A laptop path or localhost address is not reachable from Devin. Account permissions and sandbox lifecycle are unverified."
   ],
-  "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
+  "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
     "file": "mcp.json.example",
     "format": "json",

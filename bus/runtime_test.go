@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -578,7 +579,7 @@ func TestOlderSchemaFailsBeforeServingWork(t *testing.T) {
 	}
 	requireNoError(t, database.Close())
 	_, err = Open(path)
-	require(t, err != nil && strings.Contains(err.Error(), "database schema 1 does not match 9"), "older schema did not fail clearly: %v", err)
+	require(t, err != nil && strings.Contains(err.Error(), fmt.Sprintf("database schema 1 does not match %d", schemaVersion)), "older schema did not fail clearly: %v", err)
 }
 
 type bearerTransport struct {
@@ -660,21 +661,27 @@ func TestAgentSessionHeartbeatsAndStops(t *testing.T) {
 	agents, err = owner.ListAgents(ctx)
 	require(t, err == nil && len(agents) == 1 && agents[0].Ready && agents[0].Lifecycle == LifecycleReady, "managed agent state did not update: %#v, %v", agents, err)
 	firstUpdate := agents[0].UpdatedAt
+	firstExpiry := session.LeaseExpiresAt()
+	require(t, firstExpiry.After(time.Now()), "initial confirmed lease missing")
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 		agents, err = owner.ListAgents(ctx)
 		requireNoError(t, err)
-		if agents[0].UpdatedAt != firstUpdate {
+		// The database commit can be visible before the heartbeat response has
+		// reached the session. Wait for both sides of the renewal handshake.
+		if agents[0].UpdatedAt != firstUpdate && session.LeaseExpiresAt().After(firstExpiry) {
 			break
 		}
 	}
 	if agents[0].UpdatedAt == firstUpdate {
 		t.Fatal("managed agent did not heartbeat")
 	}
+	require(t, session.LeaseExpiresAt().After(firstExpiry), "successful heartbeat did not renew confirmed lease")
 	closeCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	requireNoError(t, session.Close(closeCtx))
+	require(t, session.LeaseExpiresAt().IsZero(), "closed session retained a lease")
 	agents, err = owner.ListAgents(ctx)
 	require(t, err == nil && len(agents) == 1 && !agents[0].Ready && !agents[0].Reachable && agents[0].Lifecycle == LifecycleOffline, "managed agent did not stop cleanly: %#v, %v", agents, err)
 }
@@ -736,10 +743,20 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 	if _, err := ownerClient.ResolveEscalation(ctx, escalation.ID, "yes"); err != nil {
 		t.Fatal(err)
 	}
+	// Resolving an escalation queues a durable human answer. Consume it before
+	// the later long-poll assertion so that test checks the actual wake message.
+	answer, err := plannerClient.PullInbox(ctx, 10, 0)
+	require(t, err == nil && len(answer) == 1 && answer[0].FromKind == MessageParticipantHuman, "missing escalation answer: %#v, %v", answer, err)
+	_, err = plannerClient.AcknowledgeMessages(ctx, []string{answer[0].ID})
+	requireNoError(t, err)
 	_, err = plannerClient.ListEscalations(ctx)
 	requireCode(t, err, CodePermissionDenied)
 	receipt, err := plannerClient.SendMessage(ctx, SendMessageInput{To: "reviewer", Body: "Reserve me"})
 	requireNoError(t, err)
+	preview, err := reviewerClient.PreviewInbox(ctx)
+	require(t, err == nil && len(preview) == 1 && preview[0].ID == receipt.MessageID, "HTTP inbox preview failed: %#v %v", preview, err)
+	_, err = ownerClient.PreviewInbox(ctx)
+	require(t, err != nil, "scope authority impersonated an execution's inbox preview")
 	reservation, err := reviewerClient.ReserveInbox(ctx, 10, 0)
 	require(t, err == nil && reservation != nil, "unexpected HTTP reservation: %#v, %v", reservation, err)
 	requireNoError(t, reviewerClient.ReleaseInbox(ctx, reservation.ID))
@@ -756,8 +773,21 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 	requireNoError(t, err)
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 15 {
+	if err != nil || len(tools.Tools) != 23 {
 		t.Fatalf("unexpected tools: %d, %v", len(tools.Tools), err)
+	}
+	for _, tool := range tools.Tools {
+		require(t, tool.Title != "" && tool.Annotations != nil, "missing tool metadata: %s", tool.Name)
+		if tool.Name == "check_inbox" || tool.Name == "read_attachment" {
+			require(t, !tool.Annotations.ReadOnlyHint && !tool.Annotations.IdempotentHint, "misleading effects: %s", tool.Name)
+		}
+		if tool.Name == "list_peers" {
+			require(t, tool.Annotations.ReadOnlyHint, "peer listing should be a read")
+		}
+	}
+	for _, args := range []map[string]any{{"waitMs": 25001}, {"limit": 101}, {"unknown": true}} {
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "check_inbox", Arguments: args})
+		require(t, err != nil || result.IsError, "accepted invalid inbox schema: %#v", args)
 	}
 	for _, input := range []*mcp.CallToolParams{
 		{Name: "acknowledge_messages", Arguments: map[string]any{"messageIds": "[]"}},
@@ -823,6 +853,8 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 		if !ok || len(messages) != 1 {
 			t.Fatalf("MCP check_inbox must return one message: %#v", call.result.StructuredContent)
 		}
+		message, ok := messages[0].(map[string]any)
+		require(t, ok && message["id"] == wakeReceipt.MessageID, "inbox returned a different message: %#v", messages[0])
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}

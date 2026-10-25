@@ -11,7 +11,7 @@ export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const sdk = join(root, 'sdk/typescript')
 export const artifacts = join(root, 'dist/npm')
 export const manifest = JSON.parse(readFileSync(join(sdk, 'package.json'), 'utf8'))
-export const { targets, platformPackage } = require('../sdk/typescript/cli/october-bus.cjs')
+export const { targets, platformPackage } = require('../sdk/typescript/cli/agentintercom.cjs')
 
 export function npm(args, options = {}) {
   // Invoked through npm run: this also avoids a shell or npm.cmd on Windows.
@@ -34,7 +34,7 @@ export function validateDistribution() {
   const part = '(?:0|[1-9][0-9]*)'
   const pre = '(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)'
   assert.match(manifest.version, new RegExp(`^${part}\\.${part}\\.${part}(?:-${pre}(?:\\.${pre})*)?$`))
-  assert.equal(manifest.bin['october-bus'], 'cli/october-bus.cjs')
+  assert.equal(manifest.bin['agentintercom'], 'cli/agentintercom.cjs')
   const lock = JSON.parse(readFileSync(join(sdk, 'package-lock.json'), 'utf8'))
   assert.equal(lock.version, manifest.version, 'Update the source lockfile version')
   assert.equal(lock.packages[''].version, manifest.version, 'Update the root lockfile package version')
@@ -49,7 +49,7 @@ export function distributionManifest() {
 }
 
 export function requiredPath(name) {
-  if (name === manifest.name) return manifest.bin['october-bus']
+  if (name === manifest.name) return manifest.bin['agentintercom']
   const platform = targets.map(packageFor).find(platform => platform.name === name)
   assert.ok(platform, `Unexpected distribution package: ${name}`)
   return `bin/${platform.binary}`
@@ -66,20 +66,20 @@ function build(target, source) {
   const directory = join(artifacts, target)
   mkdirSync(join(directory, 'bin'), { recursive: true })
   const binary = join(directory, 'bin', platform.binary)
-  execFileSync('go', ['build', '-trimpath', '-ldflags', `-s -w -X github.com/october-dev/october-bus/bus.Version=${manifest.version}`, '-o', binary, './cmd/october-bus'], {
+  execFileSync('go', ['build', '-trimpath', '-ldflags', `-s -w -X github.com/october-dev/october-bus/bus.Version=${manifest.version}`, '-o', binary, './cmd/agentintercom'], {
     cwd: root, stdio: 'inherit', env: { ...process.env, CGO_ENABLED: '0', GOOS: platform.goos, GOARCH: platform.goarch }
   })
   chmodSync(binary, 0o755)
   const pkg = {
-    name: platform.name, version: manifest.version, description: `October Bus native Go binary for ${target}.`,
+    name: platform.name, version: manifest.version, description: `Agent Intercom native Go binary for ${target}.`,
     license: manifest.license, os: [platform.os], cpu: [platform.cpu],
     repository: manifest.repository, homepage: manifest.homepage,
     files: ['bin', 'LICENSE', 'README.md'], publishConfig: manifest.publishConfig,
-    octoberBusBuild: { source, binaryIntegrity: integrity(binary) }
+    agentIntercomBuild: { source, binaryIntegrity: integrity(binary) }
   }
   writeFileSync(join(directory, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
   copyFileSync(join(root, 'LICENSE'), join(directory, 'LICENSE'))
-  writeFileSync(join(directory, 'README.md'), `# ${platform.name}\n\nNative Go executable for October Bus on ${target}. Installed automatically by \`${manifest.name}@${manifest.version}\`; use that package rather than installing this internal platform package directly.\n`)
+  writeFileSync(join(directory, 'README.md'), `# ${platform.name}\n\nNative Go executable for Agent Intercom on ${target}. Installed automatically by \`${manifest.name}@${manifest.version}\`; use that package rather than installing this internal platform package directly.\n`)
   console.log(`Built ${platform.name}@${manifest.version}`)
 }
 
@@ -96,7 +96,7 @@ function pack(directory, name, source) {
     const platform = targets.map(packageFor).find(platform => platform.name === name)
     assert.deepEqual(pkg.os, [platform.os])
     assert.deepEqual(pkg.cpu, [platform.cpu])
-    assert.deepEqual(pkg.octoberBusBuild, { source, binaryIntegrity: integrity(join(directory, expectedBinary)) }, 'Stale or changed native binary; rebuild before packing')
+    assert.deepEqual(pkg.agentIntercomBuild, { source, binaryIntegrity: integrity(join(directory, expectedBinary)) }, 'Stale or changed native binary; rebuild before packing')
   }
   const [result] = JSON.parse(npm(['pack', '--json', '--ignore-scripts', '--pack-destination', artifacts], { cwd: directory }))
   assert.equal(result.name, name)
@@ -133,7 +133,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       }
       mkdirSync(join(stagedSDK, 'extensions/pi'), { recursive: true })
       for (const file of ['index.mjs', 'bridge.mjs']) copyFileSync(join(root, 'adapters/pi', file), join(stagedSDK, 'extensions/pi', file))
-      writeFileSync(join(stagedSDK, 'extensions/pi/README.md'), `# Pi extension\n\nExperimental native session adapter. Generate configuration with october-bus harness config pi and set OCTOBER_BUS_PI_CONFIG to its reviewed absolute path. No host certification is implied.\n\n[Setup and limitations](https://github.com/october-dev/october-bus/blob/${source.commit}/adapters/pi/README.md)\n`)
+      writeFileSync(join(stagedSDK, 'extensions/pi/README.md'), `# Pi extension\n\nExperimental native session adapter. Generate configuration with agentintercom harness config pi and set OCTOBER_BUS_PI_CONFIG to its reviewed absolute path. No host certification is implied.\n\n[Setup and limitations](https://github.com/october-dev/october-bus/blob/${source.commit}/adapters/pi/README.md)\n`)
       writeFileSync(join(stagedSDK, 'package.json'), `${JSON.stringify(distributionManifest(), null, 2)}\n`)
       pack(stagedSDK, manifest.name, source)
     } finally {

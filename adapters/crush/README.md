@@ -7,11 +7,11 @@ A configuration fixture is not a successful run in the actual host.
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config crush --scope my-project --agent crush-reviewer --name "Crush Reviewer"
-october-bus doctor --harness crush --scope my-project
+agentintercom harness config crush --scope my-project --agent crush-reviewer --name "Crush Reviewer"
+agentintercom doctor --harness crush --scope my-project
 ```
 
-Configuration location: `crush.json (legacy JSON; do not override an existing crushrc)`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `crush.json (legacy JSON; do not override an existing crushrc)`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 This is the upstream legacy JSON format. Do not add it alongside a higher-priority crushrc and assume it is loaded. Review all host configuration: Crush can expand shell expressions; the generator refuses dollar/backtick values.
 

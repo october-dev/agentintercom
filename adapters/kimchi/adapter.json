@@ -26,7 +26,7 @@
     "Experimental configuration, not named-harness certification.",
     "In /mcp, cache the schema with Ctrl-R, enable the reviewed server with Space, save with Ctrl-S and restart. Eager startup makes registration available before linking; keep-alive reconnection is not requested. Preserve Ferment planning restrictions: discovery/read operations may be available while messaging and task mutations are blocked. Imported Claude/Cursor/OpenCode entries must not start a second bridge with the same agent ID. This candidate covers local CLI mode, not teleport or cloud sessions."
   ],
-  "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
+  "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
     "file": "mcp.json.example",
     "format": "json",

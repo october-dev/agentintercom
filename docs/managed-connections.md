@@ -6,9 +6,9 @@ scope, or require a copy of the controller's administrator credential. One binar
 provides the MCP bridge, the lifecycle hook and a setup check:
 
 ```sh
-october-bus mcp stdio --connection-file /absolute/private/connection.json
-october-bus hook [--connection-file <path>] <event> [<flavor>]
-october-bus mcp check [--connection-file <path>] [--json]
+agentintercom mcp stdio --connection-file /absolute/private/connection.json
+agentintercom hook [--connection-file <path>] <event> [<flavor>]
+agentintercom mcp check [--connection-file <path>] [--json]
 ```
 
 `--connection-file` may be omitted when `OCTOBER_BUS_CONNECTION_FILE` names the
@@ -47,7 +47,7 @@ the connection. The file has this shape (placeholders are not usable credentials
 | `httpHost` | no | Loopback-only HTTP `Host` override: same literal IP as `endpoint`, different port. A TCP/SSH forward does not rewrite `Host`, so this carries the authority's real port across a tunnel port. Never for HTTPS, never another name. |
 | `scopeId`, `agentId`, `executionId` | yes | Pin the execution this file belongs to. For Desktop Core they are the canvas, node and terminal epoch (`launch`). They fence renewal; the authority still authenticates every request. |
 | `agentToken` | yes | The execution's MCP credential: 32 random bytes, unpadded base64url (43 characters). Sent as `Authorization: Bearer`. |
-| `hookToken` | no | The execution's lifecycle credential in the same format, used only by `october-bus hook` as `X-October-Bus-Token`. When absent, hooks report nothing. Requires this helper version or newer; older helpers refuse a file containing it. |
+| `hookToken` | no | The execution's lifecycle credential in the same format, used only by `agentintercom hook` as `X-October-Bus-Token`. When absent, hooks report nothing. Requires this helper version or newer; older helpers refuse a file containing it. |
 | `expiresAt` | yes | Controller-chosen expiry. An expired file refuses every request until renewed. |
 
 Both credentials leave the controller only as per-execution grants. Never write a
@@ -130,7 +130,7 @@ endpoint, labels, expiry and whether a hook credential is present, never tokens.
 
 ## Lifecycle hook
 
-`october-bus hook <event> [<flavor>]` is a Node-free port of Desktop's
+`agentintercom hook <event> [<flavor>]` is a Node-free port of Desktop's
 `bus-hook.mjs` for the `claude` (default) and `codex` flavors. It reads the
 harness event JSON on stdin and reports to the controller's `/hook/*` routes on
 the endpoint's origin, with `X-October-Bus-Token: <hookToken>`,

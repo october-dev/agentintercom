@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "pi-native",
-  "adapterVersion": "0.2.0",
+  "adapterVersion": "0.2.1",
   "harnessFamily": "Pi",
   "status": "experimental",
   "protocolVersions": [
@@ -26,7 +26,7 @@
     "Experimental native extension; released-host execution and reload behavior are not certified.",
     "Host session hooks open and close the shared Go bridge; no idle/wake claims."
   ],
-  "conformanceCommand": "october-bus-conformance --profile mcp-adapter --start-runtime --adapter-command october-bus --adapter-arg mcp --adapter-arg stdio --check-self-registration",
+  "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
     "file": "bridge.json.example",
     "format": "json",

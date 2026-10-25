@@ -69,7 +69,7 @@ func Lookup(host string) (Manifest, error) {
 			return manifest, nil
 		}
 	}
-	return Manifest{}, fmt.Errorf("no reviewed configuration for %q; use october-bus harness list", host)
+	return Manifest{}, fmt.Errorf("no reviewed configuration for %q; use agentintercom harness list", host)
 }
 
 // Render substitutes entire string values, not shell fragments. JSON quoting

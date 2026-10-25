@@ -29,7 +29,7 @@ func main() {
 	}
 
 	card, err := a2abridge.NewAgentCard(a2abridge.AgentProfile{
-		DisplayName: "October Bus Example Agent",
+		DisplayName: "Agent Intercom Example Agent",
 		Capabilities: []a2abridge.Capability{
 			{Name: "chat", Description: "Conversational chat capability."},
 			{Name: "code_review", Description: "Reviews code changes for correctness and style."},

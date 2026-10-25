@@ -2,12 +2,25 @@ package bus
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 )
 
 type scopeCredentialKey struct{}
 type executionKey struct{}
+type hostedMemberKey struct{}
+type hostedOwnerKey struct{}
+
+// The HTTP identity verifier supplies this context, never a request body.
+func withHostedMember(ctx context.Context, user HostedUser) context.Context {
+	return context.WithValue(ctx, hostedMemberKey{}, user)
+}
+
+func withHostedOwner(ctx context.Context, user HostedUser) context.Context {
+	return context.WithValue(withHostedMember(ctx, user), hostedOwnerKey{}, true)
+}
 
 func withExecution(ctx context.Context, p Principal) context.Context {
 	return context.WithValue(ctx, executionKey{}, p)
@@ -17,10 +30,19 @@ func withScopeCredential(ctx context.Context, token string) context.Context {
 	return context.WithValue(ctx, scopeCredentialKey{}, tokenDigest(token))
 }
 
-func (s *Store) beginTx(ctx context.Context) (*sql.Tx, error) {
+func (s *Store) beginTx(ctx context.Context, scopeID string) (*sqlTransaction, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
+	}
+	if s.Backend() == StorageBackendPostgres {
+		// Domain operations may inspect several rows before changing them.
+		// Serialize them per scope across processes, not across the deployment.
+		// READ COMMITTED gives the statements after this lock a fresh snapshot.
+		if err := lockPostgresScope(ctx, tx, scopeID); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
 	if digest, ok := ctx.Value(scopeCredentialKey{}).(string); ok {
 		var found int
@@ -39,5 +61,25 @@ func (s *Store) beginTx(ctx context.Context) (*sql.Tx, error) {
 			return nil, err
 		}
 	}
+	if user, ok := ctx.Value(hostedMemberKey{}).(HostedUser); ok {
+		role, err := hostedMember(ctx, tx, scopeID, user.ID)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if ctx.Value(hostedOwnerKey{}) == true && role != "owner" {
+			tx.Rollback()
+			return nil, Errorf(CodePermissionDenied, "Only a workspace owner can manage retained data")
+		}
+	}
 	return tx, nil
+}
+
+// Billing lifecycle changes acquire their billing lock first, then this same
+// workspace lock before changing runtime data. Never acquire them in reverse.
+func lockPostgresScope(ctx context.Context, tx sqlExecutor, scopeID string) error {
+	digest := sha256.Sum256([]byte("october_bus/scope/" + scopeID))
+	key := int64(binary.BigEndian.Uint64(digest[:8]))
+	_, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", key)
+	return err
 }

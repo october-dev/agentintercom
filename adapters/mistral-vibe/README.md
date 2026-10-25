@@ -7,11 +7,11 @@ A configuration fixture is not a successful run in the actual host.
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config mistral-vibe --scope my-project --agent mistral-vibe-reviewer --name "Mistral Vibe Reviewer"
-october-bus doctor --harness mistral-vibe --scope my-project
+agentintercom harness config mistral-vibe --scope my-project --agent mistral-vibe-reviewer --name "Mistral Vibe Reviewer"
+agentintercom doctor --harness mistral-vibe --scope my-project
 ```
 
-Configuration location: `.vibe/config.toml`. The [template](config.toml.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.vibe/config.toml`. The [template](config.toml.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 Keep CLI, IDE, desktop, and remote evidence separate when the host provides multiple modes.
 

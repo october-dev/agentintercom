@@ -1,0 +1,5 @@
+{
+  "name": "october",
+  "owner": { "name": "October" },
+  "plugins": [{ "name": "agent-intercom", "source": "./plugin", "description": "Messages, shared work and native inbox notifications for connected agents." }]
+}

@@ -1,6 +1,8 @@
 import { BusError } from './errors.js'
 import type { BusErrorCode } from './errors.js'
 import type {
+  Attachment, AttachmentPage, AttachmentContent, UploadAttachmentInput,
+  Channel, ChannelPost, CreateChannelInput, PostChannelInput, ChannelHistoryInput, ChannelPostPage,
   Agent,
   AgentCardPublication,
   A2APrincipal,
@@ -93,7 +95,7 @@ async function request<T>(
   if (options.signal?.aborted) onAbort()
   else options.signal?.addEventListener('abort', onAbort, { once: true })
   const timeout = setTimeout(
-    () => controller.abort(new Error(`October Bus request timed out after ${timeoutMs}ms`)),
+    () => controller.abort(new Error(`Agent Intercom request timed out after ${timeoutMs}ms`)),
     timeoutMs
   )
   let response: Response
@@ -103,17 +105,18 @@ async function request<T>(
       method,
       headers: {
         accept: 'application/json',
-        ...(value === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(value === undefined ? {} : { 'content-type': value instanceof Blob ? 'application/octet-stream' : 'application/json' }),
         ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
       },
-      ...(value === undefined ? {} : { body: JSON.stringify(value) }),
+      ...(value === undefined ? {} : { body: value instanceof Blob ? value : JSON.stringify(value) }),
+      redirect: 'error',
       signal: controller.signal
     })
     text = await response.text()
   } catch (error) {
     const cause = controller.signal.aborted ? controller.signal.reason : error
     const message = cause instanceof Error ? cause.message : 'Network request failed'
-    throw new BusError('INTERNAL', `October Bus request failed: ${message}`)
+    throw new BusError('INTERNAL', `Agent Intercom request failed: ${message}`)
   } finally {
     clearTimeout(timeout)
     options.signal?.removeEventListener('abort', onAbort)
@@ -122,7 +125,7 @@ async function request<T>(
   try {
     payload = JSON.parse(text) as Success<T> | Failure | T
   } catch {
-    throw new BusError('INTERNAL', `October Bus returned a non-JSON response with HTTP ${response.status}`)
+    throw new BusError('INTERNAL', `Agent Intercom returned a non-JSON response with HTTP ${response.status}`)
   }
   if (response.ok) {
     if (payload && typeof payload === 'object' && 'ok' in payload && payload.ok === true)
@@ -143,10 +146,10 @@ async function request<T>(
     const failure = payload as Failure
     throw new BusError(failure.error.code, failure.error.message, failure.error.details)
   }
-  throw new BusError('INTERNAL', `October Bus request failed with HTTP ${response.status}`)
+  throw new BusError('INTERNAL', `Agent Intercom request failed with HTTP ${response.status}`)
 }
 
-export class OctoberBusAdminClient {
+export class AgentIntercomAdminClient {
   constructor(
     readonly address: string,
     private readonly adminToken: string
@@ -230,7 +233,7 @@ export class OctoberBusAdminClient {
   }
 }
 
-export class OctoberBusScopeClient {
+export class AgentIntercomScopeClient {
   constructor(
     readonly address: string,
     readonly scopeToken: string
@@ -494,7 +497,7 @@ export class OctoberBusScopeClient {
   }
 }
 
-export class OctoberBusClient {
+export class AgentIntercomClient {
   constructor(
     readonly address: string,
     readonly agentToken: string
@@ -530,6 +533,39 @@ export class OctoberBusClient {
       input,
       options
     )
+  }
+
+  listChannels(options?: OperationOptions): Promise<Channel[]> {
+    return request(this.address, this.agentToken, 'GET', '/v1/channels', undefined, options)
+  }
+
+  listAttachments(after = '', limit = 50, options?: OperationOptions): Promise<AttachmentPage> {
+    return request(this.address, this.agentToken, 'GET', `/v1/attachments?after=${encodeURIComponent(after)}&limit=${limit}`, undefined, options)
+  }
+  uploadAttachment(input: UploadAttachmentInput, data: Uint8Array, options?: OperationOptions): Promise<Attachment> {
+    if (data.byteLength > 16 * 1024 * 1024) throw new BusError('INVALID_ARGUMENT', 'Attachment exceeds 16 MiB')
+    const query = new URLSearchParams({ name: input.name, mediaType: input.mediaType ?? '', idempotencyKey: input.idempotencyKey ?? '' })
+    return request(this.address, this.agentToken, 'POST', `/v1/attachments?${query}`, new Blob([new Uint8Array(data)]), options)
+  }
+  readAttachment(id: string, offset = 0, limit = 65536, options?: OperationOptions): Promise<AttachmentContent> {
+    return request(this.address, this.agentToken, 'GET', `/v1/attachments/${encodeURIComponent(id)}?offset=${offset}&limit=${limit}`, undefined, options)
+  }
+  async deleteAttachment(id: string, options?: OperationOptions): Promise<void> {
+    await request(this.address, this.agentToken, 'DELETE', `/v1/attachments/${encodeURIComponent(id)}`, undefined, options)
+  }
+  createChannel(input: CreateChannelInput, options?: OperationOptions): Promise<Channel> {
+    return request(this.address, this.agentToken, 'POST', '/v1/channels', input, options)
+  }
+  async subscribeChannel(channelId: string, subscribe: boolean, options?: OperationOptions): Promise<void> {
+    await request(this.address, this.agentToken, 'POST', `/v1/channels/${encodeURIComponent(channelId)}/subscription`, { subscribe }, options)
+  }
+  postChannel(input: PostChannelInput, options?: OperationOptions): Promise<ChannelPost> {
+    return request(this.address, this.agentToken, 'POST', '/v1/channel-posts', input, options)
+  }
+  readChannel(input: ChannelHistoryInput, options?: OperationOptions): Promise<ChannelPostPage> {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(input)) if (value !== undefined) query.set(key, String(value))
+    return request(this.address, this.agentToken, 'GET', `/v1/channel-posts?${query}`, undefined, options)
   }
 
   sendMessage(input: SendMessageInput, options?: OperationOptions): Promise<DeliveryReceipt> {
@@ -654,7 +690,7 @@ export class OctoberBusClient {
   }
 }
 
-export class OctoberBusOutputClient {
+export class AgentIntercomOutputClient {
   constructor(
     readonly address: string,
     private readonly credential: string

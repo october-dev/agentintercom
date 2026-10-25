@@ -7,11 +7,11 @@ A configuration fixture is not a successful run in the actual host.
 Follow [shared setup](../README.md), then print a personalized snippet:
 
 ```sh
-october-bus harness config kilo-code --scope my-project --agent kilo-code-reviewer --name "Kilo Code Reviewer"
-october-bus doctor --harness kilo-code --scope my-project
+agentintercom harness config kilo-code --scope my-project --agent kilo-code-reviewer --name "Kilo Code Reviewer"
+agentintercom doctor --harness kilo-code --scope my-project
 ```
 
-Configuration location: `.kilo/kilo.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the October Bus entry. Retain the host's own tool approvals and workspace trust controls.
+Configuration location: `.kilo/kilo.json`. The [template](mcp.json.example) contains placeholders; use the generator, not the template verbatim. The generator never edits existing configuration or stores credentials in it. Review and merge just the Agent Intercom entry. Retain the host's own tool approvals and workspace trust controls.
 
 This targets the current documented kilo.json MCP format, not the older Cline-style configuration. Do not inherit Cline verification.
 

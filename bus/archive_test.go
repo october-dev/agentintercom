@@ -93,12 +93,19 @@ func TestPortableScopeArchiveRoundTripAndRetry(t *testing.T) {
 	for _, message := range archive.Messages {
 		archivedMessages[message.ID] = message
 	}
-	if len(archive.Messages) != 4 || archivedMessages[request.MessageID].ResponseMessageID != reply.MessageID || archivedMessages[reply.MessageID].ResponseTo != request.MessageID {
+	if len(archive.Messages) != 5 || archivedMessages[request.MessageID].ResponseMessageID != reply.MessageID || archivedMessages[reply.MessageID].ResponseTo != request.MessageID {
 		t.Fatalf("messages were not preserved: %#v", archive.Messages)
 	}
 	if archivedMessages[pendingMessage.MessageID].State != DeliveryQueued {
 		t.Fatalf("active reservation was not made portable: %#v", archivedMessages[pendingMessage.MessageID])
 	}
+	humanAnswers := 0
+	for _, message := range archive.Messages {
+		if message.FromKind == MessageParticipantHuman && message.From == "owner" && strings.Contains(message.Body, "Answer to your question") {
+			humanAnswers++
+		}
+	}
+	require(t, humanAnswers == 1, "portable archive lost human answer attribution")
 	archivedTasks := map[string]ArchivedTask{}
 	for _, archivedTask := range archive.Tasks {
 		archivedTasks[archivedTask.ID] = archivedTask

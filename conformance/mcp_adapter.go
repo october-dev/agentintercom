@@ -103,7 +103,7 @@ func connectAdapter(ctx context.Context, options MCPAdapterOptions, scopeToken s
 	)
 	stderr := &bytes.Buffer{}
 	command.Stderr = stderr
-	client := mcp.NewClient(&mcp.Implementation{Name: "october-bus-conformance", Version: bus.Version}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "agentintercom-conformance", Version: bus.Version}, nil)
 	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: command}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not start MCP adapter: %w", err)

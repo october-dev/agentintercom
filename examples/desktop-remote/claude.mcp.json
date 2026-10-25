@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "october-bus": {
-      "command": "/home/worker/.october/servers/<install>/current/bin/october-bus",
+    "agentintercom": {
+      "command": "/home/worker/.october/servers/<install>/current/bin/agentintercom",
       "args": ["mcp", "stdio", "--connection-file", "/home/worker/.october/executions/<execution>/connection.json"]
     }
   }
