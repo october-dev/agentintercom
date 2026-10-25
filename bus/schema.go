@@ -36,9 +36,9 @@ CREATE TABLE peer_links (
 CREATE TABLE messages (
   message_id TEXT PRIMARY KEY,
   scope_id TEXT NOT NULL REFERENCES scopes(scope_id) ON DELETE CASCADE,
-  from_kind TEXT NOT NULL CHECK(from_kind IN ('agent','a2aPrincipal')),
+  from_kind TEXT NOT NULL CHECK(from_kind IN ('agent','a2aPrincipal','human')),
   from_id TEXT NOT NULL,
-  to_kind TEXT NOT NULL CHECK(to_kind IN ('agent','a2aPrincipal')),
+  to_kind TEXT NOT NULL CHECK(to_kind IN ('agent','a2aPrincipal','human')),
   to_id TEXT NOT NULL,
   mode TEXT NOT NULL CHECK(mode IN ('notify','request','response')),
   body TEXT NOT NULL,
@@ -219,5 +219,6 @@ CREATE TABLE output_rate_usage (
 	PRIMARY KEY(scope_id,principal_type,principal_id,window_start)
 );
 CREATE INDEX output_rate_usage_window ON output_rate_usage(window_start);
-PRAGMA user_version=9;
+CREATE INDEX messages_scope_history ON messages(scope_id,created_at DESC,message_id DESC);
+PRAGMA user_version=10;
 `

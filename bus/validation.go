@@ -55,7 +55,7 @@ func validateMessageMode(value MessageMode) error {
 
 func validateMessageParticipantKind(value MessageParticipantKind) error {
 	switch value {
-	case MessageParticipantAgent, MessageParticipantA2APrincipal:
+	case MessageParticipantAgent, MessageParticipantA2APrincipal, MessageParticipantHuman:
 		return nil
 	default:
 		return Errorf(CodeInvalidArgument, "message participant kind is invalid")

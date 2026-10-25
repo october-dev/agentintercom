@@ -219,11 +219,11 @@ Accepted messages and active tasks survive a normal daemon restart. If startup r
 
 ### Upgrade from rc.4
 
-Stop the old daemon and all harnesses before changing binaries. The next runtime supports the released schema 2 from v0.1.0-rc.4. On first open it creates a consistent SQLite backup beside the database named `bus.db.schema2-backup-*`, then migrates all tables in one transaction to schema 9. Existing identities, tokens, messages, outstanding requests, claims, dependencies, descriptions, and escalations are preserved. Legacy tasks gain a stable generated title; their full descriptions remain intact. Execution leases still use their original expiration times.
+Stop the old daemon and all harnesses before changing binaries. The next runtime supports the released schema 2 from v0.1.0-rc.4. On first open it creates a consistent SQLite backup beside the database named `bus.db.schema2-backup-*`, then migrates all tables in one transaction to schema 10. Existing identities, tokens, messages, outstanding requests, claims, dependencies, descriptions, and escalations are preserved. Legacy tasks gain a stable generated title; their full descriptions remain intact. Execution leases still use their original expiration times.
 
 Migration failure or process death before commit leaves schema 2 intact. The backup is retained even if migration fails. Schemas 3–8 were unreleased intermediates and are intentionally rejected; no conversion is guessed. Test a copy before upgrading a valuable installation.
 
-For rollback, stop the new daemon and harnesses, preserve its complete data directory separately, and place a copy of the schema-2 backup in a **fresh private data directory** as `bus.db`. Point the rc.4 binary at that directory. Never combine the restored file with the upgraded database's WAL/SHM files. The old binary must not be started against the upgraded database; it rejects schema 9. Rollback discards work accepted after the backup—preserve the new data for reconciliation.
+For rollback, stop the new daemon and harnesses, preserve its complete data directory separately, and place a copy of the schema-2 backup in a **fresh private data directory** as `bus.db`. Point the rc.4 binary at that directory. Never combine the restored file with the upgraded database's WAL/SHM files. The old binary must not be started against the upgraded database; it rejects schema 10. Rollback discards work accepted after the backup—preserve the new data for reconciliation.
 
 ### Online database snapshots and restore
 
@@ -261,3 +261,5 @@ Legacy task listing rejects scopes with more than 10,000 tasks. Traverse history
 Pruning keeps the dependency closure of every retained task. A2A task/correlation history is pruned only as a whole terminal unit whose Bus messages are all eligible. Its client-message deduplication history ends when that unit is pruned. Unanswered delivered requests stay protected.
 
 Do not blindly retry ambiguous task creation, escalation creation or completion outcomes: inspect the task/escalation list or receipt first. Message idempotency keys are supported; those other mutations do not gain message-style idempotency from this hardening work.
+
+Schema 9 also upgrades to schema 10. It creates a `bus.db.schema9-backup-*` snapshot, rebuilds the message participant constraints transactionally and checks all foreign keys before commit. Restore that snapshot in a fresh private directory with the matching older binary to roll back.

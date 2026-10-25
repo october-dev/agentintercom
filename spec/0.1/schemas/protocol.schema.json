@@ -21,7 +21,7 @@
     },
     "messageParticipantKind": {
       "type": "string",
-      "enum": ["agent", "a2aPrincipal"]
+      "enum": ["agent", "a2aPrincipal", "human"]
     },
     "deliveryState": {
       "type": "string",

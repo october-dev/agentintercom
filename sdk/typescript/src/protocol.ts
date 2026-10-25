@@ -8,7 +8,7 @@ export type TaskId = string
 
 export type AgentLifecycle = 'starting' | 'ready' | 'working' | 'idle' | 'needs_input' | 'offline'
 export type MessageMode = 'notify' | 'request' | 'response'
-export type MessageParticipantKind = 'agent' | 'a2aPrincipal'
+export type MessageParticipantKind = 'agent' | 'a2aPrincipal' | 'human'
 export type DeliveryState = 'queued' | 'reserved' | 'delivered' | 'acknowledged' | 'expired'
 export type TaskStatus = 'open' | 'claimed' | 'done'
 export type TaskProgressKind = 'progress' | 'note' | 'blocker'

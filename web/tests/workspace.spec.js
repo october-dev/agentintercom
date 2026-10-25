@@ -4,6 +4,9 @@ async function fixture(page, signedIn = true) {
   const user = { id: 'owner-id', email: 'owner@example.test', aud: 'authenticated', role: 'authenticated', email_confirmed_at: '2026-01-01T00:00:00Z' };
   const events = [];
   let revoked = false;
+  const messages = [];
+  const tasks = [];
+  let answered = false;
   if (signedIn) await page.addInitScript(user => {
     const claims = btoa(JSON.stringify({ sub: user.id, aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 }));
     localStorage.setItem('october-bus-auth', JSON.stringify({ access_token: 'e30.' + claims + '.fixture', refresh_token: 'fixture-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user }));
@@ -20,6 +23,12 @@ async function fixture(page, signedIn = true) {
     else if (path === '/api/me') result = user;
     else if (path === '/api/workspaces') result = [{ id: 'workspace-1', name: 'My workspace', role: 'owner', memberLimit: 5 }];
     else if (path.endsWith('/sessions')) result = { sessions: [{ id: 'session-1', displayName: '<img src=x onerror=alert(1)>', deviceId: 'device-1', deviceName: 'Laptop', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' }] };
+    else if (path.endsWith('/messages')) {
+      if (method === 'POST') { const data = route.request().postDataJSON(); messages.unshift({ id: 'message-1', from: user.id, fromKind: 'human', to: data.to, toKind: 'agent', body: data.body, mode: data.mode, state: 'queued', createdAt: new Date().toISOString() }); result = { messageId: 'message-1', state: 'queued' }; } else result = { messages };
+    }
+    else if (path.endsWith('/tasks')) { if (method === 'POST') { const task = { ...route.request().postDataJSON(), id: 'task-1', status: 'open', ready: true }; tasks.push(task); result = task; } else result = { tasks }; }
+    else if (path.endsWith('/questions')) result = { escalations: answered ? [] : [{ id: 'ask-1', agentId: 'session-1', question: 'Which approach?', options: ['First', 'Second'] }] };
+    else if (path.endsWith('/questions/ask-1/answer')) { answered = true; result = { answer: route.request().postDataJSON().answer }; }
     else if (path.endsWith('/members')) result = [{ userId: user.id, email: user.email, role: 'owner', joinedAt: '2026-10-24T12:00:00Z' }];
     else if (path.endsWith('/devices')) result = [{ id: 'device-1', name: 'My AI app', kind: 'mcp', userId: user.id, revokedAt: revoked ? '2026-10-24T12:00:00Z' : '', expiresAt: '2026-11-24T12:00:00Z' }];
     else if (path.endsWith('/devices/device-1') && method === 'DELETE') { revoked = true; result = { revoked: true }; }
@@ -81,4 +90,29 @@ test('signed-out page presents account login without sending an email on load', 
   await expect(page.getByLabel('Email address', { exact: true }).first()).toBeVisible();
   expect(events).toHaveLength(0);
   await page.screenshot({ path: '/tmp/october-bus-signin.png', fullPage: true });
+});
+
+
+test('human conversation, shared task and question flows preserve human intent', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
+  await page.getByLabel('Your message').fill('Please review this change.');
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await expect(page.getByText('Please review this change.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Waiting for delivery', { exact: true })).toBeVisible();
+  expect(events.at(-1).body.mode).toBe('request');
+  expect(events.at(-1).body.idempotencyKey).toBeTruthy();
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await page.getByLabel('Task title').fill('Review implementation');
+  await page.getByLabel('Description', { exact: true }).fill('Check the important boundaries.');
+  await page.getByRole('button', { name: 'Create task', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Review implementation' })).toBeVisible();
+  await page.getByRole('button', { name: 'Needs you', exact: true }).click();
+  await page.getByRole('button', { name: 'Second', exact: true }).click();
+  expect(events.filter(e => e.path.includes('/answer'))).toHaveLength(0);
+  await expect(page.getByLabel('Your answer')).toHaveValue('Second');
+  await page.getByRole('button', { name: 'Send answer', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Nothing waiting on you.' })).toBeVisible();
+  expect(events.at(-1).body).toEqual({ answer: 'Second' });
 });

@@ -27,6 +27,7 @@ type MessageParticipantKind string
 
 const (
 	MessageParticipantAgent        MessageParticipantKind = "agent"
+	MessageParticipantHuman        MessageParticipantKind = "human"
 	MessageParticipantA2APrincipal MessageParticipantKind = "a2aPrincipal"
 )
 

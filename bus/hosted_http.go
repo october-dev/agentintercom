@@ -142,6 +142,7 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 	h.registerOAuthRoutes()
 	h.registerWorkspaceViews()
 	h.registerBrowserRoutes()
+	h.registerWorkRoutes()
 	return h, nil
 }
 

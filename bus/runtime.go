@@ -226,29 +226,8 @@ func (r *Runtime) SendMessage(ctx context.Context, agentToken string, input Send
 	if err != nil {
 		return DeliveryReceipt{}, err
 	}
-	if err := validateIdentity(input.To, "to", false); err != nil {
+	if err := validateSendMessageInput(&input); err != nil {
 		return DeliveryReceipt{}, err
-	}
-	if err := validateText(input.Body, "body", 65536, false); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if err := validateMessageMode(input.Mode); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if err := validateIdentity(input.ResponseTo, "responseTo", true); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if err := validateText(input.IdempotencyKey, "idempotencyKey", 256, true); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if input.ExpiresInMS < 0 || input.ExpiresInMS > maxExpiryMS {
-		return DeliveryReceipt{}, Errorf(CodeInvalidArgument, "expiresInMs is invalid")
-	}
-	if err := validateContext(input.Context); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if input.Context == nil {
-		input.Context = []ContextItem{}
 	}
 	result, err := r.store.SendMessage(ctx, principal, input)
 	if err == nil {
@@ -438,19 +417,8 @@ func (r *Runtime) AddTask(ctx context.Context, agentToken string, input AddTaskI
 	if err != nil {
 		return Task{}, err
 	}
-	if err := validateText(input.Title, "title", 256, false); err != nil {
+	if err := validateAddTaskInput(input); err != nil {
 		return Task{}, err
-	}
-	if err := validateText(input.Description, "description", 16384, true); err != nil {
-		return Task{}, err
-	}
-	if len(input.Dependencies) > 128 {
-		return Task{}, Errorf(CodeInvalidArgument, "dependencies exceeds 128 items")
-	}
-	for _, dependency := range input.Dependencies {
-		if err := validateIdentity(dependency, "dependencies", false); err != nil {
-			return Task{}, err
-		}
 	}
 	var result Task
 	if principal == nil {
@@ -681,6 +649,7 @@ func (r *Runtime) ResolveEscalation(ctx context.Context, scopeToken, escalationI
 	}
 	result, err := r.store.ResolveEscalation(ctx, scopeID, escalationID, answer)
 	if err == nil {
+		r.signals.notify(signalKey{scopeID: scopeID, consumerID: result.AgentID})
 		r.notifyScope(scopeID)
 	}
 	return result, err
@@ -699,4 +668,51 @@ func (r *Runtime) NodeStatus(ctx context.Context, agentToken string) (NodeStatus
 		Identity: NodeIdentity{AgentIdentity: principal.AgentIdentity, LeaseExpiresAt: instant(principal.LeaseExpiresAt)},
 		Agent:    agent,
 	}, nil
+}
+
+func validateSendMessageInput(input *SendMessageInput) error {
+	if err := validateIdentity(input.To, "to", false); err != nil {
+		return err
+	}
+	if err := validateText(input.Body, "body", 65536, false); err != nil {
+		return err
+	}
+	if err := validateMessageMode(input.Mode); err != nil {
+		return err
+	}
+	if err := validateIdentity(input.ResponseTo, "responseTo", true); err != nil {
+		return err
+	}
+	if err := validateText(input.IdempotencyKey, "idempotencyKey", 256, true); err != nil {
+		return err
+	}
+	if input.ExpiresInMS < 0 || input.ExpiresInMS > maxExpiryMS {
+		return Errorf(CodeInvalidArgument, "expiresInMs is invalid")
+	}
+	if err := validateContext(input.Context); err != nil {
+		return err
+	}
+	if input.Context == nil {
+		input.Context = []ContextItem{}
+	}
+
+	return nil
+}
+
+func validateAddTaskInput(input AddTaskInput) error {
+	if err := validateText(input.Title, "title", 256, false); err != nil {
+		return err
+	}
+	if err := validateText(input.Description, "description", 16384, true); err != nil {
+		return err
+	}
+	if len(input.Dependencies) > 128 {
+		return Errorf(CodeInvalidArgument, "dependencies exceeds 128 items")
+	}
+	for _, dependency := range input.Dependencies {
+		if err := validateIdentity(dependency, "dependencies", false); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -57,3 +57,9 @@ Start with `waitMs: 10000` unless an adapter documents otherwise. A host's tool-
 Every tool returns an object as structured content. Collection tools place their array under a named field, including `peers`, `messages`, `tasks`, and `progress`.
 
 MCP tool approval remains controlled by the harness. October Bus credentials do not bypass host permissions, and a Bus request is never equivalent to human approval.
+
+A resolved `ask_user` question also produces one durable notification in the
+requesting agent's inbox, attributed to the human account (or local scope owner).
+Use `check_inbox` to receive it and acknowledge it like any other notification.
+The answer and notification commit atomically. This completes accepted work and
+does not consume another hosted delivery allowance.

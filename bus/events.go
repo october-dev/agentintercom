@@ -36,6 +36,9 @@ func appendEvent(ctx context.Context, tx sqlExecutor, scopeID, eventType, subjec
 	if attributes == nil {
 		attributes = map[string]string{}
 	}
+	if user, ok := ctx.Value(hostedMemberKey{}).(HostedUser); ok {
+		attributes["actorKind"], attributes["actorId"] = "human", user.ID
+	}
 	data, err := json.Marshal(attributes)
 	if err != nil {
 		return err

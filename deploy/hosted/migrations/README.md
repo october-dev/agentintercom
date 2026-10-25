@@ -83,3 +83,9 @@ lookups use SHA-256 digests. Client secrets are stored only as digests. Refresh
 rotation, code redemption and connection revocation take the same workspace
 transaction lock as session changes. Migration 004 adds confidential client
 methods; existing public registrations retain the `none` method.
+
+## Human attribution: 005_human_messages.sql
+
+Extends message participant constraints with `human` and indexes workspace
+history. No message rows are rewritten, and the existing agent receipt lifecycle
+is unchanged. Human identity and access come from the hosted member boundary.

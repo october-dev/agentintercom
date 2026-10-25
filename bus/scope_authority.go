@@ -10,6 +10,12 @@ import (
 
 type scopeCredentialKey struct{}
 type executionKey struct{}
+type hostedMemberKey struct{}
+
+// The HTTP identity verifier supplies this context, never a request body.
+func withHostedMember(ctx context.Context, user HostedUser) context.Context {
+	return context.WithValue(ctx, hostedMemberKey{}, user)
+}
 
 func withExecution(ctx context.Context, p Principal) context.Context {
 	return context.WithValue(ctx, executionKey{}, p)
@@ -48,6 +54,12 @@ func (s *Store) beginTx(ctx context.Context, scopeID string) (*sqlTransaction, e
 	}
 	if p, ok := ctx.Value(executionKey{}).(Principal); ok {
 		if err := requireCurrentExecution(ctx, tx, p, nowMillis()); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+	}
+	if user, ok := ctx.Value(hostedMemberKey{}).(HostedUser); ok {
+		if _, err := hostedMember(ctx, tx, scopeID, user.ID); err != nil {
 			tx.Rollback()
 			return nil, err
 		}

@@ -17,6 +17,10 @@ func isPostgresQuery(q sqlExecutor) bool {
 	return false
 }
 
+// Resolving already accepted work must not require new delivery allowance.
+// This marker is set only by the trusted human-question resolution path.
+type completionDeliveryKey struct{}
+
 // Every hosted execution remains bound to a live device and workspace member,
 // including requests arriving directly at the common protocol routes.
 func requireHostedExecution(ctx context.Context, q sqlExecutor, p Principal, now int64) error {
@@ -41,7 +45,7 @@ WHERE s.scope_id=w.scope_id AND s.agent_id=? AND d.scope_id=w.scope_id AND d.rev
 // the message. Retries return before this point. Polls and acknowledgements never
 // call it, and responses to accepted work can finish after the allowance ends.
 func consumeHostedDelivery(ctx context.Context, tx sqlExecutor, scopeID string, mode MessageMode, now int64) error {
-	if !isPostgresQuery(tx) || mode == MessageResponse {
+	if !isPostgresQuery(tx) || mode == MessageResponse || ctx.Value(completionDeliveryKey{}) == true {
 		return nil
 	}
 	var trial, paid, disabled, limit int64

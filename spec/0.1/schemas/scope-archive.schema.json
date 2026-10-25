@@ -84,9 +84,9 @@
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
         "from": { "$ref": "#/$defs/identifier" },
-        "fromKind": { "type": "string", "enum": ["agent", "a2aPrincipal"] },
+        "fromKind": { "type": "string", "enum": ["agent", "a2aPrincipal", "human"] },
         "to": { "$ref": "#/$defs/identifier" },
-        "toKind": { "type": "string", "enum": ["agent", "a2aPrincipal"] },
+        "toKind": { "type": "string", "enum": ["agent", "a2aPrincipal", "human"] },
         "mode": { "type": "string", "enum": ["notify", "request", "response"] },
         "body": { "type": "string", "minLength": 1, "maxLength": 65536 },
         "context": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/contextItem" } },

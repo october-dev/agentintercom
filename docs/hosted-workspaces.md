@@ -117,3 +117,28 @@ presence, invitations and connection revocation. Remote MCP clients use
 `<public-origin>/mcp` and select their workspace through explicit OAuth consent.
 See [hosted MCP authorization](hosted-mcp.md) for the connector contract, token
 lifetimes and operator sign-in configuration.
+
+## Conversations, tasks and decisions
+
+Workspace members can send a request to a session from **Conversations**, see its
+receipt, and read the agent's response. History is shared with workspace members;
+it is not a private chat. Search matches a case-insensitive literal phrase.
+History uses stable bounded pages. Reading history does not acknowledge a model's
+inbox. **Mark read** applies only to messages addressed to the signed-in person.
+The browser refreshes conversations without clearing an unsent draft.
+
+**Tasks** uses the existing atomic task claims: people add work and agents claim,
+report progress and complete it through MCP or HTTP. **Needs you** shows pending
+questions created by `ask_human`; a submitted answer resolves the same durable
+question the requesting agent waits on. Human task creation and answers record
+the verified actor in the workspace event log. Revoked membership is rechecked
+inside the transaction that reads or changes shared work.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/workspaces/{id}/messages` | Shared history; `before`, `query`, `agentId`, `limit` |
+| POST | `/api/workspaces/{id}/messages` | Send with verified human attribution |
+| POST | `/api/workspaces/{id}/messages/read` | Mark own human messages read |
+| GET / POST | `/api/workspaces/{id}/tasks` | Page or create shared tasks |
+| GET | `/api/workspaces/{id}/questions` | Page pending human questions |
+| POST | `/api/workspaces/{id}/questions/{question}/answer` | Resolve once with an answer |

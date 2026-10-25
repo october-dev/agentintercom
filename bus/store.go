@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	schemaVersion                = 9
+	schemaVersion                = 10
 	reservationTTL               = 30 * time.Second
 	messageBacklogCap            = 10000
 	activeTaskCap                = 5000
@@ -130,6 +130,9 @@ func (s *Store) initialize(ctx context.Context) error {
 	}
 	if version == 2 {
 		return s.migrateV2(ctx)
+	}
+	if version == 9 {
+		return s.migrateV9(ctx)
 	}
 	if version != 0 && version != schemaVersion {
 		return fmt.Errorf("database schema %d does not match %d", version, schemaVersion)
@@ -1638,6 +1641,18 @@ func (s *Store) ResolveEscalation(ctx context.Context, scopeID, escalationID, an
 		return HumanEscalation{}, err
 	}
 	escalation, err := escalationFrom(ctx, tx, scopeID, escalationID)
+	if err != nil {
+		return HumanEscalation{}, err
+	}
+	actor := "owner"
+	if user, ok := ctx.Value(hostedMemberKey{}).(HostedUser); ok {
+		actor = user.ID
+	}
+	_, err = sendMessageTx(context.WithValue(ctx, completionDeliveryKey{}, true), tx, scopeID, MessageParticipantHuman, actor, SendMessageInput{
+		To: escalation.AgentID, Mode: MessageNotify,
+		Body:    "Answer to your question (" + escalation.ID + "):\n" + escalation.Question + "\n\n" + escalation.Answer,
+		Context: []ContextItem{}, IdempotencyKey: "human-answer:" + escalation.ID,
+	})
 	if err != nil {
 		return HumanEscalation{}, err
 	}

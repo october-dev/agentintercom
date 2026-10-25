@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -578,7 +579,7 @@ func TestOlderSchemaFailsBeforeServingWork(t *testing.T) {
 	}
 	requireNoError(t, database.Close())
 	_, err = Open(path)
-	require(t, err != nil && strings.Contains(err.Error(), "database schema 1 does not match 9"), "older schema did not fail clearly: %v", err)
+	require(t, err != nil && strings.Contains(err.Error(), fmt.Sprintf("database schema 1 does not match %d", schemaVersion)), "older schema did not fail clearly: %v", err)
 }
 
 type bearerTransport struct {

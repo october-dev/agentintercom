@@ -2,8 +2,10 @@ import { AuthClient } from '@supabase/auth-js';
 
 const root = document.querySelector('#app');
 const notice = document.querySelector('#notice');
-const state = { auth: null, config: null, user: null, workspaces: [], workspace: null, tab: 'sessions', generation: 0 };
+const state = { auth: null, config: null, user: null, workspaces: [], workspace: null, tab: 'sessions', generation: 0, conversationAgent: '', search: '' };
 let noticeTimer;
+const viewCleanups = [];
+function clearView() { for (const cleanup of viewCleanups.splice(0)) cleanup(); }
 const params = new URLSearchParams(location.search);
 const pendingKey = 'october-bus-pending';
 let pending = {};
@@ -70,6 +72,7 @@ function secretDialog(title, value, description) {
 }
 
 function signIn() {
+  clearView();
   state.user = null;
   const email = field('Email address', { type: 'email', name: 'email', autocomplete: 'email', required: true });
   const emailForm = form([email.node], 'Continue with email', async data => {
@@ -131,8 +134,9 @@ function invitation() {
   }, 'primary'), button('Use another account', signOut), button('Cancel', async () => { closePending('invite'); await signedIn(); })))));
 }
 
-const titles = { sessions: ['Sessions', 'Choose the connected session you want to work with.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'] };
+const titles = { messages: ['Conversations', 'Messages and receipts shared with this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], sessions: ['Sessions', 'Choose the connected session you want to work with.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'] };
 async function render() {
+  clearView();
   if (!state.workspace) return firstWorkspace();
   const generation = ++state.generation;
   const main = el('main', { id: 'main', class: 'content' });
@@ -142,7 +146,7 @@ async function render() {
   main.append(el('header', { class: 'topline' }, el('div', {}, el('div', { class: 'eyebrow' }, state.workspace.name), el('h1', {}, titles[state.tab][0]), el('p', { class: 'muted' }, titles[state.tab][1])), state.tab === 'sessions' ? button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary') : null));
   const loading = el('p', { class: 'progress' }, 'Loading…'); main.append(loading);
   try {
-    const view = await ({ sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
+    const view = await ({ messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
     if (generation !== state.generation) return;
     loading.replaceWith(view);
   } catch (error) { if (generation === state.generation) loading.replaceWith(el('div', { class: 'card' }, el('p', {}, error.message), button('Try again', render))); }
@@ -154,7 +158,7 @@ async function sessionsView() {
   const append = data => {
     for (const session of data.sessions) {
       const online = session.reachable === true;
-      list.append(el('article', { class: 'card' }, el('div', { class: 'actions' }, el('h2', {}, session.displayName || session.agentId || session.id), el('span', { class: `badge ${online ? 'live' : ''}` }, online ? 'Connected' : 'Offline')), el('p', { class: 'help' }, session.deviceName), el('p', { class: 'help' }, session.deliveryMode === 'poll' ? 'Inbox available when this app checks for messages. It may need you to resume the conversation.' : 'Wake delivery available'), el('small', {}, `Last seen ${date(session.updatedAt)}`)));
+      list.append(el('article', { class: 'card' }, el('div', { class: 'actions' }, el('h2', {}, session.displayName || session.agentId || session.id), el('span', { class: `badge ${online ? 'live' : ''}` }, online ? 'Connected' : 'Offline')), el('p', { class: 'help' }, session.deviceName), el('p', { class: 'help' }, session.deliveryMode === 'poll' ? 'Inbox available when this app checks for messages. It may need you to resume the conversation.' : 'Wake delivery available'), el('small', {}, `Last seen ${date(session.updatedAt)}`), el('div', { class: 'actions' }, button('Open conversation', async () => { state.conversationAgent = session.id; state.tab = 'messages'; await render(); }))));
     }
   };
   if (!page.sessions.length) return el('section', { class: 'card empty' }, el('h2', {}, 'Your first connection starts here.'), el('p', { class: 'muted' }, 'Connect an AI app or terminal session. It will appear here under its own name, ready for shared work.'), button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary'));
@@ -218,3 +222,103 @@ async function start() {
   });
 }
 start().catch(error => { root.replaceChildren(el('main', { id: 'main', class: 'auth-wrap' }, brand(), el('section', { class: 'card consent' }, el('h1', {}, 'Couldn’t open your workspace'), el('p', {}, error.message), button('Try again', () => location.reload())))); });
+
+async function messagesView() {
+  const scopePath = path('');
+  const [sessionsPage, members] = await Promise.all([api(scopePath + '/sessions'), api(scopePath + '/members')]);
+  const sessions = sessionsPage.sessions;
+  const names = new Map(sessions.map(s => ['agent:' + s.id, s.displayName]));
+  for (const member of members) names.set('human:' + member.userId, member.email);
+  const name = (kind, id) => names.get(kind + ':' + id) || id;
+  const query = new URLSearchParams();
+  if (state.conversationAgent) query.set('agentId', state.conversationAgent);
+  if (state.search) query.set('query', state.search);
+  const filter = el('select', { 'aria-label': 'Filter by session', onchange: e => { state.conversationAgent = e.target.value; action(null, render); } }, el('option', { value: '' }, 'All sessions'), sessions.map(s => el('option', { value: s.id, selected: s.id === state.conversationAgent }, s.displayName)));
+  const search = field('Search messages', { name: 'query', value: state.search, type: 'search', maxlength: 256 });
+  const searchForm = form([search.node], 'Search', async data => { state.search = data.get('query').trim(); await render(); });
+  const container = el('div', {}, el('div', { class: 'card grid' }, el('label', {}, 'Conversation', filter), searchForm));
+  const list = el('div', { class: 'conversation-list', 'aria-label': 'Workspace messages' });
+  const rendered = new Map();
+  let live = true, polling = false;
+  viewCleanups.push(() => { live = false; });
+  const receipt = message => message.responseMessageId ? 'Replied' : message.state === 'acknowledged' ? (message.toKind === 'human' ? 'Read' : 'Acknowledged') : message.state === 'delivered' ? 'Delivered to app' : message.state === 'expired' ? 'Expired' : 'Waiting for delivery';
+  const append = (page, fresh = false) => {
+    const rows = fresh ? [...page.messages].reverse() : page.messages;
+    for (const message of rows) {
+      const fingerprint = JSON.stringify(message);
+      const previous = rendered.get(message.id);
+      if (previous?.fingerprint === fingerprint) continue;
+      const item = el('article', { class: 'card', id: message.id }, el('div', { class: 'row' }, el('div', { class: 'details' }, el('strong', {}, name(message.fromKind, message.from)), ' → ', name(message.toKind, message.to), el('p', { class: 'help' }, date(message.createdAt))), el('span', { class: 'badge' }, receipt(message))), el('p', { class: 'message' }, message.body));
+      if (message.responseTo) item.append(el('p', { class: 'help' }, 'Reply to ', el('code', {}, message.responseTo)));
+      if (message.toKind === 'human' && message.to === state.user.id && message.state !== 'acknowledged' && message.state !== 'expired') item.append(button('Mark read', async () => { await api(scopePath + '/messages/read', { method: 'POST', body: { messageIds: [message.id] } }); await render(); }, 'subtle-button'));
+      if (previous) previous.node.replaceWith(item);
+      else if (fresh) list.prepend(item);
+      else list.append(item);
+      rendered.set(message.id, { fingerprint, node: item });
+    }
+  };
+  const page = await api(scopePath + '/messages?' + query);
+  append(page);
+  const refreshQuery = query.toString();
+  const timer = setInterval(async () => {
+    if (!live || polling || document.hidden) return;
+    polling = true;
+    try { const next = await api(scopePath + '/messages?' + refreshQuery); if (live) { if (next.messages.length) list.querySelector('.empty')?.remove(); append(next, true); } }
+    catch (error) { if (live) inform('Conversation refresh failed. ' + error.message, true); }
+    finally { polling = false; }
+  }, 5000);
+  viewCleanups.push(() => clearInterval(timer));
+  if (!page.messages.length) list.append(el('section', { class: 'card empty' }, el('h2', {}, state.search ? 'No matching messages' : 'Start a conversation'), el('p', { class: 'muted' }, state.search ? 'Try a different phrase or session.' : 'Choose a connected session below and send it a request.')));
+  container.append(list);
+  if (page.nextCursor) {
+    let cursor = page.nextCursor;
+    const more = button('Earlier messages', async () => { query.set('before', cursor); const older = await api(scopePath + '/messages?' + query); append(older); cursor = older.nextCursor; if (!cursor) more.remove(); });
+    container.append(more);
+  }
+  if (sessions.length) {
+    const target = el('select', { name: 'to', required: true }, sessions.map(s => el('option', { value: s.id, selected: s.id === state.conversationAgent }, s.displayName + (s.reachable ? '' : ' · offline'))));
+    const body = field('Your message', { name: 'body', multiline: true, required: true, maxlength: 65536, placeholder: 'What would you like this session to help with?' });
+    let idempotencyKey = crypto.randomUUID(), draft = '';
+    const compose = form([el('label', {}, 'Send to', target), body.node, el('p', { class: 'help' }, 'Visible to workspace members. An MCP app may need you to resume it or ask it to check its inbox.')], 'Send request', async data => {
+      const current = JSON.stringify([data.get('to'), data.get('body')]);
+      if (draft && draft !== current) idempotencyKey = crypto.randomUUID();
+      draft = current;
+      await api(scopePath + '/messages', { method: 'POST', body: { to: data.get('to'), body: data.get('body'), mode: 'request', idempotencyKey } });
+      state.conversationAgent = data.get('to'); state.search = ''; inform('Request saved. Delivery status will update when the app checks its inbox.'); await render();
+    });
+    container.append(el('section', { class: 'card' }, el('h2', {}, 'Send a message'), compose));
+  } else container.append(button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary'));
+  container.append(button('Refresh conversation', render));
+  return container;
+}
+
+async function tasksView() {
+  const scopePath = path('');
+  const page = await api(scopePath + '/tasks');
+  const container = el('div'); const list = el('div', { class: 'grid' });
+  const append = data => { for (const task of data.tasks) list.append(el('article', { class: 'card' }, el('div', { class: 'actions' }, el('h2', {}, task.title), el('span', { class: 'badge' }, task.status)), el('p', { class: 'message' }, task.description), task.claimedBy ? el('p', { class: 'help' }, 'Claimed by ', el('code', {}, task.claimedBy)) : el('p', { class: 'help' }, task.ready ? 'Ready for an agent to claim.' : 'Waiting for dependencies.'), task.note ? el('p', {}, task.note) : null, (task.recentProgress || []).map(progress => el('p', { class: 'help message' }, `${progress.kind}: ${progress.text}`)), el('small', {}, date(task.updatedAt)))); };
+  append(page); if (!page.tasks.length) list.append(el('section', { class: 'card empty' }, el('h2', {}, 'Give the work a place to land.'), el('p', {}, 'Create a task, then ask a connected session to claim it. Claims prevent two agents from taking the same work.')));
+  container.append(list);
+  if (page.nextCursor) { let cursor = page.nextCursor; const more = button('More tasks', async () => { const next = await api(scopePath + '/tasks?after=' + encodeURIComponent(cursor)); append(next); cursor = next.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
+  const title = field('Task title', { name: 'title', maxlength: 256, required: true });
+  const description = field('Description', { name: 'description', multiline: true, maxlength: 16384 });
+  container.append(el('section', { class: 'card' }, el('h2', {}, 'New task'), form([title.node, description.node], 'Create task', async data => { await api(scopePath + '/tasks', { method: 'POST', body: { title: data.get('title'), description: data.get('description') } }); inform('Task created. An agent can now claim it.'); await render(); })));
+  return container;
+}
+
+async function questionsView() {
+  const scopePath = path('');
+  const page = await api(scopePath + '/questions');
+  const container = el('div');
+  const append = data => {
+    for (const question of data.escalations) {
+      const answer = field('Your answer', { name: 'answer', multiline: true, required: true, maxlength: 16384 });
+      const choices = (question.options || []).map(option => button(option, () => { answer.input.value = option; answer.input.focus(); }));
+      container.append(el('section', { class: 'card' }, el('h2', { class: 'message' }, question.question), el('p', { class: 'help' }, 'From ', el('code', {}, question.agentId), ' · ', date(question.createdAt)), el('div', { class: 'actions' }, choices), form([answer.node], 'Send answer', async data => { await api(scopePath + `/questions/${encodeURIComponent(question.id)}/answer`, { method: 'POST', body: { answer: data.get('answer') } }); inform('Answer saved for the requesting session.'); await render(); })));
+    }
+  };
+  append(page);
+  if (!page.escalations.length) container.append(el('section', { class: 'card empty' }, el('h2', {}, 'Nothing waiting on you.'), el('p', { class: 'muted' }, 'When an agent asks for a decision, you can answer it here.')));
+  if (page.nextCursor) { let cursor = page.nextCursor; const more = button('More questions', async () => { const next = await api(scopePath + '/questions?after=' + encodeURIComponent(cursor)); append(next); cursor = next.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
+  container.append(button('Refresh questions', render)); return container;
+}
