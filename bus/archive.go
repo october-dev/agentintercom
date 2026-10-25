@@ -19,6 +19,7 @@ const (
 )
 
 type ScopeArchive struct {
+	Attachments           []ArchivedAttachment          `json:"attachments,omitempty"`
 	Channels              []ArchivedChannel             `json:"channels,omitempty"`
 	ChannelSubscriptions  []ArchivedChannelSubscription `json:"channelSubscriptions,omitempty"`
 	ChannelPosts          []ArchivedChannelPost         `json:"channelPosts,omitempty"`
@@ -461,6 +462,8 @@ func queryArchivedOutputs(ctx context.Context, tx sqlExecutor, scopeID string) (
 }
 
 func (s *Store) ExportScope(ctx context.Context, scopeID string) (ScopeArchive, error) {
+	s.files.maintenance.RLock()
+	defer s.files.maintenance.RUnlock()
 	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return ScopeArchive{}, err
@@ -514,6 +517,9 @@ func (s *Store) ExportScope(ctx context.Context, scopeID string) (ScopeArchive, 
 		return ScopeArchive{}, err
 	}
 	if err := exportChannels(ctx, tx, scopeID, &archive); err != nil {
+		return ScopeArchive{}, err
+	}
+	if err := s.exportAttachments(ctx, tx, scopeID, &archive); err != nil {
 		return ScopeArchive{}, err
 	}
 	if err := validateArchive(&archive); err != nil {
@@ -1013,7 +1019,10 @@ func validateArchive(archive *ScopeArchive) error {
 			return Errorf(CodeInvalidArgument, "Archive output history sequence has a gap")
 		}
 	}
-	return validateArchivedChannels(archive, agents)
+	if err := validateArchivedChannels(archive, agents); err != nil {
+		return err
+	}
+	return validateArchivedAttachments(archive, agents)
 }
 
 func insertArchive(ctx context.Context, tx sqlExecutor, archive ScopeArchive, digest, tokenHash string, importedAt int64) error {
@@ -1169,6 +1178,8 @@ func nullableStringPtr(value *string) any {
 }
 
 func (s *Store) ImportScope(ctx context.Context, archive ScopeArchive) (ImportScopeResult, error) {
+	s.files.maintenance.RLock()
+	defer s.files.maintenance.RUnlock()
 	if err := validateArchive(&archive); err != nil {
 		return ImportScopeResult{}, err
 	}
@@ -1205,6 +1216,9 @@ func (s *Store) ImportScope(ctx context.Context, archive ScopeArchive) (ImportSc
 		if isStorageConstraint(err) {
 			return ImportScopeResult{}, Errorf(CodeInvalidArgument, "Archive contains conflicting records")
 		}
+		return ImportScopeResult{}, err
+	}
+	if err := s.importAttachments(ctx, tx, archive); err != nil {
 		return ImportScopeResult{}, err
 	}
 	if err := tx.Commit(); err != nil {

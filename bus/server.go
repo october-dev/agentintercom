@@ -51,6 +51,7 @@ type Server struct {
 	// credentialRequests keeps header-only classification probes from
 	// competing with long-lived requests (inbox waits) or local heartbeats.
 	credentialRequests chan struct{}
+	stopMaintenance    func()
 }
 
 type mcpTokenKey struct{}
@@ -102,6 +103,7 @@ func (s *Server) Start() (string, error) {
 		return "", err
 	}
 	s.listener = listener
+	s.stopMaintenance = s.runtime.StartMaintenance()
 	s.address = "http://" + listener.Addr().String()
 	go func() {
 		err := s.httpServer.Serve(listener)
@@ -130,6 +132,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	var stopErr error
 	s.closeOnce.Do(func() {
 		s.cancelWaits()
+		if s.stopMaintenance != nil {
+			s.stopMaintenance()
+		}
 		if s.listener != nil {
 			stopErr = s.httpServer.Shutdown(ctx)
 		}
@@ -392,6 +397,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 			return nil, result, err
 		})
 	s.addChannelMCPTools(server, token)
+	s.addAttachmentMCPTools(server, token)
 	return server
 }
 

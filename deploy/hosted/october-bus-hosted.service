@@ -8,6 +8,9 @@ Type=simple
 User=october-bus
 Group=october-bus
 EnvironmentFile=/etc/october-bus/hosted.env
+Environment=OCTOBER_BUS_ATTACHMENTS_DIR=/var/lib/october-bus-hosted/attachments
+StateDirectory=october-bus-hosted
+StateDirectoryMode=0700
 ExecStart=/usr/local/bin/october-bus hosted serve --public-url https://bus.example.com
 Restart=on-failure
 RestartSec=3

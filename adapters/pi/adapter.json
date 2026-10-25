@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "pi-native",
-  "adapterVersion": "0.2.0",
+  "adapterVersion": "0.2.1",
   "harnessFamily": "Pi",
   "status": "experimental",
   "protocolVersions": [

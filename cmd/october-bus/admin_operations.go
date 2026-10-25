@@ -155,6 +155,7 @@ func linkAgents(args []string) error {
 
 func backupDatabase(args []string) error {
 	flags := flag.NewFlagSet("backup", flag.ContinueOnError)
+	bundle := flags.Bool("bundle", false, "include attachment bytes with the SQLite snapshot in a tar.gz bundle")
 	address := flags.String("address", "", "October Bus address")
 	output := flags.String("output", "", "new private SQLite backup path")
 	if err := flags.Parse(args); err != nil {
@@ -181,7 +182,13 @@ func backupDatabase(args []string) error {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if err := client.BackupTo(ctx, file); err != nil {
+	var backupErr error
+	if *bundle {
+		backupErr = client.BackupBundleTo(ctx, file)
+	} else {
+		backupErr = client.BackupTo(ctx, file)
+	}
+	if err := backupErr; err != nil {
 		return err
 	}
 	if err := file.Sync(); err != nil {
@@ -191,6 +198,10 @@ func backupDatabase(args []string) error {
 		return err
 	}
 	complete = true
-	fmt.Printf("Database snapshot saved to %s. It contains credentials; keep it private.\n", *output)
+	if *bundle {
+		fmt.Printf("Database and attachment bundle saved to %s. It contains credentials; keep it private.\n", *output)
+	} else {
+		fmt.Printf("Database snapshot saved to %s. Attachment files are separate; use --bundle to include them. This snapshot contains credentials; keep it private.\n", *output)
+	}
 	return nil
 }

@@ -56,3 +56,12 @@ bound to restored offline agent identities and grant no execution authority.
 Import validates every channel, subscriber, post author and same-channel root
 relationship before writing. Version 2 archives without channel data remain
 accepted. Native wake attempts and provider socket bindings are not portable.
+
+Version 3 also includes optional `attachments`. Each record contains its file
+metadata, upload retry identity and complete base64 bytes. Import verifies size,
+SHA-256, author attribution and retry hash before writing. Bytes are flushed
+before the metadata transaction commits. A failed import may leave unreferenced
+private files, collected later; it cannot commit a partial attachment record.
+Deleted files and service transfer counters are not portable. Existing message
+references to deleted files remain unchanged. The 64 MiB archive limit includes
+encoded file bytes; a larger dataset needs a database-and-files backup.

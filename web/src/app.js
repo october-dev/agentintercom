@@ -63,6 +63,64 @@ async function api(url, options = {}) {
   return data.result;
 }
 async function copy(value) { await navigator.clipboard.writeText(value); inform('Copied to clipboard.'); }
+
+const uploadKeys = new WeakMap();
+async function fileRequest(url, options = {}) {
+  const { data, error } = await state.auth.getSession();
+  if (error) throw error;
+  if (!data.session) throw new Error('Sign in again to access workspace files.');
+  const response = await fetch(url, { ...options, credentials: 'omit', redirect: 'error', headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/octet-stream' }, signal: AbortSignal.timeout(30000) });
+  if (!response.ok) { const failure = await response.json().catch(() => ({})); throw new Error(failure.error?.message || 'File transfer failed. Please try again.'); }
+  return response;
+}
+async function uploadFile(scopePath, file) {
+  if (file.size > 16 * 1024 * 1024) throw new Error('Files can be up to 16 MiB.');
+  if (!uploadKeys.has(file)) uploadKeys.set(file, crypto.randomUUID());
+  const query = new URLSearchParams({ name: file.name, mediaType: file.type.split(';')[0] || 'application/octet-stream', idempotencyKey: uploadKeys.get(file) });
+  const response = await fileRequest(scopePath + '/attachments?' + query, { method: 'POST', body: file });
+  const data = await response.json(); if (!data.ok) throw new Error(data.error?.message || 'Upload failed.'); return data.result;
+}
+async function downloadFile(scopePath, id, name) {
+  const response = await fileRequest(scopePath + '/attachments/' + encodeURIComponent(id) + '/content');
+  const data = await response.arrayBuffer();
+  const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', data))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  if (digest !== response.headers.get('X-Content-SHA256')) throw new Error('File checksum did not match. The download was stopped.');
+  const disposition = response.headers.get('Content-Disposition') || '';
+  if (!name) { try { name = decodeURIComponent(disposition.match(/filename\*=utf-8''([^;]+)/i)?.[1] || '') || disposition.match(/filename="([^"]+)"/)?.[1] || disposition.match(/filename=([^;]+)/)?.[1]; } catch {} }
+  const url = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }));
+  const link = el('a', { href: url, download: (name || id).replace(/[\\/\x00-\x1f]/g, '_') }); document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+function attachmentPicker(scopePath, textInput) {
+  const file = field('Attach a file', { type: 'file' });
+  const attach = button('Upload and attach', async () => {
+    const selected = file.input.files[0]; if (!selected) throw new Error('Choose a file first.');
+    const submit = file.input.closest('form')?.querySelector('[type="submit"]'); if (submit) submit.disabled = true;
+    try { const uploaded = await uploadFile(scopePath, selected); textInput.value += `${textInput.value ? '\n\n' : ''}${uploaded.name}: ${uploaded.uri}`; file.input.value = ''; inform('File attached. Send your message to share the reference.'); }
+    finally { if (submit) submit.disabled = false; }
+  });
+  return el('details', {}, el('summary', {}, 'Attach a file'), file.node, attach, el('p', { class: 'help' }, 'Up to 16 MiB. Uploaded files are visible to everyone in this workspace.'));
+}
+function attachmentLinks(scopePath, text, context = []) {
+  const ids = new Map();
+  for (const match of String(text).matchAll(/october-bus:\/\/attachments\/(att_[0-9a-f]{32})(?![0-9a-f])/g)) ids.set(match[1], '');
+  for (const item of context || []) { const id = item.uri?.match(/^october-bus:\/\/attachments\/(att_[0-9a-f]{32})$/)?.[1]; if (id) ids.set(id, item.title); }
+  return el('div', { class: 'actions' }, [...ids].map(([id, name]) => button(name ? `Download ${name}` : 'Download shared file', () => downloadFile(scopePath, id, name))));
+}
+async function filesView() {
+  const scopePath = path('');
+  const container = el('div'), list = el('div', { class: 'grid' });
+  const append = page => { for (const file of page.attachments) {
+    const own = file.authorKind === 'human' && file.authorId === state.user.id;
+    const remove = own || ['owner', 'admin'].includes(state.workspace.role) ? button('Delete file', () => modal('Delete this file?', close => el('div', {}, el('p', {}, `Delete ${file.name}? Existing message references will stop working.`), button('Delete permanently', async () => { await api(scopePath + '/attachments/' + file.id, { method: 'DELETE' }); close(); await render(); })))) : null;
+    list.append(el('article', { class: 'card' }, el('h2', {}, file.name), el('p', { class: 'help' }, `${(file.size / 1024).toFixed(1)} KiB · ${file.mediaType} · ${date(file.createdAt)}`), el('div', { class: 'actions' }, button('Download', () => downloadFile(scopePath, file.id, file.name)), button('Copy reference', () => copy(file.uri)), remove)));
+  } };
+  const page = await api(scopePath + '/attachments'); append(page);
+  if (!page.attachments.length) list.append(el('section', { class: 'card empty' }, el('h2', {}, 'Share the files your work needs.'), el('p', {}, 'Upload a file here or attach one to a conversation. Files stay private to this workspace.')));
+  const file = field('File to upload', { type: 'file', required: true });
+  container.append(el('section', { class: 'card' }, form([file.node, el('p', { class: 'help' }, 'Up to 16 MiB per file. Everyone in the workspace can download it.')], 'Upload file', async () => { const selected = file.input.files[0]; if (!selected) throw new Error('Choose a file first.'); await uploadFile(scopePath, selected); await render(); })), list);
+  if (page.nextCursor) { let cursor = page.nextCursor; const more = button('More files', async () => { const next = await api(scopePath + '/attachments?after=' + encodeURIComponent(cursor)); append(next); cursor = next.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
+  return container;
+}
 function closePending(key) { delete pending[key]; sessionStorage.setItem(pendingKey, JSON.stringify({ ...pending, until: Date.now() + 20 * 60 * 1000 })); history.replaceState(null, '', '/app'); }
 function modal(title, build) {
   const dialog = el('dialog', {}, el('h2', {}, title));
@@ -129,7 +187,7 @@ async function consent() {
     closePending('authorization'); location.assign(result.redirectUrl);
   };
   const choice = state.workspaces.length ? el('div', {}, el('label', {}, 'Connect to workspace', workspaceSelect(consent)), el('div', { class: 'actions' }, button('Allow connection', () => approve(true), 'primary'), button('Cancel', () => approve(false)))) : createWorkspace(consent);
-  root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect an app'), el('h1', {}, request.clientName), el('p', {}, 'wants to connect to your October Bus workspace.'), el('p', { class: 'help' }, 'This app registered itself. October has not verified its publisher. Only continue if you started this connection in an app you trust.'), el('ul', { class: 'permission-list' }, el('li', {}, 'Read and send messages in the selected workspace.'), el('li', {}, 'Discover connected sessions and coordinate shared tasks.'), el('li', {}, 'Remain connected until you revoke access or the connection expires.')), el('p', { class: 'help' }, 'You can revoke access at any time in Members & devices.'), el('p', { class: 'help' }, 'Returns to: ', el('code', {}, new URL(request.redirectUri).origin)), choice)));
+  root.replaceChildren(el('main', { id: 'main', class: 'consent' }, brand(), el('section', { class: 'card' }, el('div', { class: 'eyebrow' }, 'Connect an app'), el('h1', {}, request.clientName), el('p', {}, 'wants to connect to your October Bus workspace.'), el('p', { class: 'help' }, 'This app registered itself. October has not verified its publisher. Only continue if you started this connection in an app you trust.'), el('ul', { class: 'permission-list' }, el('li', {}, 'Read and share messages, files and channels in the selected workspace.'), el('li', {}, 'Discover connected sessions and coordinate shared tasks.'), el('li', {}, 'Remain connected until you revoke access or the connection expires.')), el('p', { class: 'help' }, 'You can revoke access at any time in Members & devices.'), el('p', { class: 'help' }, 'Returns to: ', el('code', {}, new URL(request.redirectUri).origin)), choice)));
 }
 async function deviceConsent() {
   const request = await api(`/api/device/authorizations/${encodeURIComponent(pending.device)}`);
@@ -148,7 +206,7 @@ function invitation() {
   }, 'primary'), button('Use another account', signOut), button('Cancel', async () => { closePending('invite'); await signedIn(); })))));
 }
 
-const titles = { channels: ['Channels', 'Shared discussions and threads for this workspace.'], messages: ['Conversations', 'Messages and receipts shared with this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], sessions: ['Sessions', 'Choose the connected session you want to work with.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'] };
+const titles = { files: ['Files', 'Private files shared with your workspace.'], channels: ['Channels', 'Shared discussions and threads for this workspace.'], messages: ['Conversations', 'Messages and receipts shared with this workspace.'], tasks: ['Tasks', 'Shared work, claimed by the session doing it.'], questions: ['Needs you', 'Help your agents continue when they need a decision.'], sessions: ['Sessions', 'Choose the connected session you want to work with.'], connect: ['Connect an app', 'Use your favorite AI app, on this machine or another one.'], members: ['Members & devices', 'Give each person and machine their own access.'] };
 async function render() {
   clearView();
   if (!state.workspace) return firstWorkspace();
@@ -160,7 +218,7 @@ async function render() {
   main.append(el('header', { class: 'topline' }, el('div', {}, el('div', { class: 'eyebrow' }, state.workspace.name), el('h1', {}, titles[state.tab][0]), el('p', { class: 'muted' }, titles[state.tab][1])), state.tab === 'sessions' ? button('Connect an app', async () => { state.tab = 'connect'; await render(); }, 'primary') : null));
   const loading = el('p', { class: 'progress' }, 'Loading…'); main.append(loading);
   try {
-    const view = await ({ channels: channelsView, messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
+    const view = await ({ files: filesView, channels: channelsView, messages: messagesView, tasks: tasksView, questions: questionsView, sessions: sessionsView, connect: connectView, members: membersView })[state.tab]();
     if (generation !== state.generation) return;
     loading.replaceWith(view);
   } catch (error) { if (generation === state.generation) loading.replaceWith(el('div', { class: 'card' }, el('p', {}, error.message), button('Try again', render))); }
@@ -264,6 +322,7 @@ async function messagesView() {
       const previous = rendered.get(message.id);
       if (previous?.fingerprint === fingerprint) continue;
       const item = el('article', { class: 'card', id: message.id }, el('div', { class: 'row' }, el('div', { class: 'details' }, el('strong', {}, name(message.fromKind, message.from)), ' → ', name(message.toKind, message.to), el('p', { class: 'help' }, date(message.createdAt))), el('span', { class: 'badge' }, receipt(message))), el('p', { class: 'message' }, message.body));
+      item.append(attachmentLinks(scopePath, message.body, message.context));
       if (message.responseTo) item.append(el('p', { class: 'help' }, 'Reply to ', el('code', {}, message.responseTo)));
       if (message.toKind === 'human' && message.to === state.user.id && message.state !== 'acknowledged' && message.state !== 'expired') item.append(button('Mark read', async () => { await api(scopePath + '/messages/read', { method: 'POST', body: { messageIds: [message.id] } }); await render(); }, 'subtle-button'));
       if (previous) previous.node.replaceWith(item);
@@ -295,7 +354,7 @@ async function messagesView() {
     const target = el('select', { name: 'to', required: true }, sessions.map(s => el('option', { value: s.id, selected: s.id === state.conversationAgent }, s.displayName + (s.reachable ? '' : ' · offline'))));
     const body = field('Your message', { name: 'body', multiline: true, required: true, maxlength: 65536, placeholder: 'What would you like this session to help with?' });
     let idempotencyKey = crypto.randomUUID(), draft = '';
-    const compose = form([el('label', {}, 'Send to', target), body.node, el('p', { class: 'help' }, 'Visible to workspace members. An MCP app may need you to resume it or ask it to check its inbox.')], 'Send request', async data => {
+    const compose = form([el('label', {}, 'Send to', target), body.node, attachmentPicker(scopePath, body.input), el('p', { class: 'help' }, 'Visible to workspace members. An MCP app may need you to resume it or ask it to check its inbox.')], 'Send request', async data => {
       const current = JSON.stringify([data.get('to'), data.get('body')]);
       if (draft && draft !== current) idempotencyKey = crypto.randomUUID();
       draft = current;
@@ -374,6 +433,7 @@ async function channelsView() {
       const fingerprint = JSON.stringify(post), previous = rendered.get(post.id);
       if (previous?.fingerprint === fingerprint) continue;
       const item = el('article', { class: 'card' }, el('div', { class: 'row' }, el('strong', {}, names.get(post.authorKind + ':' + post.authorId) || post.authorId), el('small', {}, date(post.createdAt))), el('p', { class: 'message' }, post.body));
+      item.append(attachmentLinks(scopePath, post.body));
       if (!state.threadId || state.channelSearch) item.append(button(post.replies ? `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'}` : 'Open thread', async () => { state.threadId = post.threadId || post.id; state.channelSearch = ''; await render(); }));
       if (previous) previous.node.replaceWith(item); else if (fresh) list.prepend(item); else list.append(item);
       rendered.set(post.id, { fingerprint, node: item });
@@ -385,7 +445,7 @@ async function channelsView() {
   if (page.nextCursor) { let cursor = page.nextCursor; const more = button('Earlier posts', async () => { const nextQuery = new URLSearchParams(query); nextQuery.set('before', cursor); const older = await api(scopePath + '/channel-posts?' + nextQuery); append(older); cursor = older.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
   const body = field(state.threadId ? 'Your reply' : 'Your post', { name: 'body', multiline: true, required: true, maxlength: 65536 });
   let key = crypto.randomUUID(), draft = '';
-  container.append(el('section', { class: 'card' }, form([body.node, el('p', { class: 'help' }, 'Shared with the workspace. Subscribed sessions receive an inbox notification; delivery does not mean a model has acted.')], state.threadId ? 'Reply in thread' : 'Post to channel', async data => {
+  container.append(el('section', { class: 'card' }, form([body.node, attachmentPicker(scopePath, body.input), el('p', { class: 'help' }, 'Shared with the workspace. Subscribed sessions receive an inbox notification; delivery does not mean a model has acted.')], state.threadId ? 'Reply in thread' : 'Post to channel', async data => {
     const text = data.get('body'); if (draft && draft !== text) key = crypto.randomUUID(); draft = text;
     await api(scopePath + '/channel-posts', { method: 'POST', body: { channelId: channel.id, body: text, threadId: state.threadId || undefined, idempotencyKey: key } });
     state.channelSearch = ''; await render();

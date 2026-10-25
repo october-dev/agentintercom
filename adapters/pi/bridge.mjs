@@ -96,11 +96,13 @@ export async function openBridge(config) {
     return closePromise
   }
   try {
-    const initialized = await request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'october-bus-pi', version: '0.2.0' } }, undefined, 10_000)
+    const initialized = await request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'october-bus-pi', version: '0.2.1' } }, undefined, 10_000)
     if (initialized?.protocolVersion !== '2025-03-26' || !initialized.capabilities?.tools) throw new Error('Incompatible October Bus MCP bridge')
     send({ jsonrpc: '2.0', method: 'notifications/initialized' })
     const listed = await request('tools/list', {}, undefined, 10_000)
-    if (!Array.isArray(listed?.tools) || listed.tools.length !== 15 || listed.nextCursor) throw new Error('Upgrade Pi adapter and daemon together: expected 15 core tools')
+    const coreTools = ['list_peers', 'message_peer', 'check_inbox', 'acknowledge_messages', 'message_receipt', 'add_task', 'claim_task', 'release_task', 'complete_task', 'add_task_progress', 'list_task_progress', 'list_tasks', 'publish_output', 'ask_user', 'get_node_status']
+    const names = new Set(Array.isArray(listed?.tools) ? listed.tools.map(tool => tool.name) : [])
+    if (!Array.isArray(listed?.tools) || listed.tools.length > 128 || names.size !== listed.tools.length || !coreTools.every(name => names.has(name)) || listed.nextCursor) throw new Error('Incompatible October Bus tool list: required core tools are missing or the list is invalid')
     return { tools: listed.tools, instructions: initialized.instructions ?? '', close,
       call: (name, args, signal) => request('tools/call', { name, arguments: args }, signal) }
   } catch (error) {

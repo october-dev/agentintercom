@@ -20,11 +20,15 @@ type Runtime struct {
 	signals            *runtimeSignals
 	inboxWaiters       inboxWaitBudget
 	a2aPrincipalLimits A2APrincipalLimits
+	attachmentRequests chan struct{}
 }
 
 type RuntimeOptions struct {
 	A2APrincipalMessageLimit int64
 	A2APrincipalByteLimit    int64
+	// AttachmentDir defaults beside a SQLite database. PostgreSQL hosting must
+	// explicitly configure a private persistent directory owned by one service.
+	AttachmentDir string
 }
 
 func Open(source string) (*Runtime, error) {
@@ -40,11 +44,15 @@ func OpenWithOptions(source string, options RuntimeOptions) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := store.configureAttachments(options.AttachmentDir); err != nil {
+		store.Close()
+		return nil, err
+	}
 	return openWithStorage(store, limits), nil
 }
 
 func openWithStorage(store storageBackend, limits A2APrincipalLimits) *Runtime {
-	return &Runtime{store: store, signals: newRuntimeSignals(), a2aPrincipalLimits: limits}
+	return &Runtime{store: store, signals: newRuntimeSignals(), a2aPrincipalLimits: limits, attachmentRequests: make(chan struct{}, 4)}
 }
 
 func normalizedA2APrincipalLimits(options RuntimeOptions) (A2APrincipalLimits, error) {

@@ -145,22 +145,14 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 	h.registerBrowserRoutes()
 	h.registerWorkRoutes()
 	h.registerChannelRoutes()
+	h.registerAttachmentRoutes()
 	return h, nil
 }
 
 func (h *HostedServer) userRoute(fn func(context.Context, HostedUser, http.ResponseWriter, *http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token, err := bearer(r)
+		user, err := h.requestUser(r)
 		if err != nil {
-			writeFailure(w, err)
-			return
-		}
-		user, err := h.identity.Authenticate(r.Context(), token)
-		if err != nil {
-			writeFailure(w, err)
-			return
-		}
-		if err := validateHostedUser(user); err != nil {
 			writeFailure(w, err)
 			return
 		}
@@ -171,6 +163,18 @@ func (h *HostedServer) userRoute(fn func(context.Context, HostedUser, http.Respo
 		}
 		writeResult(w, http.StatusOK, value)
 	}
+}
+
+func (h *HostedServer) requestUser(r *http.Request) (HostedUser, error) {
+	token, err := bearer(r)
+	if err != nil {
+		return HostedUser{}, err
+	}
+	user, err := h.identity.Authenticate(r.Context(), token)
+	if err != nil {
+		return HostedUser{}, err
+	}
+	return user, validateHostedUser(user)
 }
 
 func (h *HostedServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {

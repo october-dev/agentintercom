@@ -757,7 +757,7 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 	requireNoError(t, err)
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 20 {
+	if err != nil || len(tools.Tools) != 23 {
 		t.Fatalf("unexpected tools: %d, %v", len(tools.Tools), err)
 	}
 	for _, input := range []*mcp.CallToolParams{

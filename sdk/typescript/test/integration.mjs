@@ -115,6 +115,19 @@ try {
   await reviewerSession.setState('ready', true)
   const planner = plannerSession.client
   const reviewer = reviewerSession.client
+
+  const fileBytes = new Uint8Array([0, 255, 10, 27, 42])
+  const upload = { name: 'shared.bin', mediaType: 'application/octet-stream', idempotencyKey: 'sdk-file' }
+  const file = await planner.uploadAttachment(upload, fileBytes)
+  assert.equal((await planner.uploadAttachment(upload, fileBytes)).id, file.id)
+  assert.equal((await reviewer.listAttachments()).attachments[0].id, file.id)
+  const firstChunk = await reviewer.readAttachment(file.id, 0, 2)
+  const secondChunk = await reviewer.readAttachment(file.id, firstChunk.nextOffset, 512)
+  assert.deepEqual(Buffer.concat([Buffer.from(firstChunk.dataBase64, 'base64'), Buffer.from(secondChunk.dataBase64, 'base64')]), Buffer.from(fileBytes))
+  await assert.rejects(reviewer.deleteAttachment(file.id), error => error.code === 'PERMISSION_DENIED')
+  await planner.deleteAttachment(file.id)
+  await assert.rejects(reviewer.readAttachment(file.id), error => error.code === 'NOT_FOUND')
+
   const node = await planner.nodeStatus()
   assert.equal(node.identity.agentId, 'planner')
   assert.equal(node.identity.executionId, plannerSession.registration.executionId)

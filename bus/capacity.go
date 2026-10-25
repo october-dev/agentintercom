@@ -89,6 +89,13 @@ func checkPortableExportBudget(ctx context.Context, tx sqlExecutor, scopeID stri
 			return Errorf(CodeBackpressure, "Portable archive budget exceeded; use an admin database backup or prune retained history")
 		}
 	}
+	var files int64
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(SUM((size_bytes+2)/3*4+4096),0) FROM attachments WHERE scope_id=? AND deleted_at=0", scopeID).Scan(&files); err != nil {
+		return err
+	}
+	if total*6+files > maxArchiveBodyBytes {
+		return Errorf(CodeBackpressure, "Portable archive exceeds 64 MiB including attachments; use a database-plus-file backup")
+	}
 	return nil
 }
 

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createHash } from 'node:crypto';
 
 async function fixture(page, signedIn = true) {
   const user = { id: 'owner-id', email: 'owner@example.test', aud: 'authenticated', role: 'authenticated', email_confirmed_at: '2026-01-01T00:00:00Z' };
@@ -6,7 +7,7 @@ async function fixture(page, signedIn = true) {
   let revoked = false;
   const messages = [];
   const tasks = [];
-  const channels = [], posts = [];
+  const channels = [], posts = [], files = [];
   let answered = false;
   if (signedIn) await page.addInitScript(user => {
     const claims = btoa(JSON.stringify({ sub: user.id, aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 }));
@@ -18,13 +19,22 @@ async function fixture(page, signedIn = true) {
   });
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname; const method = route.request().method();
-    if (method !== 'GET') events.push({ path, method, body: route.request().postDataJSON() });
+    if (method !== 'GET') events.push({ path, method, body: route.request().headers()['content-type'] === 'application/octet-stream' ? { binary: true } : route.request().postDataJSON() });
     let result;
     if (path === '/api/config') result = { authUrl: 'https://auth.example.test', authPublicKey: 'sb_publishable_fixture_key_for_tests', mcpUrl: 'https://bus.example.test/mcp' };
     else if (path === '/api/device/authorizations/ABCD-EFGH') result = method === 'GET' ? { id: 'pair-1', name: '<script>My laptop</script>', userCode: 'ABCD-EFGH' } : { completed: true };
     else if (path === '/api/me') result = user;
     else if (path === '/api/workspaces') result = [{ id: 'workspace-1', name: 'My workspace', role: 'owner', memberLimit: 5 }];
     else if (path.endsWith('/sessions')) result = { sessions: [{ id: 'session-1', displayName: '<img src=x onerror=alert(1)>', deviceId: 'device-1', deviceName: 'Laptop', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' }] };
+    else if (path.endsWith('/attachments')) {
+      if (method === 'POST') { const data = route.request().postDataBuffer(); const id = 'att_' + String(files.length + 1).padStart(32, '0'); const file = { id, name: url.searchParams.get('name'), mediaType: url.searchParams.get('mediaType'), size: data.length, sha256: createHash('sha256').update(data).digest('hex'), authorKind: 'human', authorId: user.id, uri: 'october-bus://attachments/' + id, createdAt: new Date().toISOString(), data }; files.push(file); result = file; } else result = { attachments: files };
+    }
+    else if (path.includes('/attachments/')) {
+      const id = path.split('/attachments/')[1].split('/')[0]; const file = files.find(f => f.id === id);
+      if (!file) return route.fulfill({ status: 404, json: { ok: false, error: { message: 'File was deleted.' } } });
+      if (method === 'DELETE') { files.splice(files.indexOf(file), 1); result = { deleted: true }; }
+      else return route.fulfill({ contentType: 'application/octet-stream', headers: { 'Content-Disposition': 'attachment; filename="' + file.name + '"', 'X-Content-SHA256': file.sha256 }, body: file.data });
+    }
     else if (path.endsWith('/messages')) {
       if (method === 'POST') { const data = route.request().postDataJSON(); messages.unshift({ id: 'message-1', from: user.id, fromKind: 'human', to: data.to, toKind: 'agent', body: data.body, mode: data.mode, state: 'queued', createdAt: new Date().toISOString() }); result = { messageId: 'message-1', state: 'queued' }; } else result = { messages };
     }
@@ -44,7 +54,7 @@ async function fixture(page, signedIn = true) {
     else if (path.endsWith('/invites')) result = method === 'POST' ? { id: 'invite-1', email: 'teammate@example.test', token: 'secret-invitation', expiresAt: '2026-10-31T12:00:00Z' } : [];
     else if (path === '/api/oauth/requests/request-1') result = method === 'POST' ? { redirectUrl: 'http://127.0.0.1:4794/callback?code=fixture&state=state' } : { id: 'request-1', clientName: 'Connected app', redirectUri: 'http://127.0.0.1:4794/callback' };
     else { await route.fulfill({ status: 404, json: { error: { message: `Unexpected fixture route ${path}` } } }); return; }
-    await route.fulfill({ json: { result } });
+    await route.fulfill({ json: { ok: true, result } });
   });
   return events;
 }
@@ -157,10 +167,36 @@ test('channel creation, literal posts, thread replies and search share one conve
   await page.getByRole('button', { name: 'Reply in thread', exact: true }).click();
   await expect(page.getByText('Reviewed the release notes', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back to channel', exact: true }).click();
-  await expect(page.getByRole('button', { name: '1 replies', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '1 reply', exact: true })).toBeVisible();
   await page.getByLabel('Search channel', { exact: true }).fill('Reviewed');
   await page.getByRole('button', { name: 'Search posts', exact: true }).click();
   await expect(page.getByText('Reviewed the release notes', { exact: true })).toBeVisible();
   expect(events.filter(e => e.path?.endsWith('/channel-posts'))).toHaveLength(2);
   expect(events.filter(e => e.path?.endsWith('/channel-posts'))[1].body.threadId).toBe('post-1');
+});
+
+test('files upload, download, attach to conversations and require confirmation to delete', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByLabel('File to upload').setInputFiles({ name: 'report.txt', mimeType: 'text/plain', buffer: Buffer.from('Private report') });
+  await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'report.txt', exact: true })).toBeVisible();
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download', exact: true }).click();
+  expect((await downloadEvent).suggestedFilename()).toBe('report.txt');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await page.getByLabel('Your message', { exact: true }).fill('Please review this.');
+  await page.getByText('Attach a file', { exact: true }).first().click();
+  await page.getByLabel('Attach a file', { exact: true }).setInputFiles({ name: 'review.txt', mimeType: 'text/plain', buffer: Buffer.from('Review content') });
+  await page.getByRole('button', { name: 'Upload and attach', exact: true }).click();
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue(/Please review this\.[\s\S]*october-bus:\/\/attachments\/att_/);
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Download shared file', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'report.txt', exact: true }) }).getByRole('button', { name: 'Delete file', exact: true }).click();
+  expect(events.filter(e => e.method === 'DELETE')).toHaveLength(0);
+  await page.getByRole('button', { name: 'Delete permanently', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'report.txt', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'review.txt', exact: true })).toBeVisible();
 });

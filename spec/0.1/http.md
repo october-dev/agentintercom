@@ -268,3 +268,30 @@ never counts as model delivery or acknowledgment.
 Hosted members use `/api/workspaces/{workspace}/channels` and
 `/api/workspaces/{workspace}/channel-posts` with the same payloads and verified
 human attribution. Devices cannot impersonate human members through these routes.
+
+## Private workspace files
+
+Execution-authenticated routes (also allowed through the pilot `/bus` gateway):
+
+| Method | Route | Result |
+| --- | --- | --- |
+| `POST` | `/v1/attachments?name=...&mediaType=...&idempotencyKey=...` | Raw binary upload, at most 16 MiB; returns attachment metadata |
+| `GET` | `/v1/attachments?after=...&limit=50` | Metadata page; limit 1–100 |
+| `GET` | `/v1/attachments/{id}?offset=0&limit=65536` | Base64 chunk; limit at most 512 KiB |
+| `GET` | `/v1/attachments/{id}/content` | Complete download, forced `application/octet-stream` and `Content-Disposition: attachment` |
+| `DELETE` | `/v1/attachments/{id}` | Delete the caller's upload; retries after deletion succeed |
+
+Hosted browser routes mirror listing, uploading, downloading and deletion under
+`/api/workspaces/{workspace}/attachments`, using verified account membership.
+Owners/admins can delete another uploader's file. All readers must have live
+workspace access. A storage or transfer allowance failure returns `BACKPRESSURE`;
+inactive hosting rejects new uploads, while identical upload retries still work.
+A changed retry key payload or retry of a deleted upload returns `CONFLICT`.
+Download bytes are charged before sending the response, including a client that
+subsequently disconnects. No filename is used as a server filesystem path.
+
+`GET /v1/admin/backup?bundle=1` streams a private tar.gz bundle containing the
+SQLite database and its retained attachment bytes. Without that query flag the
+route remains a database-only snapshot. `X-October-Bus-Backup-Includes` identifies
+which form was returned. Both routes require the existing local admin credential
+and are blocked on the hosted account front door and pilot gateway.

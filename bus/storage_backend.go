@@ -1,6 +1,9 @@
 package bus
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 type StorageBackend string
 
@@ -14,6 +17,7 @@ type storageBackend interface {
 	Ping(context.Context) error
 	Close() error
 	Backup(context.Context, string) error
+	BackupBundle(context.Context, io.Writer) error
 
 	CreateScope(context.Context, string) (CreateScopeResult, error)
 	ListScopes(context.Context) ([]ScopeInfo, error)
@@ -41,6 +45,11 @@ type storageBackend interface {
 	SubscribeChannel(context.Context, Principal, string, bool) error
 	PostChannel(context.Context, string, PostChannelInput) (ChannelPost, error)
 	ChannelHistory(context.Context, string, ChannelHistoryInput) (ChannelPostPage, error)
+	UploadAttachment(context.Context, string, UploadAttachmentInput, []byte) (Attachment, error)
+	Attachments(context.Context, string, string, int) (AttachmentPage, error)
+	ReadAttachment(context.Context, string, string, int64, int) (AttachmentContent, error)
+	DeleteAttachment(context.Context, string, string) error
+	CollectAttachmentGarbage(context.Context) (int, error)
 
 	SendMessage(context.Context, Principal, SendMessageInput) (DeliveryReceipt, error)
 	Receipt(context.Context, Principal, string) (DeliveryReceipt, error)

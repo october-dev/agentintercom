@@ -115,3 +115,10 @@ fan-out uses compact notifications in the existing message ledger. Archive
 version 3 includes channel content and subscriptions, and accepts old version 2
 archives without channel records. Retention removes whole quiet threads after
 both the requested cutoff and their seven-day notification lifetime.
+
+`009_attachments.sql` adds private file metadata and monthly byte accounting.
+SQLite schema 13 adds the same tables. File bytes are stored outside PostgreSQL:
+configure `OCTOBER_BUS_ATTACHMENTS_DIR` on persistent private storage before
+starting the hosted service. The supplied service unit creates that directory
+under `/var/lib/october-bus-hosted`. Only one service may own its attachment
+store. Back up both the database and files; a PostgreSQL dump alone is incomplete.

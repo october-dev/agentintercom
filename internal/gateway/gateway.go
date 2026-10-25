@@ -380,6 +380,7 @@ func (g *Gateway) remoteAgentRoutes() *http.ServeMux {
 		"GET /v1/me/wake", "POST /v1/me/wake/claim", "POST /v1/me/wake/attempts/{attemptId}", "POST /v1/me/wake/retry",
 		"GET /v1/channels", "POST /v1/channels", "POST /v1/channels/{channelId}/subscription",
 		"GET /v1/channel-posts", "POST /v1/channel-posts",
+		"GET /v1/attachments", "POST /v1/attachments", "GET /v1/attachments/{attachmentId}", "DELETE /v1/attachments/{attachmentId}", "GET /v1/attachments/{attachmentId}/content",
 		"POST /v1/messages", "GET /v1/messages/{messageId}", "POST /v1/messages/ack",
 		"POST /v1/inbox/reserve", "POST /v1/inbox/{reservationId}/commit", "POST /v1/inbox/{reservationId}/release",
 		"GET /v1/tasks", "POST /v1/tasks", "GET /v1/tasks/page",

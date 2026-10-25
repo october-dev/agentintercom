@@ -38,7 +38,12 @@ func OpenPostgresWithOptions(ctx context.Context, connectionString string, optio
 		db.Close()
 		return nil, err
 	}
-	return openWithStorage(&Store{db: db}, limits), nil
+	store := &Store{db: db}
+	if err := store.configureAttachments(options.AttachmentDir); err != nil {
+		store.Close()
+		return nil, err
+	}
+	return openWithStorage(store, limits), nil
 }
 
 func postgresDatabase(ctx context.Context, connectionString string) (*sqlDatabase, error) {

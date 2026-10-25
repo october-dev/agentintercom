@@ -1,6 +1,6 @@
 # Pi native extension
 
-Experimental adapter 0.2.0 for [earendil-works/pi](https://github.com/earendil-works/pi). Requires the documented dynamic `registerTool`, `session_start` and `session_shutdown` APIs. This is not built-in Pi MCP support and has not been certified against a released Pi version.
+Experimental adapter 0.2.1 for [earendil-works/pi](https://github.com/earendil-works/pi). Requires the documented dynamic `registerTool`, `session_start` and `session_shutdown` APIs. This is not built-in Pi MCP support and has not been certified against a released Pi version.
 
 After [creating a local scope](../README.md), generate a token-free configuration:
 

@@ -22,7 +22,7 @@ export async function checkHarnessSetup(binary, run, env, root) {
     const peer = await owner.registerAgent({ id: 'peer', displayName: 'Peer', leaseMs: 30_000 })
     const client = new OctoberBusClient(run.address, peer.agentToken)
     bridge = await openBridge(config)
-    assert.equal(bridge.tools.length, 15)
+    assert.equal(bridge.tools.length, 23)
     cli(['link', '--scope', scope.scopeId, 'pi', 'peer'])
     const call = async (name, args) => {
       const result = await bridge.call(name, args)
@@ -48,7 +48,7 @@ export async function checkHarnessSetup(binary, run, env, root) {
     // Probe an editor without invoking its executable or requiring model access.
     const diagnosis = JSON.parse(cli(['doctor', '--harness', 'continue', '--scope', scope.scopeId, '--json']))
     assert.equal(diagnosis.healthy, true)
-    assert.equal(diagnosis.bridgeTools, 15)
+    assert.equal(diagnosis.bridgeTools, 23)
     assert.ok((await owner.listAgents()).filter(agent => agent.id.startsWith('doctor-')).every(agent => !agent.reachable))
   } finally {
     await bridge?.close()

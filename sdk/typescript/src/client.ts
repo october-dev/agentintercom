@@ -1,6 +1,7 @@
 import { BusError } from './errors.js'
 import type { BusErrorCode } from './errors.js'
 import type {
+  Attachment, AttachmentPage, AttachmentContent, UploadAttachmentInput,
   Channel, ChannelPost, CreateChannelInput, PostChannelInput, ChannelHistoryInput, ChannelPostPage,
   Agent,
   AgentCardPublication,
@@ -104,10 +105,11 @@ async function request<T>(
       method,
       headers: {
         accept: 'application/json',
-        ...(value === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(value === undefined ? {} : { 'content-type': value instanceof Blob ? 'application/octet-stream' : 'application/json' }),
         ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
       },
-      ...(value === undefined ? {} : { body: JSON.stringify(value) }),
+      ...(value === undefined ? {} : { body: value instanceof Blob ? value : JSON.stringify(value) }),
+      redirect: 'error',
       signal: controller.signal
     })
     text = await response.text()
@@ -535,6 +537,21 @@ export class OctoberBusClient {
 
   listChannels(options?: OperationOptions): Promise<Channel[]> {
     return request(this.address, this.agentToken, 'GET', '/v1/channels', undefined, options)
+  }
+
+  listAttachments(after = '', limit = 50, options?: OperationOptions): Promise<AttachmentPage> {
+    return request(this.address, this.agentToken, 'GET', `/v1/attachments?after=${encodeURIComponent(after)}&limit=${limit}`, undefined, options)
+  }
+  uploadAttachment(input: UploadAttachmentInput, data: Uint8Array, options?: OperationOptions): Promise<Attachment> {
+    if (data.byteLength > 16 * 1024 * 1024) throw new BusError('INVALID_ARGUMENT', 'Attachment exceeds 16 MiB')
+    const query = new URLSearchParams({ name: input.name, mediaType: input.mediaType ?? '', idempotencyKey: input.idempotencyKey ?? '' })
+    return request(this.address, this.agentToken, 'POST', `/v1/attachments?${query}`, new Blob([new Uint8Array(data)]), options)
+  }
+  readAttachment(id: string, offset = 0, limit = 65536, options?: OperationOptions): Promise<AttachmentContent> {
+    return request(this.address, this.agentToken, 'GET', `/v1/attachments/${encodeURIComponent(id)}?offset=${offset}&limit=${limit}`, undefined, options)
+  }
+  async deleteAttachment(id: string, options?: OperationOptions): Promise<void> {
+    await request(this.address, this.agentToken, 'DELETE', `/v1/attachments/${encodeURIComponent(id)}`, undefined, options)
   }
   createChannel(input: CreateChannelInput, options?: OperationOptions): Promise<Channel> {
     return request(this.address, this.agentToken, 'POST', '/v1/channels', input, options)

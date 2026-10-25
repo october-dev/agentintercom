@@ -25,6 +25,7 @@ func (s *Store) StorageSummary(ctx context.Context, scopeID string) (StorageSumm
 		recordType string
 		statement  string
 	}{
+		{"attachment", `SELECT 'stored',COUNT(*),COALESCE(SUM(size_bytes),0),MIN(created_at) FROM attachments WHERE scope_id=? AND deleted_at=0 HAVING COUNT(*)>0`},
 		{"channelPost", `SELECT 'posted',COUNT(*),COALESCE(SUM(octet_length(body)+octet_length(search_body)),0),MIN(created_at) FROM channel_posts WHERE scope_id=? HAVING COUNT(*)>0`},
 		{"channel", `SELECT 'active',COUNT(*),COALESCE(SUM(octet_length(description)),0),MIN(created_at) FROM channels WHERE scope_id=? HAVING COUNT(*)>0`},
 		{"message", `SELECT state,COUNT(*),COALESCE(SUM(octet_length(body)+octet_length(context_json)),0),

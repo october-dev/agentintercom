@@ -220,5 +220,5 @@ CREATE TABLE output_rate_usage (
 );
 CREATE INDEX output_rate_usage_window ON output_rate_usage(window_start);
 CREATE INDEX messages_scope_history ON messages(scope_id,created_at DESC,message_id DESC);
-PRAGMA user_version=12;
-` + nativeWakeSchemaSQL + channelsSchemaSQL
+PRAGMA user_version=13;
+` + nativeWakeSchemaSQL + channelsSchemaSQL + attachmentsSchemaSQL

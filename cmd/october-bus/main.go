@@ -23,6 +23,10 @@ const usage = `October Bus
 
 Usage:
   october-bus channel list
+  october-bus attachment list
+  october-bus attachment upload --file <path> [--key <retry-key>]
+  october-bus attachment download --id <attachment-id> --file <new-path>
+  october-bus attachment delete --id <attachment-id>
   october-bus channel create --name <name> [--description <text>]
   october-bus channel join|leave --id <channel-id>
   october-bus channel post --id <channel-id> --body <text> [--thread <root-post-id>] [--key <retry-key>]
@@ -1029,6 +1033,8 @@ func run() error {
 		return sessionCommand(args[1:])
 	case "channel":
 		return channelCommand(args[1:], os.Stdin, os.Stdout)
+	case "attachment":
+		return attachmentCommand(args[1:], os.Stdin, os.Stdout)
 	case "hosted":
 		return hostedCommand(args[1:])
 	case "database":

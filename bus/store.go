@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	schemaVersion                = 12
+	schemaVersion                = 13
 	reservationTTL               = 30 * time.Second
 	messageBacklogCap            = 10000
 	activeTaskCap                = 5000
@@ -48,6 +48,7 @@ type Store struct {
 	db     *sqlDatabase
 	lock   *os.File
 	source string
+	files  attachmentFiles
 }
 
 type rowScanner interface {
@@ -110,6 +111,7 @@ func OpenStore(source string) (*Store, error) {
 
 func (s *Store) Close() error {
 	err := s.db.Close()
+	s.files.close()
 	if s.lock != nil {
 		_ = s.lock.Close()
 	}
@@ -131,23 +133,15 @@ func (s *Store) initialize(ctx context.Context) error {
 	if version == 2 {
 		return s.migrateV2(ctx)
 	}
-	if version == 9 {
-		if err := s.migrateV9(ctx); err != nil {
+	for version >= 9 && version < schemaVersion {
+		step := map[int]func(context.Context) error{9: s.migrateV9, 10: s.migrateV10, 11: s.migrateV11, 12: s.migrateV12}[version]
+		if step == nil {
+			return fmt.Errorf("no migration from schema %d", version)
+		}
+		if err := step(ctx); err != nil {
 			return err
 		}
-		if err := s.migrateV10(ctx); err != nil {
-			return err
-		}
-		return s.migrateV11(ctx)
-	}
-	if version == 10 {
-		if err := s.migrateV10(ctx); err != nil {
-			return err
-		}
-		return s.migrateV11(ctx)
-	}
-	if version == 11 {
-		return s.migrateV11(ctx)
+		version++
 	}
 	if version != 0 && version != schemaVersion {
 		return fmt.Errorf("database schema %d does not match %d", version, schemaVersion)

@@ -30,6 +30,7 @@ func hostedCommand(args []string) error {
 	flags := flag.NewFlagSet("hosted serve", flag.ContinueOnError)
 	listen := flags.String("listen", "127.0.0.1:4780", "loopback listener behind the TLS reverse proxy")
 	public := flags.String("public-url", "", "public HTTPS origin")
+	attachments := flags.String("attachments-dir", os.Getenv("OCTOBER_BUS_ATTACHMENTS_DIR"), "private persistent directory for attachment files; one service owns it")
 	var origins, issuers stringList
 	flags.Var(&origins, "allow-origin", "additional exact HTTPS browser origin; repeatable")
 	flags.Var(&issuers, "auth-issuer", "additional exact trusted Auth issuer; repeatable")
@@ -38,6 +39,9 @@ func hostedCommand(args []string) error {
 	}
 	if flags.NArg() != 0 {
 		return errors.New("hosted serve accepts flags only")
+	}
+	if *attachments == "" {
+		return errors.New("--attachments-dir or OCTOBER_BUS_ATTACHMENTS_DIR is required for hosted file storage")
 	}
 	host, _, err := net.SplitHostPort(*listen)
 	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
@@ -52,12 +56,14 @@ func hostedCommand(args []string) error {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	runtime, err := bus.OpenPostgres(ctx, os.Getenv("OCTOBER_BUS_DATABASE_URL"))
+	runtime, err := bus.OpenPostgresWithOptions(ctx, os.Getenv("OCTOBER_BUS_DATABASE_URL"), bus.RuntimeOptions{AttachmentDir: *attachments})
 	cancel()
 	if err != nil {
 		return err
 	}
 	defer runtime.Close()
+	stopMaintenance := runtime.StartMaintenance()
+	defer stopMaintenance()
 	accounts, err := bus.NewHostedAccounts(runtime, key)
 	if err != nil {
 		return err

@@ -401,6 +401,7 @@ export interface ArchivedOutputValue {
 }
 
 export interface ScopeArchive {
+  attachments?: Array<Attachment & { dataBase64: string; idempotencyKey?: string; requestHash: string }>
   channels?: Array<Omit<Channel, 'subscribers' | 'subscribed'>>
   channelSubscriptions?: Array<{ channelId: string; agentId: string; createdAt: string }>
   channelPosts?: Array<ChannelPost & { idempotencyKey?: string }>
@@ -485,6 +486,11 @@ export interface AddTaskProgressInput {
 
 export interface StorageRecordSummary {
   recordType:
+    | 'attachment'
+    | 'channel'
+    | 'channelPost'
+    | 'a2aTask'
+    | 'a2aMessage'
     | 'message'
     | 'task'
     | 'taskProgress'
@@ -586,3 +592,30 @@ export interface ChannelPost {
 export interface PostChannelInput { channelId: string; body: string; threadId?: string; idempotencyKey?: string }
 export interface ChannelHistoryInput { channelId?: string; threadId?: string; query?: string; before?: string; limit?: number }
 export interface ChannelPostPage { posts: ChannelPost[]; nextCursor?: string }
+
+export interface Attachment {
+  id: string
+  name: string
+  mediaType: string
+  size: number
+  sha256: string
+  authorKind: 'agent' | 'human'
+  authorId: string
+  createdAt: string
+  uri: string
+}
+export interface UploadAttachmentInput {
+  name: string
+  mediaType?: string
+  idempotencyKey?: string
+}
+export interface AttachmentPage {
+  attachments: Attachment[]
+  nextCursor?: string
+}
+export interface AttachmentContent {
+  attachment: Attachment
+  offset: number
+  dataBase64: string
+  nextOffset?: number
+}

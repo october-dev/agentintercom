@@ -292,6 +292,28 @@ func TestPortableScopeArchiveSchema(t *testing.T) {
 	requireInvalid(t, schema, object)
 }
 
+func TestFileWireDataAndExportMatchSchemas(t *testing.T) {
+	r, err := bus.Open(":memory:")
+	requireNoError(t, err)
+	defer r.Close()
+	ctx := context.Background()
+	scope, err := r.CreateScope(ctx, bus.CreateScopeInput{})
+	requireNoError(t, err)
+	agent, err := r.RegisterAgent(ctx, scope.ScopeToken, bus.RegisterAgentInput{ID: "files", DisplayName: "Files"})
+	requireNoError(t, err)
+	file, err := r.UploadAttachment(ctx, agent.AgentToken, bus.UploadAttachmentInput{Name: "empty.bin"}, []byte{})
+	requireNoError(t, err)
+	protocol := filepath.Join("0.1", "schemas", "protocol.schema.json")
+	requireValid(t, resolvedSchema(t, protocol, "attachment"), jsonValue(t, file))
+	chunk, err := r.ReadAttachment(ctx, agent.AgentToken, file.ID, 0, 100)
+	requireNoError(t, err)
+	requireValid(t, resolvedSchema(t, protocol, "attachmentContent"), jsonValue(t, chunk))
+	requireNoError(t, r.RetireAgent(ctx, agent.AgentToken))
+	archive, err := r.ExportScope(ctx, scope.ScopeID)
+	requireNoError(t, err)
+	requireValid(t, resolvedSchema(t, filepath.Join("0.1", "schemas", "scope-archive.schema.json"), ""), jsonValue(t, archive))
+}
+
 func TestAdapterManifestsMatchSchema(t *testing.T) {
 	schema := resolvedSchema(t, filepath.Join("0.1", "schemas", "adapter-manifest.schema.json"), "")
 	paths, err := filepath.Glob(filepath.Join("..", "adapters", "*", "adapter.json"))

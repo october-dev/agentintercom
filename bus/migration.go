@@ -174,3 +174,15 @@ func (s *Store) migrateV11(ctx context.Context) error {
 	}
 	return tx.Commit()
 }
+
+func (s *Store) migrateV12(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, attachmentsSchemaSQL+"PRAGMA user_version=13;"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

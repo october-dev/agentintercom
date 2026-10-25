@@ -221,7 +221,7 @@ func TestGatewayRoundTripAndScopeIsolation(t *testing.T) {
 	connector := f.mcp(t, f.keys[0])
 	tools, err := connector.ListTools(context.Background(), &mcp.ListToolsParams{})
 	must(t, err)
-	if len(tools.Tools) != 20 {
+	if len(tools.Tools) != 23 {
 		t.Fatalf("expected Bus tools, got %d", len(tools.Tools))
 	}
 	channel, err := worker.Client.CreateChannel(context.Background(), bus.CreateChannelInput{Name: "gateway"})
