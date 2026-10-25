@@ -123,6 +123,54 @@ jobs:
         env:
           OCTOBER_BUS_BINARY: /tmp/october-bus
 
+  hosted:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+        env:
+          POSTGRES_DB: october_bus_test
+          POSTGRES_USER: october_bus_test
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_INITDB_ARGS: --encoding=UTF8
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U october_bus_test -d october_bus_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      # Disposable loopback database only; never supply deployment credentials.
+      OCTOBER_BUS_TEST_POSTGRES_URL: postgres://october_bus_test:isolated-ci-only@127.0.0.1:5432/october_bus_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: 1.27.x
+          cache: true
+      - name: PostgreSQL and hosted authorization regressions
+        run: go test -race -count=1 ./bus ./cmd/october-bus ./conformance -run 'Test(Postgres|Hosted)'
+
+  workspace-ui:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Embedded browser assets match source
+        run: git diff --exit-code -- ../bus/hostedweb
+      - run: npx --no-install playwright install --with-deps chromium
+      - run: npm test
+
   vulnerabilities:
     timeout-minutes: 10
     runs-on: ubuntu-latest

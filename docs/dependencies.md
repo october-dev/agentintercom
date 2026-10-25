@@ -4,6 +4,15 @@ Go module versions and checksums are recorded in `go.mod` and `go.sum`.
 The TypeScript SDK records exact installation resolution in its package lock.
 Workflow action revisions are pinned in the workflow files.
 
+Hosted CI uses the [official PostgreSQL container](https://hub.docker.com/_/postgres),
+major 17, pinned to manifest index
+`sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe`
+(17.11 when selected). The disposable `october_bus_test` database is exposed only
+on loopback and uses fixture credentials. This job runs the PostgreSQL/hosted
+tests with the race detector; ordinary platform jobs have no database credential.
+The workspace UI job installs Chromium through the locked Playwright version,
+rebuilds the committed browser bundle and runs the browser acceptance flows.
+
 The PostgreSQL backend uses `github.com/jackc/pgx/v5` **v5.11.0** through its
 `database/sql` adapter. It provides PostgreSQL parameter binding, verified TLS
 connections and transaction-pooler-compatible execution without introducing a

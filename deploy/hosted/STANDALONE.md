@@ -77,6 +77,19 @@ Configure payment settings only after the test-mode rehearsal in
 can run account/trial, messaging and file acceptance tests. That does not make
 checkout available or prove a paid launch is ready.
 
+For a deployed handshake check, create a manual MCP key in a synthetic workspace
+and save it to an owner-only file, then run:
+
+```sh
+node scripts/check-hosted-mcp.mjs https://bus.example.com/mcp /private/mcp-key
+```
+
+This verifies public readiness, hidden admin routes, browser routing and security
+policy, OAuth resource discovery and authenticated MCP tool discovery. It creates
+or renews that connector's execution but sends no messages. Use a synthetic
+workspace and revoke the key afterward. It does not replace real account sign-in,
+message/request/reply, file, backup, named-client or payment qualification.
+
 ## Encrypted backups
 
 Install Python 3.11+, PostgreSQL client tools matching or newer than the server,
