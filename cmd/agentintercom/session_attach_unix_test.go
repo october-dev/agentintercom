@@ -88,14 +88,14 @@ func TestCodexAttachBindsExistingExecution(t *testing.T) {
 	dir, err := attachmentDirectory("agent:existing")
 	requireNoError(t, err)
 	// No provider/model is launched by attachment itself.
-	requireNoError(t, attachSession([]string{"codex", "--thread", "exact name with spaces", "--agent", "existing", "--binary", "/bin/true"}, io.Discard))
+	requireNoError(t, attachSession([]string{"codex", "--thread", "exact name with spaces", "--agent", "existing", "--binary", "true"}, io.Discard))
 	var d attachedDestination
 	requireNoError(t, readPrivateSessionJSON(filepath.Join(dir, "destination.json"), &d))
 	require(t, d.ExecutionID == session.Registration.ExecutionID && d.Thread == "exact name with spaces", "bound a different execution")
 	agents, err := owner.ListAgents(ctx)
 	requireNoError(t, err)
 	require(t, len(agents) == 1, "attachment registered a disconnected second inbox")
-	require(t, attachSession([]string{"codex", "--thread", "other", "--agent", "absent", "--binary", "/bin/true"}, io.Discard) != nil, "attached a missing execution")
+	require(t, attachSession([]string{"codex", "--thread", "other", "--agent", "absent", "--binary", "true"}, io.Discard) != nil, "attached a missing execution")
 	raw, err := os.ReadFile(filepath.Join(dir, "destination.json"))
 	requireNoError(t, err)
 	var fields map[string]any
