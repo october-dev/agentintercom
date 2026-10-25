@@ -741,6 +741,12 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 	if _, err := ownerClient.ResolveEscalation(ctx, escalation.ID, "yes"); err != nil {
 		t.Fatal(err)
 	}
+	// Resolving an escalation queues a durable human answer. Consume it before
+	// the later long-poll assertion so that test checks the actual wake message.
+	answer, err := plannerClient.PullInbox(ctx, 10, 0)
+	require(t, err == nil && len(answer) == 1 && answer[0].FromKind == MessageParticipantHuman, "missing escalation answer: %#v, %v", answer, err)
+	_, err = plannerClient.AcknowledgeMessages(ctx, []string{answer[0].ID})
+	requireNoError(t, err)
 	_, err = plannerClient.ListEscalations(ctx)
 	requireCode(t, err, CodePermissionDenied)
 	receipt, err := plannerClient.SendMessage(ctx, SendMessageInput{To: "reviewer", Body: "Reserve me"})
@@ -828,6 +834,8 @@ func TestHTTPAndMCPUseTheSameAgentAuthority(t *testing.T) {
 		if !ok || len(messages) != 1 {
 			t.Fatalf("MCP check_inbox must return one message: %#v", call.result.StructuredContent)
 		}
+		message, ok := messages[0].(map[string]any)
+		require(t, ok && message["id"] == wakeReceipt.MessageID, "inbox returned a different message: %#v", messages[0])
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}

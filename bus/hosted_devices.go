@@ -100,17 +100,50 @@ WHERE s.scope_id=? AND (?='' OR d.user_id=?) AND (?='' OR d.device_id=?)`, scope
 	if err != nil {
 		return err
 	}
+	if len(ids) == 0 {
+		return releaseStaleTaskClaims(ctx, tx, scopeID)
+	}
 	now := nowMillis()
+	if _, err := tx.ExecContext(ctx, `UPDATE agents SET lifecycle='offline',ready=0,lease_expires_at=0,updated_at=? WHERE scope_id=? AND agent_id IN (
+SELECT s.agent_id FROM hosted_sessions s JOIN hosted_devices d ON d.device_id=s.device_id
+WHERE s.scope_id=? AND (?='' OR d.user_id=?) AND (?='' OR d.device_id=?))`, now, scopeID, scopeID, userID, userID, deviceID, deviceID); err != nil {
+		return err
+	}
+	// Query existing reservations once instead of making a round trip for each
+	// empty inbox during workspace deletion or device/member revocation.
+	rows, err = tx.QueryContext(ctx, `SELECT r.reservation_id,r.agent_id FROM reservations r
+JOIN hosted_sessions s ON s.scope_id=r.scope_id AND s.agent_id=r.agent_id
+JOIN hosted_devices d ON d.device_id=s.device_id
+WHERE s.scope_id=? AND (?='' OR d.user_id=?) AND (?='' OR d.device_id=?)`, scopeID, userID, userID, deviceID, deviceID)
+	if err != nil {
+		return err
+	}
+	type reservation struct{ id, agentID string }
+	reservations := []reservation{}
+	for rows.Next() {
+		var r reservation
+		if err := rows.Scan(&r.id, &r.agentID); err != nil {
+			rows.Close()
+			return err
+		}
+		reservations = append(reservations, r)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, r := range reservations {
+		if err := releaseReservation(ctx, tx, scopeID, r.agentID, r.id); err != nil {
+			return err
+		}
+	}
+	events := make([]pendingEvent, 0, len(ids))
 	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, "UPDATE agents SET lifecycle='offline',ready=0,lease_expires_at=0,updated_at=? WHERE scope_id=? AND agent_id=?", now, scopeID, id); err != nil {
-			return err
-		}
-		if err := releaseAgentReservations(ctx, tx, scopeID, id); err != nil {
-			return err
-		}
-		if err := appendEvent(ctx, tx, scopeID, "agent.lifecycle_changed", id, eventAttributes("lifecycle", "offline", "reason", "access_revoked"), now); err != nil {
-			return err
-		}
+		events = append(events, pendingEvent{"agent.lifecycle_changed", id, eventAttributes("lifecycle", "offline", "reason", "access_revoked")})
+	}
+	if err := appendEvents(ctx, tx, scopeID, events, now); err != nil {
+		return err
 	}
 	return releaseStaleTaskClaims(ctx, tx, scopeID)
 }

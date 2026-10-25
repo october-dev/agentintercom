@@ -38,6 +38,14 @@ type pendingEvent struct {
 // In particular, joining a workspace must not make a database round trip for
 // each peer's revision and link event.
 func appendEvents(ctx context.Context, tx sqlExecutor, scopeID string, events []pendingEvent, createdAt int64) error {
+	// Retiring a connection can include historical sessions as well as the live
+	// ones. Keep parameter counts bounded on both supported databases.
+	for len(events) > 128 {
+		if err := appendEvents(ctx, tx, scopeID, events[:128], createdAt); err != nil {
+			return err
+		}
+		events = events[128:]
+	}
 	if len(events) == 0 {
 		return nil
 	}
