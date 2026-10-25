@@ -58,6 +58,8 @@ OCTOBER_BUS_DATABASE_URL=<runtime PostgreSQL URL with verified TLS>
 OCTOBER_BUS_ENCRYPTION_KEY=<base64 encoding of 32 random bytes>
 OCTOBER_BUS_AUTH_URL=<trusted Supabase project origin>
 OCTOBER_BUS_AUTH_PUBLIC_KEY=<public anon or publishable API key>
+# Optional when Auth issues tokens under a different, verified project origin:
+OCTOBER_BUS_AUTH_ISSUER=https://<project>.supabase.co/auth/v1
 ```
 
 The unit supplies the private attachment directory. Preserve the encryption key

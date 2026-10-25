@@ -32,6 +32,9 @@ func hostedCommand(args []string) error {
 	public := flags.String("public-url", "", "public HTTPS origin")
 	attachments := flags.String("attachments-dir", os.Getenv("OCTOBER_BUS_ATTACHMENTS_DIR"), "private persistent directory for attachment files; one service owns it")
 	var origins, issuers stringList
+	if issuer := strings.TrimSpace(os.Getenv("OCTOBER_BUS_AUTH_ISSUER")); issuer != "" {
+		issuers = append(issuers, issuer)
+	}
 	flags.Var(&origins, "allow-origin", "additional exact HTTPS browser origin; repeatable")
 	flags.Var(&issuers, "auth-issuer", "additional exact trusted Auth issuer; repeatable")
 	if err := flags.Parse(args[1:]); err != nil {
