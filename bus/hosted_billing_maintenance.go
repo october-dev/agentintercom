@@ -11,21 +11,24 @@ import (
 // the rest. Existing paid access lasts only through its verified paid period.
 func (b *HostedBilling) ReconcileDue(ctx context.Context) error {
 	now := nowMillis()
-	rows, err := b.accounts.store.db.QueryContext(ctx, `SELECT b.scope_id FROM hosted_billing b
-WHERE b.customer_id IS NOT NULL AND b.reconciled_at<? AND b.reconcile_attempted_at<?
-AND ((b.subscription_id IS NOT NULL AND b.status NOT IN ('canceled','incomplete_expired')) OR EXISTS(SELECT 1 FROM hosted_checkout_attempts a WHERE a.scope_id=b.scope_id AND a.state='pending'))
-ORDER BY b.reconcile_attempted_at,b.scope_id LIMIT 20`, now-int64(30*time.Minute/time.Millisecond), now-int64(5*time.Minute/time.Millisecond))
+	rows, err := b.accounts.store.db.QueryContext(ctx, `SELECT b.scope_id,w.deletion_started_at FROM hosted_billing b JOIN hosted_workspaces w ON w.scope_id=b.scope_id
+WHERE b.reconcile_attempted_at<? AND (w.deletion_started_at>0 OR (b.customer_id IS NOT NULL AND b.reconciled_at<?
+AND ((b.subscription_id IS NOT NULL AND b.status NOT IN ('canceled','incomplete_expired')) OR EXISTS(SELECT 1 FROM hosted_checkout_attempts a WHERE a.scope_id=b.scope_id AND a.state='pending'))))
+ORDER BY b.reconcile_attempted_at,b.scope_id LIMIT 20`, now-int64(5*time.Minute/time.Millisecond), now-int64(30*time.Minute/time.Millisecond))
 	if err != nil {
 		return err
 	}
 	var scopes []string
+	closing := map[string]bool{}
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var deletion int64
+		if err := rows.Scan(&id, &deletion); err != nil {
 			rows.Close()
 			return err
 		}
 		scopes = append(scopes, id)
+		closing[id] = deletion > 0
 	}
 	err = rows.Err()
 	rows.Close()
@@ -45,8 +48,14 @@ ORDER BY b.reconcile_attempted_at,b.scope_id LIMIT 20`, now-int64(30*time.Minute
 			if _, err := b.accounts.store.db.ExecContext(bounded, "UPDATE hosted_billing SET reconcile_attempted_at=? WHERE scope_id=?", nowMillis(), scopeID); err != nil {
 				return err
 			}
+			if closing[scopeID] {
+				return b.accounts.finishWorkspaceDeletion(bounded, scopeID, b)
+			}
 			tx, err := b.begin(bounded, scopeID, nil)
 			if err != nil {
+				if AsBusError(err).Code == CodeNotFound {
+					return nil
+				}
 				return err
 			}
 			defer tx.Rollback()

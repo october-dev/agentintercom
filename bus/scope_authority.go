@@ -39,9 +39,7 @@ func (s *Store) beginTx(ctx context.Context, scopeID string) (*sqlTransaction, e
 		// Domain operations may inspect several rows before changing them.
 		// Serialize them per scope across processes, not across the deployment.
 		// READ COMMITTED gives the statements after this lock a fresh snapshot.
-		digest := sha256.Sum256([]byte("october_bus/scope/" + scopeID))
-		key := int64(binary.BigEndian.Uint64(digest[:8]))
-		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", key); err != nil {
+		if err := lockPostgresScope(ctx, tx, scopeID); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
@@ -75,4 +73,13 @@ func (s *Store) beginTx(ctx context.Context, scopeID string) (*sqlTransaction, e
 		}
 	}
 	return tx, nil
+}
+
+// Billing lifecycle changes acquire their billing lock first, then this same
+// workspace lock before changing runtime data. Never acquire them in reverse.
+func lockPostgresScope(ctx context.Context, tx sqlExecutor, scopeID string) error {
+	digest := sha256.Sum256([]byte("october_bus/scope/" + scopeID))
+	key := int64(binary.BigEndian.Uint64(digest[:8]))
+	_, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", key)
+	return err
 }

@@ -312,3 +312,33 @@ test('data controls confirm pauses and cleanup, then download a portable archive
   await expect(page.getByText('Completed history pruned.', { exact: true })).toBeVisible();
   expect(cleanups.map(c => c.execute)).toEqual([false, true]);
 });
+
+test('workspace deletion requires its name and recovers a failed cancellation', async ({ page }) => {
+  await fixture(page);
+  let deleting = false, deleted = false;
+  const attempts = [];
+  await page.route('**/api/workspaces', route => route.fulfill({ json: { ok: true, result: deleted ? [] : [{ id: 'workspace-1', name: 'My workspace', role: 'owner', paused: deleting, deleting }] } }));
+  await page.route('**/api/workspaces/workspace-1/storage', route => route.fulfill({ json: { ok: true, result: { records: [] } } }));
+  await page.route('**/api/workspaces/workspace-1', async route => {
+    attempts.push(route.request().postDataJSON()); deleting = true;
+    if (attempts.length === 1) return route.fulfill({ status: 503, json: { error: { message: 'Cancellation could not be confirmed. Workspace deletion remains pending and will retry' } } });
+    deleted = true; await route.fulfill({ json: { ok: true, result: { deleted: true } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Data & recovery', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete workspace', exact: true }).click();
+  expect(attempts).toHaveLength(0);
+  await page.getByLabel('Type the workspace name to confirm').fill('Wrong workspace');
+  await page.getByRole('button', { name: 'Delete permanently', exact: true }).click();
+  await expect(page.getByText('The workspace name does not match.', { exact: true })).toBeVisible();
+  expect(attempts).toHaveLength(0);
+  await page.getByLabel('Type the workspace name to confirm').fill('My workspace');
+  await page.getByRole('button', { name: 'Delete permanently', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Deletion in progress', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resume sessions', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Retry workspace deletion', exact: true }).click();
+  await page.getByLabel('Type the workspace name to confirm').fill('My workspace');
+  await page.getByRole('button', { name: 'Delete permanently', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Make room for your team.', exact: true })).toBeVisible();
+  expect(attempts).toEqual([{ confirmName: 'My workspace' }, { confirmName: 'My workspace' }]);
+});

@@ -132,3 +132,12 @@ webhook retries, renewal, cancellation and refund against the deployed service,
 confirm merchant fees/tax settings, rehearse restoration of billing state, and
 check capacity for the published storage limits. Synthetic tests alone do not
 establish live payment readiness.
+
+Workspace deletion is separate from normal end-of-period cancellation in the
+portal. **Data & recovery → Delete workspace** ends its subscription immediately,
+without creating a final prorated invoice or automatic refund, then removes
+workspace content. Deletion intent persists across outages; the service cannot
+start another purchase while it is pending. An open checkout is expired first,
+or, if it completed concurrently, its resulting subscription is canceled. Data
+is kept paused until cancellation is confirmed. See
+[workspace deletion](hosted-workspaces.md#deleting-a-workspace-or-account).

@@ -532,11 +532,13 @@ async function billingView() {
 
 async function dataView() {
   const scopePath = path('');
+  const workspace = state.workspace;
   const storage = await api(scopePath + '/storage');
   const owner = state.workspace.role === 'owner';
   const result = el('div', {}, el('section', { class: 'card' }, el('h2', {}, 'Retention'), el('p', {}, 'Completed conversations, completed tasks, resolved questions and quiet channel threads are eligible for removal after 90 days. Unfinished work and linked records that still need each other remain. Files stay until you delete them.'), el('p', { class: 'help' }, 'The notification log keeps roughly the latest 100,000 events or 90 days, whichever is shorter. This does not delete the corresponding messages or tasks. New work pauses when estimated retained coordination data reaches 5 GiB; final replies and acknowledgements remain available.')));
   if (!owner) { result.append(el('p', {}, 'A workspace owner can pause sessions, export data and prune completed history.')); return result; }
-  result.append(el('section', { class: 'card' }, el('h2', {}, state.workspace.paused ? 'Sessions paused' : 'Pause sessions for an export'),
+  if (workspace.deleting) result.append(el('section', { class: 'card' }, el('h2', {}, 'Deletion in progress'), el('p', {}, 'Sessions and purchases are stopped. Billing must be closed before the remaining data can be deleted. The service retries automatically; you can also retry below.')));
+  else result.append(el('section', { class: 'card' }, el('h2', {}, state.workspace.paused ? 'Sessions paused' : 'Pause sessions for an export'),
     el('p', {}, 'Pausing disconnects all sessions and prevents new connections while you export. Members can still read history here. Resume and reconnect your apps when finished. Pausing does not cancel billing.'),
     button(state.workspace.paused ? 'Resume sessions' : 'Pause sessions', () => modal(state.workspace.paused ? 'Resume this workspace?' : 'Disconnect workspace sessions?', close => el('div', {}, el('p', {}, state.workspace.paused ? 'Connected apps can rejoin when hosting is active.' : 'Every connected session will lose its current connection. Queued work and history are retained.'), button('Confirm', async () => { await api(scopePath + '/pause', { method: 'POST', body: { paused: !state.workspace.paused } }); close(); await signedIn(); }, 'primary'))))));
   result.append(el('section', { class: 'card' }, el('h2', {}, 'Download a portable archive'),
@@ -551,5 +553,18 @@ async function dataView() {
       modal('Delete eligible history?', close => el('div', {}, el('p', {}, 'This permanently deletes eligible records before the selected date. Counts may change if work finishes before confirmation.'), el('pre', {}, JSON.stringify(preview.records, null, 2)), button('Delete eligible history', async () => { await api(scopePath + '/prune', { method: 'POST', body: { before, execute: true }, timeout: 30000 }); close(); await render(); inform('Completed history pruned.'); }, 'danger')));
     })));
   result.append(el('section', { class: 'card' }, el('h2', {}, 'Retained records'), el('p', { class: 'help' }, 'Payload estimates below exclude database indexes and some record overhead; billing usage includes a per-record estimate.'), (storage.records || []).map(record => el('div', { class: 'row' }, el('span', {}, `${record.recordType} · ${record.state}`), el('span', {}, Number(record.count).toLocaleString())))));
+  result.append(el('section', { class: 'card' }, el('h2', {}, 'Delete workspace'),
+    el('p', {}, 'Permanently removes this workspace for everyone, including messages, unfinished work, files and connections. Its hosting subscription ends immediately; unused time is not automatically refunded. Export first if you need a copy.'),
+    el('p', { class: 'help' }, 'Your October account and other workspaces remain. Minimal payment references are retained for support. Private backups expire on the operator’s retention schedule.'),
+    button(workspace.deleting ? 'Retry workspace deletion' : 'Delete workspace', () => modal('Permanently delete this workspace?', close => {
+      const confirmation = field('Type the workspace name to confirm', { name: 'confirmation', required: true, autocomplete: 'off' });
+      return el('div', {}, el('p', {}, `This cannot be undone. Enter ${workspace.name} to confirm. Once requested, deletion continues even if this page closes.`),
+        form([confirmation.node], 'Delete permanently', async data => {
+          if (data.get('confirmation') !== workspace.name) throw new Error('The workspace name does not match.');
+          try { await api(scopePath, { method: 'DELETE', body: { confirmName: data.get('confirmation') }, timeout: 30000 }); }
+          catch (error) { close(); await signedIn(); throw error; }
+          close(); await signedIn(); inform('Workspace deleted.');
+        }));
+    }), 'danger')));
   return result;
 }

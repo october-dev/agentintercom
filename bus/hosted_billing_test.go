@@ -27,6 +27,8 @@ type billingFixture struct {
 	loseResponse, failReads, wrongPrice bool
 	dispute                             string
 	requests                            int
+	cancellations                       int
+	loseCancellation                    bool
 }
 
 func billingList(data any) billingJSON {
@@ -38,10 +40,13 @@ func newBillingFixture(t *testing.T) (context.Context, *HostedBilling, HostedUse
 	user := hostedTestUser(t, "billing")
 	w, err := a.CreateWorkspace(ctx, user, "Billing workspace")
 	requireNoError(t, err)
-	t.Cleanup(func() { a.runtime.DeleteScope(context.Background(), w.ID) })
+	t.Cleanup(func() {
+		a.runtime.DeleteScope(context.Background(), w.ID)
+		a.store.db.ExecContext(context.Background(), "DELETE FROM hosted_closed_workspaces WHERE scope_id=?", w.ID)
+	})
 	b, err := NewHostedBilling(a, HostedBillingOptions{SecretKey: "sk_test_fixture", WebhookSecret: "whsec_fixture_signing_secret", MonthlyPriceID: "price_month", AnnualPriceID: "price_year", PortalConfigurationID: "bpc_fixture", PublicURL: "https://bus.example.test"})
 	requireNoError(t, err)
-	f := &billingFixture{t: t, scope: w.ID, customer: "cus_fixture", sessions: []billingJSON{}}
+	f := &billingFixture{t: t, scope: w.ID, customer: "cus_" + w.ID, sessions: []billingJSON{}}
 	server := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(server.Close)
 	backend := stripe.NewBackendsWithConfig(&stripe.BackendConfig{URL: stripe.String(server.URL), HTTPClient: server.Client(), MaxNetworkRetries: stripe.Int64(0), EnableTelemetry: stripe.Bool(false), LeveledLogger: &stripe.LeveledLogger{Level: stripe.LevelNull}})
@@ -115,6 +120,19 @@ func (f *billingFixture) serve(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case r.URL.Path == "/v1/subscriptions/sub_fixture":
+		if r.Method == "DELETE" {
+			if r.Form.Get("invoice_now") != "false" || r.Form.Get("prorate") != "false" {
+				f.t.Error("deletion cancellation must not invoice or prorate")
+			}
+			f.cancellations++
+			f.sub["status"] = "canceled"
+			if f.loseCancellation {
+				f.loseCancellation = false
+				w.WriteHeader(503)
+				json.NewEncoder(w).Encode(billingJSON{"error": billingJSON{"message": "cancellation response lost"}})
+				return
+			}
+		}
 		result = f.sub
 	case r.URL.Path == "/v1/invoices/in_fixture":
 		result = f.invoice

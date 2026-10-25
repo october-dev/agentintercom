@@ -179,3 +179,13 @@ failed deployment for investigation, and restore the matching database/files to
 fresh locations. Never edit applied migration checksums or silently delete data
 to make an older binary start. Restoration loses changes after the snapshot;
 communicate the recovery point and preserve newer data for reconciliation.
+
+## Shared October identity lifecycle
+
+For October's Supabase deployment, apply the privileged
+[account lifecycle integration](supabase/README.md) before allowing sign-ups.
+It fences account deletion before other products' cancellation or data removal,
+requires users to leave or close their Intercom workspaces, and prevents concurrent
+membership creation for an account being deleted. Run its disposable database
+rehearsal and deploy the matching website explanation before opening hosting.
+Keep these shared Auth functions in the identity deployment's recovery procedure.

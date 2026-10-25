@@ -146,3 +146,16 @@ the hosted MCP endpoint and identify one connector, unlike machine credentials
 that can start separate sessions. Existing device/OAuth records are unchanged.
 Manual keys use the existing digest, expiry, revocation and ownership columns;
 no credential plaintext or new credential store is added.
+
+## Workspace deletion: 013_workspace_deletion.sql
+
+Persists deletion intent before external billing calls and retains minimal closed
+workspace payment references independently of content. Requests revoke sessions
+and pause the workspace; retries close pending checkouts and confirm subscription
+cancellation before removing the scope. The same billing lock prevents a new
+purchase racing deletion. Owner changes and connection replacement are refused
+once deletion starts. Private file bytes are reclaimed by the orphan collector.
+
+The optional [Supabase account integration](../supabase/README.md) is applied
+separately by the identity administrator. It guards shared account deletion and
+membership creation without granting the runtime privileges on Auth tables.

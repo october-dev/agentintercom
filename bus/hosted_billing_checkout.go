@@ -31,6 +31,9 @@ func (b *HostedBilling) checkoutPass(ctx context.Context, user HostedUser, scope
 		return zero, false, err
 	}
 	defer tx.Rollback()
+	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+		return zero, false, err
+	}
 	row, err := b.reconcileLocked(ctx, tx, scopeID)
 	if err != nil {
 		return zero, false, err

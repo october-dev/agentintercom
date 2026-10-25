@@ -173,3 +173,26 @@ Owners can pause sessions, export portable archives and preview/confirm cleanup
 under **Data & recovery**. Hosted completed history is eligible after 90 days;
 new work pauses at a 5 GiB retained-data estimate. See [workspace data and recovery](workspace-data.md)
 for dependency preservation, the 64 MiB portable export bound and operator backups.
+
+### Deleting a workspace or account
+
+An owner can delete a workspace in **Data & recovery** by entering its exact
+name. Export first: deletion removes unfinished work as well as completed
+history, memberships, connections and file access for everyone. It immediately
+ends the workspace subscription without an automatic refund or final prorated
+invoice. This does not delete the owner's October account or other workspaces.
+
+Deletion first pauses and revokes connections, then closes unfinished checkout
+sessions and confirms subscription cancellation before removing content. If the
+provider is unavailable, the workspace remains paused and shows **Deletion in
+progress**. Retrying is safe; background maintenance also retries. New purchases
+and ownership changes are blocked after deletion starts. Content is not removed
+while billing cancellation is uncertain.
+
+File metadata becomes inaccessible immediately; the bounded file collector
+removes the remaining bytes. Operator backups expire separately. Minimal payment
+references remain for support, and deleting a workspace does not reset the account's
+trial. To delete an October account, first leave every Intercom workspace: transfer
+ownership and leave, or delete the owned workspace. The shared identity service
+must install [the Supabase lifecycle integration](../deploy/hosted/supabase/README.md)
+before self-service hosted launch.

@@ -24,6 +24,33 @@ func (a *HostedAccounts) Maintain(ctx context.Context) error {
 			return err
 		}
 	}
+	// Unbilled deletions must also recover on a service with payments disabled.
+	// Paid closures are handled by billing maintenance under the same lock.
+	closing, err := a.store.db.QueryContext(ctx, `SELECT w.scope_id FROM hosted_workspaces w JOIN hosted_billing b ON b.scope_id=w.scope_id
+WHERE w.deletion_started_at>0 AND b.customer_id IS NULL AND b.subscription_id IS NULL
+AND NOT EXISTS(SELECT 1 FROM hosted_checkout_attempts c WHERE c.scope_id=w.scope_id) LIMIT 20`)
+	if err != nil {
+		return err
+	}
+	var deletions []string
+	for closing.Next() {
+		var id string
+		if err := closing.Scan(&id); err != nil {
+			closing.Close()
+			return err
+		}
+		deletions = append(deletions, id)
+	}
+	err = closing.Err()
+	closing.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range deletions {
+		if err := a.finishWorkspaceDeletion(ctx, id, nil); err != nil {
+			return err
+		}
+	}
 	rows, err := a.store.db.QueryContext(ctx, "SELECT scope_id FROM hosted_workspaces WHERE maintenance_attempted_at<? AND maintenance_completed_at<? ORDER BY maintenance_attempted_at,scope_id LIMIT 20", now-int64(time.Hour/time.Millisecond), now-int64(24*time.Hour/time.Millisecond))
 	if err != nil {
 		return err

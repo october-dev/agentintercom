@@ -29,6 +29,7 @@ type Workspace struct {
 	PaidUntil   string `json:"paidUntil,omitempty"`
 	Paused      bool   `json:"paused"`
 	Disabled    bool   `json:"disabled"`
+	Deleting    bool   `json:"deleting"`
 	MemberLimit int    `json:"memberLimit"`
 }
 
@@ -197,7 +198,7 @@ func (a *HostedAccounts) ListWorkspaces(ctx context.Context, user HostedUser) ([
 	if err := validateHostedUser(user); err != nil {
 		return nil, err
 	}
-	rows, err := a.store.db.QueryContext(ctx, `SELECT w.scope_id,w.name,m.role,w.created_at,w.trial_ends_at,w.paid_until,w.disabled_at,w.paused_at,w.member_limit
+	rows, err := a.store.db.QueryContext(ctx, `SELECT w.scope_id,w.name,m.role,w.created_at,w.trial_ends_at,w.paid_until,w.disabled_at,w.paused_at,w.member_limit,w.deletion_started_at
 FROM hosted_workspaces w JOIN hosted_members m ON m.scope_id=w.scope_id WHERE m.user_id=? ORDER BY w.created_at,w.scope_id`, user.ID)
 	if err != nil {
 		return nil, err
@@ -206,11 +207,12 @@ FROM hosted_workspaces w JOIN hosted_members m ON m.scope_id=w.scope_id WHERE m.
 	values := []Workspace{}
 	for rows.Next() {
 		var v Workspace
-		var created, trial, paid, disabled, paused int64
-		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &created, &trial, &paid, &disabled, &paused, &v.MemberLimit); err != nil {
+		var created, trial, paid, disabled, paused, deleting int64
+		if err := rows.Scan(&v.ID, &v.Name, &v.Role, &created, &trial, &paid, &disabled, &paused, &v.MemberLimit, &deleting); err != nil {
 			return nil, err
 		}
 		v.CreatedAt, v.TrialEndsAt, v.PaidUntil, v.Disabled, v.Paused = instant(created), instant(trial), instant(paid), disabled != 0, paused != 0
+		v.Deleting = deleting != 0
 		values = append(values, v)
 	}
 	return values, rows.Err()
@@ -268,6 +270,9 @@ func (a *HostedAccounts) Invite(ctx context.Context, user HostedUser, scopeID, e
 	if actorRole != "owner" && !(actorRole == "admin" && role == "member") {
 		return WorkspaceInvite{}, Errorf(CodePermissionDenied, "Your workspace role cannot issue this invitation")
 	}
+	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+		return WorkspaceInvite{}, err
+	}
 	var pending int
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_invites WHERE scope_id=? AND consumed_at=0 AND revoked_at=0 AND expires_at>?", scopeID, nowMillis()).Scan(&pending); err != nil {
 		return WorkspaceInvite{}, err
@@ -319,6 +324,9 @@ func (a *HostedAccounts) AcceptInvite(ctx context.Context, user HostedUser, toke
 	verifiedEmail, _ := normalizedEmail(user.Email)
 	if verifiedEmail != email {
 		return "", Errorf(CodePermissionDenied, "Sign in with the invited email address")
+	}
+	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+		return "", err
 	}
 	var count, limit int
 	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM hosted_members WHERE scope_id=?", scopeID).Scan(&count); err != nil {

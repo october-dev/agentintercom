@@ -22,6 +22,9 @@ func (a *HostedAccounts) ChangeMember(ctx context.Context, user HostedUser, scop
 	if err != nil {
 		return err
 	}
+	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+		return err
+	}
 	targetRole, err := hostedMember(ctx, tx, scopeID, targetID)
 	if err != nil {
 		return err
@@ -119,6 +122,9 @@ func (a *HostedAccounts) EnrollDevice(ctx context.Context, user HostedUser, scop
 }
 
 func (a *HostedAccounts) enrollDeviceTx(ctx context.Context, tx sqlExecutor, user HostedUser, scopeID, name, kind string) (WorkspaceDevice, error) {
+	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+		return WorkspaceDevice{}, err
+	}
 	if err := checkHostedConnectionLimit(ctx, tx, scopeID, user.ID, ""); err != nil {
 		return WorkspaceDevice{}, err
 	}
@@ -169,6 +175,9 @@ func checkHostedConnectionLimit(ctx context.Context, tx sqlExecutor, scopeID, us
 // retiring every execution prevents the lost credential from running alongside
 // the replacement. Even workspace owners cannot take over another user's device.
 func (a *HostedAccounts) replaceConnectionTx(ctx context.Context, tx sqlExecutor, user HostedUser, scopeID, deviceID, name, expectedKind string) (WorkspaceDevice, error) {
+	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+		return WorkspaceDevice{}, err
+	}
 	var ownerID, kind string
 	var created int64
 	err := tx.QueryRowContext(ctx, "SELECT user_id,kind,created_at FROM hosted_devices WHERE scope_id=? AND device_id=?", scopeID, deviceID).Scan(&ownerID, &kind, &created)

@@ -71,6 +71,10 @@ func (b *HostedBilling) HandleWebhook(ctx context.Context, payload []byte, signa
 	}
 	tx, err := b.begin(ctx, scopeID, nil)
 	if err != nil {
+		// Deletion may commit between customer lookup and acquiring its lock.
+		if AsBusError(err).Code == CodeNotFound {
+			return nil
+		}
 		return err
 	}
 	defer tx.Rollback()

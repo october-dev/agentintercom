@@ -150,6 +150,8 @@ jobs:
           cache: true
       - name: PostgreSQL and hosted authorization regressions
         run: go test -race -count=1 ./bus ./cmd/october-bus ./conformance -run 'Test(Postgres|Hosted)'
+      - name: Verify shared identity lifecycle
+        run: python3 scripts/test-supabase-account-lifecycle.py
 
   workspace-ui:
     timeout-minutes: 15

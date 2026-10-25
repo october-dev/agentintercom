@@ -14,6 +14,11 @@ func (a *HostedAccounts) PauseWorkspace(ctx context.Context, user HostedUser, sc
 		return err
 	}
 	defer tx.Rollback()
+	if !paused {
+		if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+			return err
+		}
+	}
 	var current int64
 	if err := tx.QueryRowContext(ctx, "SELECT paused_at FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&current); err != nil {
 		return err

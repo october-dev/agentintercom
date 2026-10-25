@@ -114,6 +114,14 @@ func (b *HostedBilling) begin(ctx context.Context, scopeID string, user *HostedU
 			return nil, Errorf(CodePermissionDenied, "Only a workspace owner can manage billing")
 		}
 	}
+	var exists int
+	if err := tx.QueryRowContext(ctx, "SELECT 1 FROM hosted_workspaces WHERE scope_id=?", scopeID).Scan(&exists); err != nil {
+		tx.Rollback()
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, Errorf(CodeNotFound, "Workspace is no longer available")
+		}
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO hosted_billing(scope_id) VALUES(?) ON CONFLICT(scope_id) DO NOTHING", scopeID); err != nil {
 		tx.Rollback()
 		return nil, err
@@ -209,6 +217,9 @@ func (b *HostedBilling) prepareCheckout(ctx context.Context, user HostedUser, sc
 		return err
 	}
 	defer tx.Rollback()
+	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
+		return err
+	}
 	row, err := billingFrom(ctx, tx, scopeID)
 	if err != nil {
 		return err
