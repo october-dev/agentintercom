@@ -29,7 +29,7 @@ export function managedRuntimeManifest({ dist, runtimeVersion, sourceCommit, pro
       writeFileSync(binaryPath, binary)
       const info = JSON.parse(execFileSync('go', ['version', '-m', '-json', binaryPath], { encoding: 'utf8' }))
       const settings = Object.fromEntries(info.Settings.map(({ Key, Value }) => [Key, Value]))
-      assert.equal(info.Path, 'github.com/october-dev/agent-intercom/cmd/agentintercom', 'Wrong helper program')
+      assert.equal(info.Path, 'github.com/october-dev/october-bus/cmd/agentintercom', 'Wrong helper program')
       for (const [key, expected] of Object.entries({ GOOS: 'linux', GOARCH: arch, CGO_ENABLED: '0', 'vcs.revision': sourceCommit, 'vcs.modified': 'false' })) {
         assert.equal(settings[key], expected, `${archive}: unexpected ${key}`)
       }

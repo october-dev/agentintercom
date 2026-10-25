@@ -16,7 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/october-dev/agent-intercom/deploy/hosted/migrations"
+	"github.com/october-dev/october-bus/deploy/hosted/migrations"
 )
 
 // OpenPostgres opens a migrated standalone Bus database. It never performs DDL

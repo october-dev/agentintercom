@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 	"strings"
 	"testing"
 )

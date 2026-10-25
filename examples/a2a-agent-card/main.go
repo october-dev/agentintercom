@@ -17,7 +17,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/october-dev/agent-intercom/a2abridge"
+	"github.com/october-dev/october-bus/a2abridge"
 )
 
 const defaultPort = "8080"

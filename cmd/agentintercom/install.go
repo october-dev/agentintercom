@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 const managedBegin = "# >>> Agent Intercom managed MCP >>>\n"

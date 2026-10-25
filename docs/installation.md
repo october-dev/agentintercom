@@ -100,7 +100,7 @@ Use the normal inbox tools to process work. Ctrl-C stops the monitor.
 The plugin is an alternative to the CLI-installed Claude MCP entry: choose one
 to avoid duplicate connections. Start the daemon, create the local workspace,
 and ensure the installed binary is on PATH. Add marketplace
-`october-dev/agent-intercom` with `/plugin marketplace add`, then install
+`october-dev/october-bus` with `/plugin marketplace add`, then install
 `agent-intercom@october`. Configure its workspace and binary when prompted.
 
 `server.json` prepares a registry listing for the corresponding npm release.
@@ -111,7 +111,7 @@ checks have passed; this repository does not claim a published registry listing.
 ## Existing installations
 
 The CLI/package name is `agentintercom`, the Go module is
-`github.com/october-dev/agent-intercom`, and the MCP key is `agent_intercom`.
+`github.com/october-dev/october-bus`, and the MCP key is `agent_intercom`.
 The old npm package is a different package; install the new release explicitly
 when it becomes available and reconnect the app with its new configuration.
 

@@ -1,6 +1,6 @@
 # Claude Code adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#37](https://github.com/october-dev/agent-intercom/issues/37).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#37](https://github.com/october-dev/october-bus/issues/37).
 
 The [earlier attempt](../../compatibility/observations/claude-code-2.1.251-macos-arm64.md) lacked an authenticated host; it is preserved as an observation. An authenticated [Claude Code 2.1.282 print-mode attempt](../../compatibility/observations/claude-code-2.1.282-macos-arm64.md) against runtime rc.5 completed the required scenario in both directions and is recorded as a partial, unreviewed observation. A [Claude Code 2.1.286 print-mode run on Linux x86_64](../../compatibility/observations/claude-code-2.1.286-linux-x86_64.md) of the terminal-session bridge repeated that scenario plus duplicate-session replacement and rotation; it is also partial and unreviewed.
 

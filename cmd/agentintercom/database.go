@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 func databaseCommand(args []string, out io.Writer) error {

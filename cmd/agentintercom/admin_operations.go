@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 func scopeAdmin(operation string, args []string) error {

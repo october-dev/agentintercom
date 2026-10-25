@@ -22,8 +22,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
-	"github.com/october-dev/agent-intercom/internal/gateway"
+	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/october-bus/internal/gateway"
 )
 
 func gatewayCommand(args []string) error {

@@ -6,14 +6,14 @@
   "sideEffects": false,
   "license": "Apache-2.0",
   "author": "October",
-  "homepage": "https://github.com/october-dev/agent-intercom#readme",
+  "homepage": "https://github.com/october-dev/october-bus#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/october-dev/agent-intercom.git",
+    "url": "git+https://github.com/october-dev/october-bus.git",
     "directory": "sdk/typescript"
   },
   "bugs": {
-    "url": "https://github.com/october-dev/agent-intercom/issues"
+    "url": "https://github.com/october-dev/october-bus/issues"
   },
   "engines": {
     "node": ">=20.0.0"

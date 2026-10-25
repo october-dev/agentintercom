@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
-	"github.com/october-dev/agent-intercom/conformance"
+	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/october-bus/conformance"
 )
 
 func TestPostgresRuntimeProfile(t *testing.T) {

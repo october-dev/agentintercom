@@ -121,8 +121,8 @@ jobs:
           mkdir -p "dist/${OCTOBER_BUS_DIRECTORY}"
           OCTOBER_BUS_SUFFIX=""
           if [[ "${GOOS}" == "windows" ]]; then OCTOBER_BUS_SUFFIX=".exe"; fi
-          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/agent-intercom/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/agentintercom${OCTOBER_BUS_SUFFIX}" ./cmd/agentintercom
-          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/agent-intercom/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/agentintercom-conformance${OCTOBER_BUS_SUFFIX}" ./cmd/agentintercom-conformance
+          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/october-bus/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/agentintercom${OCTOBER_BUS_SUFFIX}" ./cmd/agentintercom
+          go build -buildvcs=true -trimpath -ldflags "-s -w -X github.com/october-dev/october-bus/bus.Version=${OCTOBER_BUS_VERSION}" -o "dist/${OCTOBER_BUS_DIRECTORY}/agentintercom-conformance${OCTOBER_BUS_SUFFIX}" ./cmd/agentintercom-conformance
           cp LICENSE README.md "dist/${OCTOBER_BUS_DIRECTORY}/"
           cp -R docs spec adapters compatibility assets "dist/${OCTOBER_BUS_DIRECTORY}/"
           if [[ "${GOOS}" == "windows" ]]; then

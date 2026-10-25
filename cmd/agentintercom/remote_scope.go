@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 func rejectBusRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }

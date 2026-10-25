@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 func TestAttachedClaudeUsesExactSessionAndKeepsInbox(t *testing.T) {

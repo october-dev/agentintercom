@@ -21,7 +21,7 @@
   "testedVersions": [],
   "platforms": [],
   "maintainer": "October",
-  "repository": "https://github.com/october-dev/agent-intercom",
+  "repository": "https://github.com/october-dev/october-bus",
   "limitations": [
     "Experimental configuration, not named-harness certification.",
     "OMP can discover other hosts’ configurations; disable duplicate Agent Intercom entries to avoid replacing your own execution. The intended identity is can1357/oh-my-pi; confirm this matches issue #42."

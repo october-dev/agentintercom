@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 type DeliveryClient interface {

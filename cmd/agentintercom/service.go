@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 const userServiceName = "dev.october.agent-intercom"

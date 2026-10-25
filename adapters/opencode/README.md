@@ -1,6 +1,6 @@
 # OpenCode adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#34](https://github.com/october-dev/agent-intercom/issues/34).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#34](https://github.com/october-dev/october-bus/issues/34).
 
 The [earlier observation](../../compatibility/observations/opencode-1.18.25-macos-arm64.md) reported a stringified messageIds array. The bridge now normalizes schema-declared structured arguments; the live host run still needs repeating.
 

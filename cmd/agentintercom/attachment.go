@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
+	"github.com/october-dev/october-bus/bus"
 )
 
 func attachmentCommand(args []string, in io.Reader, out io.Writer) error {

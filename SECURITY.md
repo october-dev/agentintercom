@@ -4,7 +4,7 @@ Agent Intercom handles agent credentials, messages, tasks, and local collaborati
 
 ## Reporting a vulnerability
 
-Use [GitHub's private vulnerability reporting](https://github.com/october-dev/agent-intercom/security/advisories/new). Include the affected version, impact, reproduction steps, and any suggested fix.
+Use [GitHub's private vulnerability reporting](https://github.com/october-dev/october-bus/security/advisories/new). Include the affected version, impact, reproduction steps, and any suggested fix.
 
 Do not open a public issue for an undisclosed vulnerability. Do not include real credentials or private user data in a report.
 

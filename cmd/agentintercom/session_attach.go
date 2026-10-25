@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
-	"github.com/october-dev/agent-intercom/internal/nativewake"
+	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/october-bus/internal/nativewake"
 )
 
 type attachedDestination struct {

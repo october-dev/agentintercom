@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/october-dev/agent-intercom/spec/0.1/schemas/scope-archive.schema.json",
+  "$id": "https://github.com/october-dev/october-bus/spec/0.1/schemas/scope-archive.schema.json",
   "title": "Agent Intercom portable scope archives 2 and 3",
   "type": "object",
   "additionalProperties": false,

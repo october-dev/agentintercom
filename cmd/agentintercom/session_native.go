@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/october-dev/agent-intercom/bus"
-	"github.com/october-dev/agent-intercom/internal/nativewake"
+	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/october-bus/internal/nativewake"
 )
 
 const nativeBindingFileEnv = "OCTOBER_BUS_NATIVE_BINDING_FILE"

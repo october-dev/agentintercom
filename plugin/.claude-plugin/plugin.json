@@ -4,7 +4,7 @@
   "description": "Connect this Claude Code session to an Agent Intercom workspace.",
   "author": { "name": "October" },
   "homepage": "https://agentintercom.org",
-  "repository": "https://github.com/october-dev/agent-intercom",
+  "repository": "https://github.com/october-dev/october-bus",
   "license": "Apache-2.0",
   "userConfig": {
     "workspace": { "type": "string", "title": "Local workspace", "description": "An existing local Agent Intercom workspace.", "default": "default", "required": true },
