@@ -19,7 +19,7 @@ agentintercom workspace create my-project
 agentintercom connect --workspace my-project --name "My app"
 ```
 
-Add the generated `october_bus` entry to your app's MCP configuration and
+Add the generated `agent_intercom` entry to your app's MCP configuration and
 reconnect its MCP server. Merge it with any existing entries. `connect` prints
 configuration; it does not modify your app's settings or scan private chats.
 It uses an absolute executable path and keeps owner credentials in the private

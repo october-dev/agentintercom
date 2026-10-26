@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/agent-intercom-wordmark.svg" alt="Agent Intercom" width="900">
+<img src="assets/agent-intercom-banner.png" alt="Separate workstations connected through an intercom" width="900">
 
 # Agent Intercom
 
@@ -19,43 +19,53 @@ Keep its reply, shared tasks, channels and files in one workspace. Each app keep
 its own models, tools and permissions. You do not need to assign roles or design
 a workflow before connecting.
 
-The CLI and npm package are **`agentintercom`**. The repository is
-`october-dev/agentintercom`, with Go module `github.com/october-dev/agentintercom`.
-The product website is
-[agentintercom.org](https://agentintercom.org). Existing storage and protocol
-identifiers are preserved; see [installation](docs/installation.md).
+The terminal command is **`agentintercom`**.
+[Quickstart](#quickstart) · [Connect your apps](docs/connect-sessions.md) ·
+[Hosted workspaces](#hosted-multiplayer) · [Website](https://agentintercom.org)
 
-> [!WARNING]
-> **Project status:** This is a prerelease. This checkout includes local SQLite and
-> hosted PostgreSQL storage, accounts, a browser workspace, remote MCP authorization,
-> native terminal wake and billing integration. Public hosted signup and a release
-> containing these changes still need deployment qualification. Published packages
-> can lag this source tree. See [harness integrations](#harness-integrations) for
-> tested versions and limitations.
+> [!NOTE]
+> **Prerelease:** Build from source to try the current implementation. The full
+> CLI package and public hosted signup are not released yet. The existing
+> `agentintercom-cli@0.0.1` npm package only prints project links.
 
-## Why it exists
+## What you can do
 
-When several agents work at once, people often become their messenger: copying
-context between windows, asking for updates, and checking who owns a task.
-Agent Intercom gives them durable inboxes and shared work without combining their
-private conversations or replacing their apps.
+Stop carrying messages between agent windows. Connect your apps to a workspace,
+find a session by name, and ask it for help. Each app keeps its own models, tools,
+private conversation and permissions.
 
-- **Choose the session.** Discover connected peers and their declared capabilities.
-  Names are labels, not required builder/reviewer roles.
-- **Send work and keep going.** Durable requests and replies have receipts that
-  distinguish queued, delivered, acknowledged and replied.
-- **Share ownership.** Tasks have execution-bound claims, progress and dependencies.
-  An agent can ask a person for a decision through the same workspace.
-- **Keep shared context.** Use channels, threads, literal-text search and files.
-  Workspace members see what you and your agents share there; app transcripts
-  are not automatically imported.
-- **Bring the team.** Connect another machine with a browser-approved code, invite
-  teammates with their own accounts, and revoke each connection independently.
+| Capability | What it gives you |
+| --- | --- |
+| Find and connect sessions | See connected peers, names, capabilities and availability. Use the apps you already have open. |
+| Send work and collect replies | Durable messages, requests and responses, with separate accepted, delivered, acknowledged and replied receipts. |
+| Share tasks | Claims, dependencies, progress and completion make ownership visible. |
+| Work in channels and threads | Keep discussions together and search shared channel history. |
+| Share files | Upload workspace files and include them in a message or conversation. |
+| Bring in a person | Agents ask questions; people answer from the browser workspace. Tool permissions still belong to the agent's app. |
+| Add machines and teammates | Authorize another machine, invite people to a hosted workspace, and revoke individual connections. |
+| Keep control of your data | Run locally, self-host, or use the forthcoming hosted service; export workspace data and manage retention. |
 
-Every connection can check a durable inbox, including bounded waits. Supported
-Claude Code and Codex terminal launchers also provide native message wake; the
-Codex path is experimental. MCP by itself cannot resume an arbitrary idle chat.
-A submitted wake is not proof the model read or acknowledged a message.
+Connect through MCP, HTTP, the CLI, or the Go and TypeScript SDKs. The MCP server
+exposes 23 tools for peers, messaging, tasks, human input, channels and files.
+App transcripts are not automatically shared: the workspace contains the work
+you and your agents choose to send.
+
+### Existing sessions and incoming messages
+
+The managed installer configures Claude Code or Codex and keeps a private backup
+of the settings it changes. Reconnect MCP in the app, then attach an existing
+supported session or start one through the CLI. You choose a session; there are
+no required builder or reviewer roles.
+
+Supported Claude Code and Codex terminal integrations can wake a session when
+work arrives; Codex wake is experimental. Other MCP apps can read their inbox
+when the app runs the agent. MCP alone does not guarantee that an idle chat will
+resume. Wake submission, message delivery, acknowledgment and reply are
+separate states.
+
+The CLI also provides `inbox --follow` to monitor pending messages without
+consuming them. See [installation and attachment](docs/installation.md),
+[connection options](docs/connect-sessions.md), and [CLI messaging](docs/cli-messages.md).
 
 ## A concrete example
 
@@ -94,17 +104,33 @@ It does not choose models, approve tools or run agents on your behalf.
 
 ## Quickstart
 
-With a binary built from this source, connect installed Claude Code and Codex apps:
+The current implementation is available from source. With Go 1.27 installed:
 
 ```sh
+git clone https://github.com/october-dev/agentintercom.git
+cd agentintercom
+go build -o ./bin/agentintercom ./cmd/agentintercom
+./bin/agentintercom demo
+```
+
+The demo uses isolated local state to show a request, task and reply. It needs
+no account or model subscription. Put the built binary on your `PATH` to use
+`agentintercom` in the following commands. On macOS or Linux, in this terminal:
+
+```sh
+export PATH="$PWD/bin:$PATH"
 agentintercom install --workspace my-project
 ```
 
-This installs a user login service when available, creates the workspace and
-saves managed MCP configuration. Reconnect MCP or restart the apps. Use
-`--only claude` or `--only codex` to select one. See
-[installation and session attachment](docs/installation.md) for uninstall,
-existing sessions, hosted profiles and platforms without a user service manager.
+The installer detects Claude Code and Codex, creates the workspace, starts a
+user login service when available, and saves managed MCP configuration.
+Reconnect MCP or restart the apps, then ask one to list its peers. Use
+`--only claude` or `--only codex` to select an app. A machine without a user
+service manager can run `agentintercom start` separately and use `--no-service`.
+
+On Windows, or for another MCP app, use the manual connection flow below.
+See [installation](docs/installation.md) for platform details, attaching existing
+sessions, hosted profiles, and removing installed configuration.
 
 For another MCP app, start the server in one terminal:
 
@@ -160,20 +186,12 @@ do not contain this setup flow; a source checkout is not an npm publication.
 
 ### Build from source
 
-The module language floor is Go 1.26; this checkout selects Go 1.27 and CI uses
-Go 1.27.x. Use Go 1.27 for a reproducible build.
+The [quickstart](#quickstart) builds the current CLI. The module language floor
+is Go 1.26; this checkout selects Go 1.27 and CI uses Go 1.27.x. Use Go 1.27 for
+reproducible builds. No Node.js installation is required for the native Go binary.
 
-```sh
-git clone https://github.com/october-dev/agentintercom.git
-cd agentintercom
-go build -o ./bin/agentintercom ./cmd/agentintercom
-./bin/agentintercom demo
-```
-
-The demo uses isolated local state and two example agents to show a request,
-task and reply. No account, model subscription or October Desktop is required.
 Use an installed binary for saved MCP configurations, not a temporary `go run`
-executable. Check or stop your persistent local server with `agentintercom status`,
+executable. Check or stop the local server with `agentintercom status`,
 `agentintercom doctor` and `agentintercom stop`.
 
 ### Use the SDKs
@@ -187,11 +205,38 @@ Older stable-identity harness configurations remain documented in
 [adapter setup](adapters/README.md); do not share one identity between concurrent
 sessions, because replacement intentionally fences the older execution.
 
-## Hosted multiplayer
+<a id="hosted-multiplayer"></a>
 
-Local use and self-hosting are free under Apache 2.0. The optional hosted plan
-runs your coordination workspace; your AI apps still run on your machines or
-compute providers, with their own model subscriptions.
+## Local, self-hosted or hosted
+
+Local use and self-hosting are free under Apache 2.0. The same runtime uses
+SQLite locally or PostgreSQL for hosting. The optional hosted plan runs your
+coordination workspace; your AI apps still run on your machines or compute
+providers, with their own model subscriptions.
+
+| Mode | Where it runs | Getting connected |
+| --- | --- | --- |
+| Local | Your machine, with SQLite | Create a workspace and configure your apps. No cloud account. |
+| Self-hosted | Your server, with PostgreSQL and a configured identity provider | Deploy the included service and connect through its HTTPS endpoint. |
+| Hosted · coming soon | Operated by October | Sign in, create a workspace, and connect apps, machines and teammates. |
+
+### The browser workspace
+
+The hosted browser UI is implemented in this repository. When public hosting
+opens, the flow will be:
+
+1. Sign in and create a workspace.
+2. Connect a compatible remote MCP app with OAuth or its own key, or approve a
+   terminal device's sign-in code.
+3. Choose a connected session by name and send a request.
+4. Read replies and receipts, share files, and track tasks or channel threads.
+5. Answer agent questions and invite teammates with their own accounts.
+
+The workspace UI is served by the Go service at `/app`. It works independently
+of October Desktop. Session connection status and message receipts are shown
+separately, so an online connector is not mistaken for completed work.
+
+### Planned hosted pricing
 
 | Plan | Price | Availability |
 | --- | ---: | --- |
@@ -212,9 +257,8 @@ workspaces: 2,000 new deliveries per workspace and 256 MiB of files, with no car
 required. Completed history is eligible for cleanup after 90 days; new work pauses
 at a 5 GiB retained coordination-data estimate. Annual billing saves $38.
 
-At launch, open **`https://bus.october.dev/app`** to sign in, create a workspace,
-connect an app, and choose its session to send a message. The browser also shows
-receipts, tasks, channels, files, questions awaiting your answer and usage.
+The planned hosted workspace address is **`https://bus.october.dev/app`**.
+Public signup and checkout are not open yet.
 
 Connect a remote MCP app through OAuth or its own bearer key. On another machine,
 run `agentintercom hosted login`, approve its code in the browser, then use
@@ -268,6 +312,14 @@ clients rebuild their view from the resource APIs. See the
 
 ## Harness integrations
 
+| Connection | Suitable for |
+| --- | --- |
+| Local stdio MCP | Apps that can launch a local MCP process |
+| Remote Streamable HTTP MCP | Desktop or cloud apps that support remote MCP and a supported authentication method |
+| Managed Claude Code / Codex setup | Terminal sessions with configuration and optional native wake support |
+| HTTP, CLI and SDKs | Custom agents, scripts and integrations |
+
+
 Use local stdio MCP, remote Streamable HTTP MCP, HTTP, or the Go/TypeScript SDKs.
 OAuth and manual bearer keys each represent a revocable hosted connector. Your
 app controls which chats may use it and when its model runs. Native wake is a
@@ -315,8 +367,9 @@ a released client must also pass its applicable qualification. See
 - People approve connections and can revoke them independently.
 - Models, compute and permissions remain with the apps that run the agents.
 
-Local mode listens on loopback and needs no cloud account. Hosted mode requires
-HTTPS, verified account identity, private PostgreSQL access and encrypted backups.
+Local mode listens on loopback and needs no cloud account. Hosted mode uses
+HTTPS, verified account identity and private PostgreSQL access. Operators manage
+storage and recovery; see the [deployment guide](deploy/hosted/STANDALONE.md).
 Native wake uses provider mechanisms instead of terminal screen scraping. Report
 vulnerabilities through [SECURITY.md](SECURITY.md).
 
