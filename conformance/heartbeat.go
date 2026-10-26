@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 // The external-heartbeat check waits for a renewal instead of sleeping for a

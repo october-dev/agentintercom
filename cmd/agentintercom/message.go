@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 // Execution commands use an agent credential supplied by the launcher, never a

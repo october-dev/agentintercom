@@ -1,6 +1,6 @@
 # Cursor adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#33](https://github.com/october-dev/october-bus/issues/33).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#33](https://github.com/october-dev/agentintercom/issues/33).
 
 The [earlier CLI observation](../../compatibility/observations/cursor-3.18.9-macos-arm64.md) is not editor or current-candidate certification.
 

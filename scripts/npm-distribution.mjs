@@ -66,7 +66,7 @@ function build(target, source) {
   const directory = join(artifacts, target)
   mkdirSync(join(directory, 'bin'), { recursive: true })
   const binary = join(directory, 'bin', platform.binary)
-  execFileSync('go', ['build', '-trimpath', '-ldflags', `-s -w -X github.com/october-dev/october-bus/bus.Version=${manifest.version}`, '-o', binary, './cmd/agentintercom'], {
+  execFileSync('go', ['build', '-trimpath', '-ldflags', `-s -w -X github.com/october-dev/agentintercom/bus.Version=${manifest.version}`, '-o', binary, './cmd/agentintercom'], {
     cwd: root, stdio: 'inherit', env: { ...process.env, CGO_ENABLED: '0', GOOS: platform.goos, GOARCH: platform.goarch }
   })
   chmodSync(binary, 0o755)
@@ -133,7 +133,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       }
       mkdirSync(join(stagedSDK, 'extensions/pi'), { recursive: true })
       for (const file of ['index.mjs', 'bridge.mjs']) copyFileSync(join(root, 'adapters/pi', file), join(stagedSDK, 'extensions/pi', file))
-      writeFileSync(join(stagedSDK, 'extensions/pi/README.md'), `# Pi extension\n\nExperimental native session adapter. Generate configuration with agentintercom harness config pi and set OCTOBER_BUS_PI_CONFIG to its reviewed absolute path. No host certification is implied.\n\n[Setup and limitations](https://github.com/october-dev/october-bus/blob/${source.commit}/adapters/pi/README.md)\n`)
+      writeFileSync(join(stagedSDK, 'extensions/pi/README.md'), `# Pi extension\n\nExperimental native session adapter. Generate configuration with agentintercom harness config pi and set OCTOBER_BUS_PI_CONFIG to its reviewed absolute path. No host certification is implied.\n\n[Setup and limitations](https://github.com/october-dev/agentintercom/blob/${source.commit}/adapters/pi/README.md)\n`)
       writeFileSync(join(stagedSDK, 'package.json'), `${JSON.stringify(distributionManifest(), null, 2)}\n`)
       pack(stagedSDK, manifest.name, source)
     } finally {

@@ -21,7 +21,7 @@
   "testedVersions": [],
   "platforms": [],
   "maintainer": "October",
-  "repository": "https://github.com/october-dev/october-bus",
+  "repository": "https://github.com/october-dev/agentintercom",
   "limitations": [
     "Configuration reviewed against upstream documentation; this adapter revision has no named-harness certification",
     "Pull-only: queued work does not start a model turn",

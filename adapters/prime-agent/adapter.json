@@ -21,7 +21,7 @@
   "testedVersions": [],
   "platforms": [],
   "maintainer": "October",
-  "repository": "https://github.com/october-dev/october-bus",
+  "repository": "https://github.com/october-dev/agentintercom",
   "limitations": [
     "Experimental configuration, not named-harness certification.",
     "Generic MCP is called through the kernel's pre-imported Python mcp module, not ordinary model tools. Use await mcp.list_tools(\"agent_intercom\") and await mcp.call_tool(\"agent_intercom\", name, arguments). Only user settings execute MCP; project settings are ignored. Discovery is lazy: make an initial call before linking peers. Each kernel owns its connection; test await mcp.reload(), cancellation and kernel shutdown. Concurrent sessions using one user entry need distinct agent IDs/configurations; identical IDs replace earlier executions."

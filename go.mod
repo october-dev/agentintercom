@@ -1,4 +1,4 @@
-module github.com/october-dev/october-bus
+module github.com/october-dev/agentintercom
 
 go 1.26.0
 

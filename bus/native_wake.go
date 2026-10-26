@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/october-dev/october-bus/deploy/hosted/migrations"
+	"github.com/october-dev/agentintercom/deploy/hosted/migrations"
 )
 
 // SQLite and PostgreSQL use exactly the same additive wake tables. BIGINT has

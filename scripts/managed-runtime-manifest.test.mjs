@@ -15,7 +15,7 @@ test('manifest hashes the shipped Linux binaries and rejects dirty, missing or m
     command('git', ['config', 'user.email', 'test@example.invalid'])
     command('git', ['config', 'user.name', 'Manifest test'])
     const goVersion = execFileSync('go', ['env', 'GOVERSION'], { encoding: 'utf8' }).trim().replace(/^go/, '')
-    writeFileSync(join(root, 'go.mod'), `module github.com/october-dev/october-bus\n\ngo ${goVersion}\n`)
+    writeFileSync(join(root, 'go.mod'), `module github.com/october-dev/agentintercom\n\ngo ${goVersion}\n`)
     writeFileSync(join(root, '.gitignore'), 'dist/\n')
     mkdirSync(join(root, 'cmd/agentintercom'), { recursive: true })
     writeFileSync(join(root, 'cmd/agentintercom/main.go'), 'package main\nfunc main() {}\n')

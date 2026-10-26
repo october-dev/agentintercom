@@ -19,8 +19,8 @@ Keep its reply, shared tasks, channels and files in one workspace. Each app keep
 its own models, tools and permissions. You do not need to assign roles or design
 a workflow before connecting.
 
-The CLI and npm package are **`agentintercom`**. The repository remains
-`october-dev/october-bus`, with Go module `github.com/october-dev/october-bus`.
+The CLI and npm package are **`agentintercom`**. The repository is
+`october-dev/agentintercom`, with Go module `github.com/october-dev/agentintercom`.
 The product website is
 [agentintercom.org](https://agentintercom.org). Existing storage and protocol
 identifiers are preserved; see [installation](docs/installation.md).
@@ -145,7 +145,7 @@ macOS, Linux or WSL. Generic MCP is available independently of the native launch
 
 ### Install a published preview
 
-Download a matching archive from [releases](https://github.com/october-dev/october-bus/releases),
+Download a matching archive from [releases](https://github.com/october-dev/agentintercom/releases),
 verify it against `checksums.txt`, and put `agentintercom` on your `PATH`. Try:
 
 ```sh
@@ -164,8 +164,8 @@ The module language floor is Go 1.26; this checkout selects Go 1.27 and CI uses
 Go 1.27.x. Use Go 1.27 for a reproducible build.
 
 ```sh
-git clone https://github.com/october-dev/october-bus.git
-cd october-bus
+git clone https://github.com/october-dev/agentintercom.git
+cd agentintercom
 go build -o ./bin/agentintercom ./cmd/agentintercom
 ./bin/agentintercom demo
 ```
@@ -178,7 +178,7 @@ executable. Check or stop your persistent local server with `agentintercom statu
 
 ### Use the SDKs
 
-Import `github.com/october-dev/october-bus/bus` for Go. The TypeScript SDK supports
+Import `github.com/october-dev/agentintercom/bus` for Go. The TypeScript SDK supports
 Node.js 20+. See [client SDKs](docs/clients.md) for examples and the runtime/SDK
 compatibility matrix. Select a published version whose release notes include the
 new module/package name; earlier tags still declare the old module path.

@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 const usage = `Agent Intercom

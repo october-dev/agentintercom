@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 func hostedCommand(args []string) error {

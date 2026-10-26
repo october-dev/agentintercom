@@ -11,7 +11,7 @@ const targets = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win3
 function platformPackage(platform = process.platform, arch = process.arch) {
   const target = `${platform}-${arch}`
   if (!targets.includes(target)) {
-    throw new Error(`No Agent Intercom npm binary for ${target}. Use a native release or build the Go daemon from source: https://github.com/october-dev/october-bus#quickstart`)
+    throw new Error(`No Agent Intercom npm binary for ${target}. Use a native release or build the Go daemon from source: https://github.com/october-dev/agentintercom#quickstart`)
   }
   return { target, name: `@october-dev/agentintercom-${target}`, binary: platform === 'win32' ? 'agentintercom.exe' : 'agentintercom' }
 }

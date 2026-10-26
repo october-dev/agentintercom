@@ -19,7 +19,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/october-dev/october-bus/deploy/hosted/migrations"
+	"github.com/october-dev/agentintercom/deploy/hosted/migrations"
 )
 
 const MaxAttachmentBytes = 16 * 1024 * 1024
