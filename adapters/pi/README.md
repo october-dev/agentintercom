@@ -12,7 +12,7 @@ pi -e /absolute/path/to/agentintercom/adapters/pi/index.mjs
 
 Keep `index.mjs` and `bridge.mjs` together. No extra npm dependencies are required. Treat the configuration as executable code: review the binary path and arguments before loading it. The extension strips inherited Bus credentials from its child environment.
 
-The staged npm distribution also bundles both files and declares Pi's package entry. Once that exact Bus version has actually been published, `pi -e npm:agentintercom@0.2.0` can load it using Pi's [package mechanism](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md). Keep `OCTOBER_BUS_PI_CONFIG` set to your generated configuration. Preparing a tarball is not publication or a successful Pi installation test.
+The staged npm distribution also bundles both files and declares Pi's package entry. Once that exact Bus version has actually been published, `pi -e npm:agentintercom-cli@0.2.0` can load it using Pi's [package mechanism](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md). Keep `OCTOBER_BUS_PI_CONFIG` set to your generated configuration. Preparing a tarball is not publication or a successful Pi installation test.
 
 The native tool API receives the daemon's actual schemas, with names prefixed `agent_intercom_`. Session hooks start/retire the Go bridge; model-turn cancellation cancels only the tool call. No background inbox injection, automatic model turns, or fabricated idle status. Reload/replacement serializes cleanup before reconnecting. Use unique agent IDs per concurrent window.
 

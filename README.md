@@ -19,7 +19,7 @@ Keep its reply, shared tasks, channels and files in one workspace. Each app keep
 its own models, tools and permissions. You do not need to assign roles or design
 a workflow before connecting.
 
-The terminal command is **`agentintercom`**.
+The npm package is **`agentintercom-cli`**; the terminal command is **`agentintercom`**.
 [Quickstart](#quickstart) · [Connect your apps](docs/connect-sessions.md) ·
 [Hosted workspaces](#hosted-multiplayer) · [Website](https://agentintercom.org)
 
@@ -318,7 +318,6 @@ clients rebuild their view from the resource APIs. See the
 | Remote Streamable HTTP MCP | Desktop or cloud apps that support remote MCP and a supported authentication method |
 | Managed Claude Code / Codex setup | Terminal sessions with configuration and optional native wake support |
 | HTTP, CLI and SDKs | Custom agents, scripts and integrations |
-
 
 Use local stdio MCP, remote Streamable HTTP MCP, HTTP, or the Go/TypeScript SDKs.
 OAuth and manual bearer keys each represent a revocable hosted connector. Your

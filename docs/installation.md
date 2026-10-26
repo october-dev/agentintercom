@@ -110,15 +110,16 @@ checks have passed; this repository does not claim a published registry listing.
 
 ## Existing installations
 
-The terminal command is `agentintercom`, the Go module is
-`github.com/october-dev/agentintercom`, and the MCP key is `agent_intercom`.
+The npm package is `agentintercom-cli`, and the terminal command is `agentintercom`.
+The Go module is `github.com/october-dev/agentintercom`, and the MCP key is `agent_intercom`.
 The repository moved from `october-dev/october-bus`. GitHub redirects old links
 and Git operations; update an existing clone with
 `git remote set-url origin https://github.com/october-dev/agentintercom.git`.
 Earlier Go release tags retain their original module path; use the new import
 path with a release that declares it. The protocol 0.1 schema IDs remain stable.
-The old npm package is a different package; install the new release explicitly
-when it becomes available and reconnect the app with its new configuration.
+Earlier `@october-dev/october-bus` npm releases are a separate package; install
+the new release explicitly when it becomes available and reconnect the app
+with its new configuration.
 
 Existing `OCTOBER_BUS_*` settings, data directories, database namespaces and
 protocol 0.1 health/archive identifiers remain valid. The rename does not move
