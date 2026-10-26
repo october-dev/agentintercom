@@ -2,7 +2,7 @@
 
 Typed clients and protocol definitions for connecting Node.js applications and harness adapters to Agent Intercom.
 
-The prepared `agentintercom-cli` distribution includes a launcher for the native Go daemon and the TypeScript client. npm installs the matching binary through an exact-version optional dependency; it does not compile Go or run a download script on your machine. The terminal command is `agentintercom`.
+The `agentintercom-cli` distribution includes a launcher for the native Go daemon and the TypeScript client. npm installs the matching binary through an exact-version optional dependency; it does not compile Go or run a download script on your machine. The terminal command is `agentintercom`.
 
 Before 1.0, APIs and schemas may change between minor releases. Pin the exact package and runtime versions used by your application.
 
@@ -18,7 +18,7 @@ Admins can use `listScopes()`, `rotateScopeToken(scopeId)`, and `deleteScope(sco
 
 ## Install
 
-This source prepares version `0.2.0`; it is not a publication announcement. Once that version is published, install it explicitly:
+Version `0.2.0` is available under the `candidate` tag. Install it explicitly:
 
 ```sh
 npm install agentintercom-cli@0.2.0
@@ -155,4 +155,4 @@ are available on macOS/Linux/WSL through `session start claude` and
 
 See [connections](../../docs/connect-sessions.md),
 [hosted workspaces](../../docs/hosted-workspaces.md) and
-[the draft release notes](../../docs/release-notes-0.2.0.md).
+[the release candidate notes](../../docs/release-notes-0.2.0.md).

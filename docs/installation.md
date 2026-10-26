@@ -1,7 +1,14 @@
 # Install and connect
 
-These commands require a binary built from this revision or a release containing
-it. A package containing this full CLI has not yet been published. Build with
+Install the full CLI candidate with Node.js 20 or later:
+
+```sh
+npm install -g agentintercom-cli@0.2.0
+```
+
+Keep optional dependencies enabled to install the native binary. Version `0.2.0`
+is published under `candidate`; the `latest` tag still points to the links-only
+`0.0.1` placeholder. You can also build from source with
 `go build -o agentintercom ./cmd/agentintercom`.
 
 For Claude Code and Codex:

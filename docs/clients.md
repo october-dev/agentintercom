@@ -1,6 +1,6 @@
 # Client SDKs
 
-Agent Intercom provides a Go client in this module and prepares the `agentintercom-cli` npm package for the TypeScript client and matching native Go daemon. Its terminal command is `agentintercom`. SDK imports do not load or start the daemon. Historical npm versions below refer to the previous `@october-dev/october-bus` package.
+Agent Intercom provides a Go client in this module and the `agentintercom-cli` npm package for the TypeScript client and matching native Go daemon. Its terminal command is `agentintercom`. SDK imports do not load or start the daemon. Historical npm versions below refer to the previous `@october-dev/october-bus` package.
 
 ## Runtime and SDK compatibility
 
@@ -103,8 +103,8 @@ Go `SetState` and TypeScript `setState` serialize writes and update their rememb
 
 ## TypeScript
 
-Version `0.2.0` is prepared in source and has not been published. Once available,
-install it explicitly; `agentintercom-cli@0.0.1` is only a project-link placeholder:
+Version `0.2.0` is published under `candidate`. Install it explicitly; the
+`latest` tag still selects the links-only `agentintercom-cli@0.0.1` placeholder:
 
 ```bash
 npm install agentintercom-cli@0.2.0
