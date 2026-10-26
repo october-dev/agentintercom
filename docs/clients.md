@@ -1,6 +1,6 @@
 # Client SDKs
 
-Agent Intercom ships a Go client in this module and a TypeScript client on npm. From `0.1.0-next.15`, the npm package also installs the matching native Go daemon and exposes the `agentintercom` command. SDK imports do not load or start the daemon.
+Agent Intercom provides a Go client in this module and prepares the `agentintercom-cli` npm package for the TypeScript client and matching native Go daemon. Its terminal command is `agentintercom`. SDK imports do not load or start the daemon. Historical npm versions below refer to the previous `@october-dev/october-bus` package.
 
 ## Runtime and SDK compatibility
 
@@ -103,14 +103,15 @@ Go `SetState` and TypeScript `setState` serialize writes and update their rememb
 
 ## TypeScript
 
-Install the current prerelease:
+Version `0.2.0` is prepared in source and has not been published. Once available,
+install it explicitly; `agentintercom-cli@0.0.1` is only a project-link placeholder:
 
 ```bash
-npm install agentintercom@next
+npm install agentintercom-cli@0.2.0
 ```
 
 ```ts
-import { AgentIntercomAgentSession, AgentIntercomOutputClient, AgentIntercomScopeClient } from 'agentintercom'
+import { AgentIntercomAgentSession, AgentIntercomOutputClient, AgentIntercomScopeClient } from 'agentintercom-cli'
 
 const session = await AgentIntercomAgentSession.start({
   address,
@@ -178,7 +179,7 @@ Prefer bounded inbox waiting for efficient pull delivery. `pollInbox` provides a
 Go returns `*bus.BusError`. TypeScript throws `BusError`. Branch on the protocol error code instead of matching the human-readable message.
 
 ```ts
-import { BusError } from 'agentintercom'
+import { BusError } from 'agentintercom-cli'
 
 try {
   await session.client.claimTask(taskId)

@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Use the Agent Intercom product name and `agentintercom` CLI/npm package.
+- Use the Agent Intercom product name, `agentintercom` command and
+  `agentintercom-cli` npm package.
   Move the repository and Go module to `october-dev/agentintercom`. The
   TypeScript client classes now use the `AgentIntercom` prefix.
 - Add local and hosted workspaces, PostgreSQL storage, account membership,

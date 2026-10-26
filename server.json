@@ -6,7 +6,7 @@
   "version": "0.2.0",
   "packages": [{
     "registryType": "npm",
-    "identifier": "agentintercom",
+    "identifier": "agentintercom-cli",
     "version": "0.2.0",
     "transport": { "type": "stdio" },
     "packageArguments": [

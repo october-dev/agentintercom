@@ -1,5 +1,5 @@
 {
-  "name": "agentintercom",
+  "name": "agentintercom-cli",
   "version": "0.2.0",
   "description": "Agent Intercom native CLI and TypeScript client for agent coordination.",
   "type": "module",
