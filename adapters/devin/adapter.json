@@ -21,7 +21,7 @@
   "testedVersions": [],
   "platforms": [],
   "maintainer": "October",
-  "repository": "https://github.com/october-dev/october-bus",
+  "repository": "https://github.com/october-dev/agentintercom",
   "limitations": [
     "Experimental configuration, not named-harness certification.",
     "Only a sandbox-colocated deployment is in scope. Generate this configuration inside that sandbox after starting Bus and creating its local scope. A laptop path or localhost address is not reachable from Devin. Account permissions and sandbox lifecycle are unverified."

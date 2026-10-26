@@ -1,6 +1,6 @@
 # Codex adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#36](https://github.com/october-dev/october-bus/issues/36).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#36](https://github.com/october-dev/agentintercom/issues/36).
 
 Historical adapter 0.1.0 has [Codex 0.152.1 / rc.4 evidence](../../compatibility/evidence/codex-0.152.1-macos-arm64.json). It does not certify this new adapter revision.
 

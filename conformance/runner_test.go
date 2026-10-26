@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
-	"github.com/october-dev/october-bus/conformance"
+	"github.com/october-dev/agentintercom/bus"
+	"github.com/october-dev/agentintercom/conformance"
 )
 
 func buildRuntimeCommand(t *testing.T) string {

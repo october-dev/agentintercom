@@ -127,7 +127,7 @@ Context items have no states. They are immutable parts of the message that carri
 ## Open questions
 
 These describe the reference runtime's current behavior. They are not yet protocol rules; implementations should not
-depend on them until each is settled in [#28](https://github.com/october-dev/october-bus/issues/28).
+depend on them until each is settled in [#28](https://github.com/october-dev/agentintercom/issues/28).
 
 1. **Escalation answers.** The answer is not checked against the escalation's options.
 2. **Task ownership errors.** Completing or releasing a task claimed by another agent or execution returns `CONFLICT`,

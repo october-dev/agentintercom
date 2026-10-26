@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 func TestAuditCredentialChild(t *testing.T) {

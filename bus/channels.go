@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/october-bus/deploy/hosted/migrations"
+	"github.com/october-dev/agentintercom/deploy/hosted/migrations"
 )
 
 var channelsSchemaSQL = func() string {

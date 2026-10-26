@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
-	"github.com/october-dev/october-bus/conformance"
+	"github.com/october-dev/agentintercom/bus"
+	"github.com/october-dev/agentintercom/conformance"
 )
 
 type stringList []string

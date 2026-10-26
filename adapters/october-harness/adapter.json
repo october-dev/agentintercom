@@ -12,7 +12,7 @@
   "testedVersions": [],
   "platforms": [],
   "maintainer": "October",
-  "repository": "https://github.com/october-dev/october-bus",
+  "repository": "https://github.com/october-dev/agentintercom",
   "limitations": [
     "Uses the separately released October Harness's public Bus integration via agent run; no additional MCP configuration or Pi extension.",
     "Native host hooks and upstream-main active delivery are not certified here; exact-release lifecycle and tool-error evidence is still required."

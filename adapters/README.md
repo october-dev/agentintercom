@@ -38,7 +38,7 @@ The bridge owns heartbeats and retirement on EOF, host termination or lease fail
 | Native session extension | [Pi](pi): public session hooks, daemon tool schemas, cancellation and cleanup |
 | Existing native integration | [October Harness](october-harness): public launcher contract, no duplicate extension |
 
-Other launch targets remain in [tracking issue #62](https://github.com/october-dev/october-bus/issues/62) until their canonical released integration surface is established. Model providers alone are not additional harnesses. See [integration boundaries](../docs/harness-boundaries.md).
+Other launch targets remain in [tracking issue #62](https://github.com/october-dev/agentintercom/issues/62) until their canonical released integration surface is established. Model providers alone are not additional harnesses. See [integration boundaries](../docs/harness-boundaries.md).
 
 ## Existing managed launchers
 

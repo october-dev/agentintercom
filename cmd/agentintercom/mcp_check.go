@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 // connectionCheck is the machine-readable result of `mcp check`. Status is

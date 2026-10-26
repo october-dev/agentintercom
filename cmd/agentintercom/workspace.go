@@ -14,7 +14,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 func workspaceCommand(args []string, out io.Writer) error {

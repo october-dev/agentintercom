@@ -245,7 +245,7 @@ Application fields after verification:
 | --- | --- |
 | Connection type | Existing MCP |
 | Hosted MCP endpoint | `https://bus.october.dev/mcp` |
-| API/MCP documentation | `https://github.com/october-dev/october-bus/blob/main/spec/0.1/mcp.md` after merge; link the reviewed commit before merge |
+| API/MCP documentation | `https://github.com/october-dev/agentintercom/blob/main/spec/0.1/mcp.md` after merge; link the reviewed commit before merge |
 | Authentication | API keys, sent as Bearer credentials; no OAuth/PKCE claim |
 | OpenAPI | Not needed for the MCP option |
 

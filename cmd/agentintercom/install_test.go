@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 )
 
 func TestManagedInstallPreservesConfiguration(t *testing.T) {

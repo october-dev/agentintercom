@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"github.com/october-dev/october-bus/bus"
+	"github.com/october-dev/agentintercom/bus"
 	"io"
 	"time"
 )

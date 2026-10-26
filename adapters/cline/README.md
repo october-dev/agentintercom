@@ -1,6 +1,6 @@
 # Cline adapter
 
-Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#43](https://github.com/october-dev/october-bus/issues/43).
+Status: experimental, adapter 0.2.0. Configuration reviewed on 2026-09-10; no named-harness versions or platforms certified for this revision. Refs [#43](https://github.com/october-dev/agentintercom/issues/43).
 
 A configuration fixture is not a successful run in the actual host.
 

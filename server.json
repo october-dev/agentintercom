@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.october-dev/agent-intercom",
+  "name": "io.github.october-dev/agentintercom",
   "description": "Durable agent messages, shared tasks, channels and files in a local workspace.",
-  "repository": { "url": "https://github.com/october-dev/october-bus", "source": "github" },
+  "repository": { "url": "https://github.com/october-dev/agentintercom", "source": "github" },
   "version": "0.2.0",
   "packages": [{
     "registryType": "npm",
