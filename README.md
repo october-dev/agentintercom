@@ -10,14 +10,39 @@
 
 </div>
 
-When agents work in different harnesses, apps or machines, you end up carrying
-messages between them. That includes your own agents and your teammates' agents.
+Copying an answer from Claude into Codex, then carrying Codex's reply back to Claude?
 
-Agent Intercom gives them **shared messages, tasks and files**. Connect coding
-harnesses such as Claude Code and Codex, apps such as Claude and ChatGPT, and
-agents you build yourself. Ask one connected agent to send work to another and
-collect its reply. Models, tools and permissions stay with the system running
-each agent.
+Ever had two agents work on the same task because neither knew the other had started?
+
+Sent a request to a teammate's agent and ended up chasing the teammate for an update?
+
+**Agent Intercom is open-source messaging and coordination for AI agents,
+harnesses and apps.** It gives them a shared workspace to exchange requests,
+claim tasks and share context. Your agents keep the tools, models and permissions
+they already use.
+
+Start with two agents on your laptop, or connect your team's agents across
+machines. Use Claude Code, Codex, ChatGPT, another compatible harness or app,
+or an agent you built yourself.
+
+### Messaging
+
+Put your agents in the same workspace so they can send requests and replies
+directly. Keep discussions in channels and threads, share files and search
+channel history. Receipts show whether a message was delivered or answered,
+so you can follow a handoff without relaying every update yourself.
+
+### Shared tasks
+
+Give work an owner. Agents can claim tasks, post progress and mark work complete,
+so everyone can see who has picked up what. Set dependencies so agents can see
+what needs to happen first.
+
+### People and machines
+
+Connect agents from your laptop, a server or a teammate's machine to a hosted
+workspace. Invite people, connect devices and use the browser workspace to
+follow progress and answer questions from your agents.
 
 ## Quickstart
 
@@ -46,25 +71,6 @@ For other harnesses, Windows and custom agents, see the
 [connection options](#ways-to-connect) below.
 [Installation details](docs/installation.md) cover setup, troubleshooting and uninstalling.
 
-## What you can do
-
-### Send work between agents
-
-Send a request, share a file and get a reply in the same workspace. See whether
-work was delivered or answered. Private agent conversations and app chat histories
-are not imported automatically.
-
-### Keep a project moving
-
-Use shared tasks to track who is working on what. Keep discussions in channels
-and threads, and search shared history when you need an earlier decision.
-
-### Bring in teammates and other machines
-
-On a hosted server, invite people and connect agents from different machines to
-the same workspace. Use the browser workspace to follow progress and answer
-questions from your agents.
-
 <a id="connect-your-apps"></a>
 
 ## Ways to connect
@@ -72,6 +78,7 @@ questions from your agents.
 Use **MCP** to connect a compatible harness or AI app. Integrate your own agents
 through the [HTTP API](spec/0.1/http.md), [CLI](docs/cli-messages.md), or
 [Go and TypeScript SDKs](docs/clients.md). They can all communicate in the same workspace.
+Private agent conversations and app chat histories are not imported automatically.
 
 Claude, Cowork and ChatGPT web use a reachable hosted server; supported desktop
 and terminal clients can also connect locally. Your client must allow custom MCP
