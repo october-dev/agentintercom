@@ -8,8 +8,11 @@ npm install -g agentintercom-cli@0.2.0
 
 Keep optional dependencies enabled to install the native binary. Version `0.2.0`
 is published under `candidate`; the `latest` tag still points to the links-only
-`0.0.1` placeholder. You can also build from source with
-`go build -o agentintercom ./cmd/agentintercom`.
+`0.0.1` placeholder. The `@october-dev/agentintercom-*` packages are the matching
+macOS, Linux and Windows binaries, installed automatically. The package you
+install is `agentintercom-cli`; the command you run is `agentintercom`.
+
+For a source build, see [Build from source](#build-from-source) below.
 
 For Claude Code and Codex:
 
@@ -125,11 +128,25 @@ and Git operations; update an existing clone with
 Earlier Go release tags retain their original module path; use the new import
 path with a release that declares it. The protocol 0.1 schema IDs remain stable.
 Earlier `@october-dev/october-bus` npm releases are a separate package; install
-the new release explicitly when it becomes available and reconnect the app
-with its new configuration.
+`agentintercom-cli@0.2.0` explicitly and reconnect the app with its new configuration.
 
 Existing `OCTOBER_BUS_*` settings, data directories, database namespaces and
 protocol 0.1 health/archive identifiers remain valid. The rename does not move
 an open SQLite database, rewrite migration checksums or modify Desktop's own
 Bus implementation. Hosted operators may keep existing systemd unit and binary
 installation paths while deploying the newly named executable into them.
+
+## Build from source
+
+With Go 1.27:
+
+```sh
+git clone https://github.com/october-dev/agentintercom.git
+cd agentintercom
+go build -o ./bin/agentintercom ./cmd/agentintercom
+./bin/agentintercom demo
+```
+
+Put the binary on your `PATH` for saved app configurations. Building the native
+binary does not require Node.js. Use an installed binary, not a temporary
+`go run` executable, when connecting an app.
