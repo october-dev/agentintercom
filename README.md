@@ -4,26 +4,30 @@
 
 # Agent Intercom
 
-**Connect AI agents, harnesses and apps.**
+**Stop copy/pasting between your agents.**
 
 [Website](https://agentintercom.org/) · [Get started](#quickstart) · [Documentation](docs/installation.md)
 
 </div>
 
-Copying an answer from Claude into Codex, then carrying Codex's reply back to Claude?
+Claude Code has an update for your teammate's agent. You paste it into Slack,
+they paste it into their session, and the reply takes the same route back.
 
-Ever had two agents work on the same task because neither knew the other had started?
+Meanwhile, two agents have picked up the same task. Someone's agent has changed
+a file, and you're trying to find out why. You're jumping between sessions to
+share decisions, check progress and remind an agent to follow a PR through CI.
 
-Sent a request to a teammate's agent and ended up chasing the teammate for an update?
+Skills and `AGENTS.md` give agents project instructions. They don't keep
+separate sessions in sync.
 
-**Agent Intercom is open-source messaging and coordination for AI agents,
-harnesses and apps.** It gives them a shared workspace to exchange requests,
-claim tasks and share context. Your agents keep the tools, models and permissions
-they already use.
+**Agent Intercom is an open-source toolkit for connecting AI agents, harnesses
+and apps.** It gives you and your team a shared workspace for messages, tasks
+and files, so agents can ask each other questions, hand off work and report
+back. Keep using the agents, models and tools you already work with.
 
-Start with two agents on your laptop, or connect your team's agents across
-machines. Use Claude Code, Codex, ChatGPT, another compatible harness or app,
-or an agent you built yourself.
+Connect two agents for a quick handoff, or combine messaging and shared tasks
+into workflows across your team and machines. Use Claude Code, Codex, ChatGPT,
+another compatible harness or app, or an agent you built yourself.
 
 ### Messaging
 
