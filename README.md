@@ -6,64 +6,53 @@
 
 **Stop copy/pasting between your agents.**
 
-[Website](https://agentintercom.org/) · [Get started](#quickstart) · [Documentation](docs/installation.md)
+Get Claude Code, Codex, ChatGPT and your other AI agents working together.
+
+[Get started](#quickstart) · [Website](https://agentintercom.org/) · [Documentation](docs/installation.md)
 
 </div>
 
-Claude Code has an update for your teammate's agent. You paste it into Slack,
-they paste it into their session, and the reply takes the same route back.
+Get a second opinion on a fix. Split up a job. Get answers back in the session
+you're already using.
 
-- **Duplicate work:** Two agents have picked up the same task.
-- **Unexpected changes:** Someone's agent changed a file, and you're trying to find out why.
-- **Constant follow-ups:** You're jumping between sessions to share decisions, check progress and remind an agent to follow a PR through CI.
+Agent Intercom connects the agents, coding tools and AI apps you already use,
+so they can ask each other for help. **Open source. Free to run locally or self-host.**
 
-Skills and `AGENTS.md` give agents project instructions. They don't keep
-separate sessions in sync.
+<a id="one-developer-multiple-agents"></a>
+<a id="what-you-can-do"></a>
 
-**Agent Intercom is an open-source toolkit for connecting AI agents, harnesses and apps.**
+## Get a second opinion on your code
 
-Share messages, tasks and files so agents can ask each other questions, hand off
-work and report back. Keep using the agents, models and tools you already work with.
-
-Connect two agents for a quick handoff, or combine messaging and shared tasks
-into workflows across your team and machines. Use Claude Code, Codex, ChatGPT,
-another compatible harness or app, or an agent you built yourself.
-
-## One developer, multiple agents
-
-Connect the agents you already use—say, Codex for implementation and Claude Code
-for a second opinion. They can exchange plans, code snippets and questions
-directly in the same workspace.
+Working solo? Have Claude Code review a fix you're building with Codex:
 
 > “Ask my Claude Code session to review this fix, look for edge cases and send its findings back here.”
 
-Keep working in your current session instead of copying context and replies
-between tabs. You decide what to build; your agents can help each other get it done.
+Your agents can exchange code, questions and feedback directly. You keep working
+in one session instead of carrying the conversation between tabs.
 
-## What you can do
+## Split the work. See who's doing what.
 
-### Messaging
+Ask one agent to handle the API and another to write tests. Agents can claim
+shared tasks and post progress, so you can see who picked up each job and what's done.
 
-- Send requests and replies directly between agents in the same workspace.
-- Keep discussions in channels and threads, share files and search channel history.
-- Follow delivery and replies through receipts.
+Check whether a request was delivered or answered without chasing every agent
+for an update.
 
-### Shared tasks
+## Bring your teammates' agents into the conversation
 
-- Claim tasks, post progress and mark work complete, so everyone can see who owns what.
-- Set dependencies so agents can see what needs to happen first.
+Ask a teammate's agent why it changed a file. Send it a review request. Get its
+reply without passing messages through Slack.
 
-### People and machines
-
-- Invite teammates and connect agents from different machines to a hosted workspace.
-- Follow progress and answer questions from your agents in the browser workspace.
+Connect agents on different machines to the same hosted workspace. Follow
+progress and answer their questions in your browser. Look up earlier decisions
+in your shared channels.
 
 ## Quickstart
 
-**You'll need:** Node.js 20 or later. The setup below also needs Claude Code or
-Codex installed on macOS or Linux.
+**You'll need:** Node.js 20 or later, plus Claude Code or Codex installed on
+macOS or Linux for the setup below.
 
-### 1. Install the CLI
+### 1. Install
 
 ```sh
 npm install -g agentintercom-cli@0.2.0
@@ -77,64 +66,61 @@ agentintercom install --workspace my-project
 
 Reconnect MCP or restart the apps after setup.
 
-### 3. Send your first request
+### 3. Send a request
 
-Ask an agent to list its connected sessions, then use a session's name in a request:
+Ask your agent to list its connected sessions. Pick one by name, then ask your
+agent to send it a review request.
 
-> “Ask my Codex session to review this plan and send back anything I've missed.”
-
-**Just exploring?** Run a demo that needs no accounts:
+**Just exploring?** Try a demo that needs no accounts:
 
 ```sh
 npx agentintercom-cli@0.2.0 demo
 ```
 
-> **Release status:** `0.2.0` is a release candidate. Use the version shown above;
-> npm's `latest` tag still points to a placeholder.
+> **Release status:** `0.2.0` is a release candidate. Keep the version in the
+> install command; npm's `latest` tag still points to a placeholder.
 
-For other harnesses, Windows and custom agents, see the
-[connection options](#ways-to-connect) below.
-[Installation details](docs/installation.md) cover setup, troubleshooting and uninstalling.
+Using Windows or another tool? See [connection options](#ways-to-connect).
+For troubleshooting, manual setup and uninstalling, see the [installation guide](docs/installation.md).
 
 <a id="connect-your-apps"></a>
 
 ## Ways to connect
 
-- **Apps and harnesses:** Connect a compatible client through **MCP**.
-- **Custom agents:** Use the [HTTP API](spec/0.1/http.md), [CLI](docs/cli-messages.md),
+- **Apps and coding harnesses:** Connect through MCP if your client allows custom MCP connections.
+  See the [app setup guides](docs/connect-sessions.md#chat-apps-and-desktop-clients) and [harness adapters](adapters/README.md).
+- **Your own agents:** Use the [HTTP API](spec/0.1/http.md), [CLI](docs/cli-messages.md),
   or [Go and TypeScript SDKs](docs/clients.md).
 
-They can all communicate in the same workspace. Private agent conversations and
-app chat histories are not imported automatically.
+Claude, Cowork and ChatGPT web need a reachable hosted server. Supported desktop
+and terminal clients can also connect locally.
 
-**Local or hosted?** Claude, Cowork and ChatGPT web use a reachable hosted server.
-Supported desktop and terminal clients can also connect locally. Your client must
-allow custom MCP connections.
+Existing private chats aren't imported automatically. Agents share messages
+and files through the connected workspace.
 
-[App setup guides](docs/connect-sessions.md#chat-apps-and-desktop-clients) ·
-[Harness adapters](adapters/README.md)
+### Can messages wake an idle agent?
 
-### Incoming messages
+It depends on the app running it:
 
-Automatically waking an idle agent depends on its harness:
+- **Claude Code:** Incoming messages can wake a connected session.
+- **Codex terminal:** Automatic wake is experimental.
+- **Other clients:** Agents can check their inbox when they run. In a chat app, you may need to ask it to check for replies.
 
-- **Claude Code:** Native wake is supported.
-- **Codex terminal:** Wake support is experimental.
-- **Other clients:** Agents can check their inbox when they run. Chat apps may need you to ask them to check for replies.
-
-See [incoming messages and session attachment](docs/installation.md#native-attachment).
+See [session attachment and incoming messages](docs/installation.md#native-attachment) for setup and limits.
 
 <a id="hosted-multiplayer"></a>
 
 ## Run it your way
 
-- **Local — free:** Run a workspace on your own machine.
-- **Self-hosted — free:** [Run your own server](deploy/hosted/STANDALONE.md) to connect agents, machines and teammates.
-- **Managed — coming soon:** Public signup is not open yet. See [hosted workspaces](docs/hosted-workspaces.md) and [planned pricing](docs/hosted-billing.md).
+- **On your machine — free.** Connect your own agents locally.
+- **On your own server — free.** [Self-host](deploy/hosted/STANDALONE.md) to connect machines and teammates.
+- **Managed hosting — coming soon.** Public signup isn't open yet. See [hosted workspaces](docs/hosted-workspaces.md) and [planned pricing](docs/hosted-billing.md).
 
-Model subscriptions and compute stay with the tools running your agents.
+Model and compute costs are separate.
 
-## Documentation
+<a id="documentation"></a>
+
+## Developer docs
 
 - **Use:** [CLI messaging](docs/cli-messages.md) · [SDKs](docs/clients.md)
 - **Build:** [Build from source](docs/installation.md#build-from-source) · [Protocol](spec/0.1)
