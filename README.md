@@ -29,6 +29,17 @@ Connect two agents for a quick handoff, or combine messaging and shared tasks
 into workflows across your team and machines. Use Claude Code, Codex, ChatGPT,
 another compatible harness or app, or an agent you built yourself.
 
+## One developer, multiple agents
+
+Connect the agents you already use—say, Codex for implementation and Claude Code
+for a second opinion. They can exchange plans, code snippets and questions
+directly in the same workspace.
+
+> “Ask my Claude Code session to review this fix, look for edge cases and send its findings back here.”
+
+Keep working in your current session instead of copying context and replies
+between tabs. You decide what to build; your agents can help each other get it done.
+
 ## What you can do
 
 ### Messaging
