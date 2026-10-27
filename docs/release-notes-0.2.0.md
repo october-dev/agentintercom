@@ -1,9 +1,9 @@
-# Agent Intercom 0.2.0 — draft
+# Agent Intercom 0.2.0 — release candidate
 
-This version is being prepared. These notes describe the implementation in this
-branch; they do not announce a published package, verified harness coverage or
-available paid hosting. Release review, platform qualification and hosted
-production acceptance must finish first.
+The full CLI and TypeScript SDK are published as `agentintercom-cli@0.2.0` under
+the `candidate` tag. Install with `npm install -g agentintercom-cli@0.2.0`, or try
+`npx agentintercom-cli@0.2.0 demo`. Stable `latest` promotion, broader harness
+qualification and public hosted signup remain separate steps.
 
 ## Connect the sessions you already use
 
@@ -49,7 +49,7 @@ bridges remain supported; no Desktop store migration is required for this releas
 
 ## Installation and upgrade
 
-The staged npm distribution carries the native CLI and TypeScript client, with
+The npm distribution carries the native CLI and TypeScript client, with
 matching macOS/Linux/Windows packages for x64 and arm64. Keep optional dependencies
 enabled; installation works with scripts disabled. The release workflow tests the
 actual tarballs before candidate publication. Stable `latest` promotion uses those
