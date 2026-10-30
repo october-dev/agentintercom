@@ -1712,6 +1712,35 @@ func (s *Store) ListEscalations(ctx context.Context, scopeID string) ([]HumanEsc
 	return escalations, rows.Err()
 }
 
+func (s *Store) CancelEscalation(ctx context.Context, scopeID, escalationID, agentID string) (HumanEscalation, error) {
+	tx, err := s.beginTx(ctx)
+	if err != nil {
+		return HumanEscalation{}, err
+	}
+	defer tx.Rollback()
+	now := nowMillis()
+	result, err := tx.ExecContext(ctx, `UPDATE escalations SET status='cancelled',resolved_at=? WHERE scope_id=? AND escalation_id=? AND agent_id=? AND status='pending'`,
+		now, scopeID, escalationID, agentID)
+	if err != nil {
+		return HumanEscalation{}, err
+	}
+	changed, _ := result.RowsAffected()
+	if changed != 1 {
+		return HumanEscalation{}, Errorf(CodeConflict, "Escalation is not pending or not owned by this agent")
+	}
+	if err := appendEvent(ctx, tx, scopeID, "escalation.cancelled", escalationID, eventAttributes("agentId", agentID, "status", "cancelled"), now); err != nil {
+		return HumanEscalation{}, err
+	}
+	escalation, err := escalationFrom(ctx, tx, scopeID, escalationID)
+	if err != nil {
+		return HumanEscalation{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return HumanEscalation{}, err
+	}
+	return escalation, nil
+}
+
 func (s *Store) ResolveEscalation(ctx context.Context, scopeID, escalationID, answer string) (HumanEscalation, error) {
 	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {

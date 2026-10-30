@@ -153,6 +153,9 @@ func (s *Server) newRouter() http.Handler {
 	registerRoute(router, "/v1/escalations/{escalationId}",
 		routeMethod{http.MethodGet, s.getEscalation},
 	)
+	registerRoute(router, "/v1/escalations/{escalationId}/cancel",
+		routeMethod{http.MethodPost, s.cancelEscalation},
+	)
 	registerRoute(router, "/v1/scope/escalations",
 		routeMethod{http.MethodGet, s.listEscalations},
 	)
@@ -825,6 +828,19 @@ func (s *Server) listEscalations(response http.ResponseWriter, request *http.Req
 		return err
 	}
 	result, err := s.runtime.ListEscalations(request.Context(), token)
+	if err != nil {
+		return err
+	}
+	writeResult(response, http.StatusOK, result)
+	return nil
+}
+
+func (s *Server) cancelEscalation(response http.ResponseWriter, request *http.Request) error {
+	token, err := bearer(request)
+	if err != nil {
+		return err
+	}
+	result, err := s.runtime.CancelEscalation(request.Context(), token, request.PathValue("escalationId"))
 	if err != nil {
 		return err
 	}

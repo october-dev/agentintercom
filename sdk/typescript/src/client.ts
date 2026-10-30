@@ -681,6 +681,10 @@ export class AgentIntercomClient {
     return request(this.address, this.agentToken, 'GET', `/v1/escalations/${encodeURIComponent(id)}`, undefined, options)
   }
 
+  cancelEscalation(id: string, options?: OperationOptions): Promise<HumanEscalation> {
+    return request(this.address, this.agentToken, 'POST', `/v1/escalations/${encodeURIComponent(id)}/cancel`, undefined, options)
+  }
+
   mcpEndpoint(): { url: string; headers: Record<string, string> } {
     return { url: `${this.address}/mcp`, headers: { Authorization: `Bearer ${this.agentToken}` } }
   }

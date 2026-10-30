@@ -388,6 +388,10 @@ func (c Client) Escalation(ctx context.Context, id string) (HumanEscalation, err
 	return request[HumanEscalation](ctx, c, http.MethodGet, "/v1/escalations/"+url.PathEscape(id), nil)
 }
 
+func (c Client) CancelEscalation(ctx context.Context, id string) (HumanEscalation, error) {
+	return request[HumanEscalation](ctx, c, http.MethodPost, "/v1/escalations/"+url.PathEscape(id)+"/cancel", nil)
+}
+
 func (c Client) ListEscalations(ctx context.Context) ([]HumanEscalation, error) {
 	return request[[]HumanEscalation](ctx, c, http.MethodGet, "/v1/scope/escalations", nil)
 }

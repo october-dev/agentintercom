@@ -643,6 +643,21 @@ func (r *Runtime) ListEscalations(ctx context.Context, scopeToken string) ([]Hum
 	return r.store.ListEscalations(ctx, scopeID)
 }
 
+func (r *Runtime) CancelEscalation(ctx context.Context, agentToken, escalationID string) (HumanEscalation, error) {
+	principal, err := r.Principal(ctx, agentToken)
+	if err != nil {
+		return HumanEscalation{}, err
+	}
+	if err := validateIdentity(escalationID, "escalationId", false); err != nil {
+		return HumanEscalation{}, err
+	}
+	result, err := r.store.CancelEscalation(ctx, principal.ScopeID, escalationID, principal.AgentID)
+	if err == nil {
+		r.notifyScope(principal.ScopeID)
+	}
+	return result, err
+}
+
 func (r *Runtime) ResolveEscalation(ctx context.Context, scopeToken, escalationID, answer string) (HumanEscalation, error) {
 	scopeID, err := r.scopeAuthority(ctx, scopeToken)
 	ctx = withScopeCredential(ctx, scopeToken)

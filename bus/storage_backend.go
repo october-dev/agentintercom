@@ -74,6 +74,7 @@ type storageBackend interface {
 	Escalation(context.Context, string, string) (HumanEscalation, error)
 	ListEscalations(context.Context, string) ([]HumanEscalation, error)
 	ResolveEscalation(context.Context, string, string, string) (HumanEscalation, error)
+	CancelEscalation(context.Context, string, string, string) (HumanEscalation, error)
 
 	StorageSummary(context.Context, string) (StorageSummary, error)
 	PruneScope(context.Context, string, int64, bool) (PruneScopeResult, error)

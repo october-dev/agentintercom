@@ -490,6 +490,36 @@ func TestHumanEscalationIsDurableAndScopeOwned(t *testing.T) {
 	require(t, err == nil && len(values) == 1 && values[0].Answer == "no", "second resolution changed the answer: %#v, %v", values, err)
 }
 
+func TestAgentCancelsOwnPendingEscalation(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+	escalation, err := agents.runtime.AskHuman(ctx, agents.plannerToken, AskHumanInput{Question: "Deploy?", Options: []string{"yes", "no"}})
+	requireNoError(t, err)
+	cancelled, err := agents.runtime.CancelEscalation(ctx, agents.plannerToken, escalation.ID)
+	require(t, err == nil && cancelled.Status == "cancelled", "unexpected cancellation: %#v, %v", cancelled, err)
+	values, err := agents.runtime.ListEscalations(ctx, agents.scope.ScopeToken)
+	requireNoError(t, err)
+	require(t, len(values) == 1 && values[0].Status == "cancelled", "stored escalation not cancelled: %#v", values)
+	// A cancelled escalation no longer counts against the pending cap path: it is not pending.
+	_, err = agents.runtime.CancelEscalation(ctx, agents.plannerToken, escalation.ID)
+	requireCode(t, err, CodeConflict)
+}
+
+func TestAgentCannotCancelAnotherAgentsEscalation(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+	escalation, err := agents.runtime.AskHuman(ctx, agents.plannerToken, AskHumanInput{Question: "Deploy?"})
+	requireNoError(t, err)
+	// The reviewer agent does not own the planner's escalation.
+	_, err = agents.runtime.CancelEscalation(ctx, agents.reviewerToken, escalation.ID)
+	requireCode(t, err, CodeConflict)
+	// Ownership failure must not mutate the stored escalation: it stays pending.
+	stored, err := agents.runtime.Escalation(ctx, agents.plannerToken, escalation.ID)
+	require(t, err == nil && stored.Status == "pending", "escalation mutated by foreign cancel: %#v, %v", stored, err)
+}
+
 func TestPendingEscalationsApplyPerAgentBackpressure(t *testing.T) {
 	agents := setupAgents(t, ":memory:")
 	defer agents.runtime.Close()
