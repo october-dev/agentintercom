@@ -176,7 +176,9 @@ Prefer bounded inbox waiting for efficient pull delivery. `pollInbox` provides a
 
 ## Errors
 
-Go returns `*bus.BusError`. TypeScript throws `BusError`. Branch on the protocol error code instead of matching the human-readable message.
+When a Go client operation receives a non-2xx response with an empty or invalid JSON body, its error includes the HTTP status code without exposing the response body.
+
+For protocol errors, Go returns `*bus.BusError` and TypeScript throws `BusError`. Branch on the protocol error code instead of matching the human-readable message.
 
 ```ts
 import { BusError } from 'agentintercom-cli'
