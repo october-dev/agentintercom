@@ -57,3 +57,43 @@ func TestClientListPeersMalformedSuccess(t *testing.T) {
 		t.Fatalf("error = %v, want JSON syntax error", err)
 	}
 }
+
+func TestClientUploadAttachmentResponses(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		status    int
+		body      string
+		wantError string
+		wantCode  ErrorCode
+	}{
+		{"html", 413, "<html>private proxy details</html>", "attachment upload failed with HTTP 413", ""},
+		{"empty", 502, "", "attachment upload failed with HTTP 502", ""},
+		{"protocol error", 403, `{"ok":false,"error":{"code":"PERMISSION_DENIED","message":"Access denied"}}`, "Access denied", CodePermissionDenied},
+		{"malformed success", 200, "not JSON", "", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+			_, err := (Client{Address: server.URL, Token: "token"}).UploadAttachment(t.Context(), UploadAttachmentInput{Name: "file.bin"}, []byte("data"))
+			if tt.wantError != "" {
+				if err == nil || err.Error() != tt.wantError {
+					t.Fatalf("error = %v, want %q", err, tt.wantError)
+				}
+				if tt.wantCode != "" {
+					var busErr *BusError
+					if !errors.As(err, &busErr) || busErr.Code != tt.wantCode {
+						t.Fatalf("error = %#v, want code %s", err, tt.wantCode)
+					}
+				}
+			} else {
+				var syntaxErr *json.SyntaxError
+				if !errors.As(err, &syntaxErr) {
+					t.Fatalf("error = %v, want JSON syntax error", err)
+				}
+			}
+		})
+	}
+}
