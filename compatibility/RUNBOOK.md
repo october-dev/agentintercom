@@ -30,7 +30,7 @@ Keep registration, heartbeat, execution replacement, and cleanup in the adapter.
 
 Also cancel a waiting tool call and immediately make another call; cancellation must not poison the bridge. Test duplicate-window replacement, host restart/reload, a rejected tool approval and a missing/rotated local scope token. Preserve genuine JSON arrays in host inputs; record any bridge coercion of stringified arrays. Direct HTTP remains strict. Start inbox waits at 10 seconds and separately record host startup, discovery and tool-call timeout settings.
 
-Record every host prompt, approval, limitation, result and version, plus `launchMode` (for example `config-only`, `managed` or `native-extension`) and `model` (provider and exact model ID). A model retry that corrects its own invalid tool input is allowed but must be recorded. A local doctor's 15-tool check is not a substitute for these real-host scenarios.
+Record every host prompt, approval, limitation, result and version, plus `launchMode` (for example `config-only`, `managed` or `native-extension`) and `model` (provider and exact model ID). A model retry that corrects its own invalid tool input is allowed but must be recorded. A local doctor's core-tool check is not a substitute for these real-host scenarios.
 
 ## Evidence
 
