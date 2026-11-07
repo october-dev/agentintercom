@@ -123,11 +123,15 @@ async function filesView() {
   return container;
 }
 function closePending(key) { delete pending[key]; sessionStorage.setItem(pendingKey, JSON.stringify({ ...pending, until: Date.now() + 20 * 60 * 1000 })); history.replaceState(null, '', '/app'); }
+let modalCount = 0;
 function modal(title, build) {
-  const dialog = el('dialog', {}, el('h2', {}, title));
-  const close = () => { dialog.close(); dialog.remove(); };
+  const headingId = `modal-title-${++modalCount}`;
+  const opener = document.activeElement;
+  const dialog = el('dialog', { 'aria-labelledby': headingId }, el('h2', { id: headingId }, title));
+  const close = () => dialog.close();
   dialog.append(build(close), el('div', { class: 'actions end' }, button('Close', close)));
-  dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal(); return dialog;
+  dialog.addEventListener('close', () => { dialog.remove(); if (opener?.isConnected) opener.focus(); });
+  document.body.append(dialog); dialog.showModal(); return dialog;
 }
 function secretDialog(title, value, description) {
   modal(title, () => el('div', {}, el('p', {}, description), el('pre', { class: 'secret' }, value), button('Copy', () => copy(value))));
