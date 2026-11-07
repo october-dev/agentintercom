@@ -41,7 +41,7 @@ This connects Claude Code to a local Agent Intercom daemon, with no October Desk
 
 4. Generate the peer's entry with a different agent ID and add it to that host's configuration, for example `agentintercom harness config codex --scope my-project --agent codex-builder`.
 
-5. Launch Claude Code in the project. Approve the `agent_intercom` project server and each tool through Claude Code's own prompts. Claude Code 2.1.319 starts in auto mode, which approves or blocks each tool call automatically instead of asking; press Shift+Tab to switch to manual mode if you want to approve each call yourself. To pre-approve tools, list the ones you trust (`mcp__agent_intercom__<tool>`) under `permissions.allow` in the project settings. Claude Code 2.1.286 ignores those entries until the workspace is trusted. In print mode (`claude -p`) you can pass the same names with `--allowedTools`. Do not bypass permissions. Launch the peer the same way.
+5. Launch Claude Code in the project. Approve the `agent_intercom` project server and each tool through Claude Code's own prompts. Claude Code 2.1.319 defaults to auto mode when available, handling routine tool approvals automatically. From auto mode, press Shift+Tab to switch to manual approval. To pre-approve tools, list the ones you trust (`mcp__agent_intercom__<tool>`) under `permissions.allow` in the project settings. Claude Code 2.1.286 ignores those entries until the workspace is trusted. In print mode (`claude -p`) you can pass the same names with `--allowedTools`. Do not bypass permissions. Launch the peer the same way.
 
 6. Once both agents have registered, link them and check the setup:
 
