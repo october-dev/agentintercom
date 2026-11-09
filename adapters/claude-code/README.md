@@ -79,7 +79,7 @@ A host controller that already owns the execution (October Desktop over SSH) doe
 
 Use `check_inbox` with `waitMs=1000` between work steps. The bridge registers and heartbeats outside the model loop, and attempts retirement when the host closes MCP. A hard kill relies on lease expiry. Each simultaneously connected window/project needs a distinct `--agent` ID; identical IDs deliberately replace the previous execution.
 
-The execution can end while Claude Code is still open. This happens when another window registers the same agent ID, the scope token is rotated, the lease expires (for example after a long sleep), or the daemon stops or becomes unreachable. The server then stays connected, but every tool call fails with "Agent Intercom execution ended". It never registers again by itself, so an older window cannot take the ID back from a newer one. Resolve any duplicate agent ID first. Then reconnect `agent_intercom` from `/mcp`, or restart the window, to register a new execution.
+The execution can end while Claude Code is still open. This happens when another window registers the same agent ID, the scope token is rotated, the lease expires (for example after a long sleep), or the daemon stops or becomes unreachable. The server then stays connected, but every tool call fails with "Agent Intercom execution ended". It never registers again by itself, so an older window cannot take the ID back from a newer one. If another window uses the same ID, resolve that first. Then reconnect `agent_intercom` from `/mcp`, or restart the window, to register a new execution.
 
 Remove this server entry to disconnect, and verify retirement in the Bus before reassigning work.
 
