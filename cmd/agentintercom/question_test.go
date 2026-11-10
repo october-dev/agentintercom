@@ -102,20 +102,26 @@ func TestQuestionAnswerAuthority(t *testing.T) {
 func TestQuestionCommandInputValidation(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "answer.txt")
 	requireNoError(t, os.WriteFile(file, []byte("from a file"), 0o600))
-	text, err := answerText("", file, nil)
+	text, err := textInput("", file, nil, "answer", maxAnswerBytes)
 	requireNoError(t, err)
 	require(t, text == "from a file", "wrong file answer: %q", text)
 
 	limit := strings.Repeat("a", maxAnswerBytes)
-	text, err = answerText("", "-", strings.NewReader(limit))
+	text, err = textInput("", "-", strings.NewReader(limit), "answer", maxAnswerBytes)
 	requireNoError(t, err)
 	require(t, len(text) == maxAnswerBytes, "rejected an answer at the size limit")
 
 	for name, run := range map[string]func() error{
-		"both inputs":     func() error { _, err := answerText("a", file, nil); return err },
-		"empty":           func() error { _, err := answerText("  \n", "", nil); return err },
-		"over the limit":  func() error { _, err := answerText("", "-", strings.NewReader(limit+"a")); return err },
-		"missing file":    func() error { _, err := answerText("", filepath.Join(t.TempDir(), "none"), nil); return err },
+		"both inputs": func() error { _, err := textInput("a", file, nil, "answer", maxAnswerBytes); return err },
+		"empty":       func() error { _, err := textInput("  \n", "", nil, "answer", maxAnswerBytes); return err },
+		"over the limit": func() error {
+			_, err := textInput("", "-", strings.NewReader(limit+"a"), "answer", maxAnswerBytes)
+			return err
+		},
+		"missing file": func() error {
+			_, err := textInput("", filepath.Join(t.TempDir(), "none"), nil, "answer", maxAnswerBytes)
+			return err
+		},
 		"no subcommand":   func() error { return questionCommand(nil, nil, &bytes.Buffer{}) },
 		"unknown command": func() error { return questionCommand([]string{"delete"}, nil, &bytes.Buffer{}) },
 		"answer without id": func() error {

@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -18,9 +17,9 @@ import (
 // The server's limit for an answer (validateText in bus/runtime.go).
 const maxAnswerBytes = 16384
 
-// Questions are answered with the local workspace owner credential, the same
-// authority the workspace UI uses. An agent execution credential is never
-// read here, so an agent cannot answer its own question through this command.
+// Questions are answered with the local workspace owner credential. An agent
+// execution credential is never read here and the server refuses one, so an
+// agent's own credential cannot answer its question.
 func questionCommand(args []string, in io.Reader, out io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("question requires a subcommand: list or answer")
@@ -107,7 +106,7 @@ func answerQuestion(args []string, in io.Reader, out io.Writer) error {
 	if flags.NArg() != 0 || *workspace == "" || *id == "" {
 		return errors.New("question answer requires --workspace <name> --id <question-id> and no positional arguments")
 	}
-	text, err := answerText(*answer, *file, in)
+	text, err := textInput(*answer, *file, in, "answer", maxAnswerBytes)
 	if err != nil {
 		return err
 	}
@@ -126,31 +125,4 @@ func answerQuestion(args []string, in io.Reader, out io.Writer) error {
 	}
 	_, err = fmt.Fprintf(out, "Answered %s. The agent %s receives the answer in its inbox.\n", resolved.ID, resolved.AgentID)
 	return err
-}
-
-// answerText reads the answer from exactly one of --answer or --answer-file, so
-// a private answer can come from a file or stdin instead of shell history.
-func answerText(answer, file string, input io.Reader) (string, error) {
-	if file != "" {
-		if answer != "" {
-			return "", errors.New("use either --answer or --answer-file")
-		}
-		if file != "-" {
-			f, err := os.Open(file)
-			if err != nil {
-				return "", err
-			}
-			defer f.Close()
-			input = f
-		}
-		data, err := io.ReadAll(io.LimitReader(input, maxAnswerBytes+1))
-		if err != nil {
-			return "", err
-		}
-		answer = string(data)
-	}
-	if strings.TrimSpace(answer) == "" || len(answer) > maxAnswerBytes {
-		return "", fmt.Errorf("answer must contain 1 to %d bytes; use --answer or --answer-file (use - for stdin)", maxAnswerBytes)
-	}
-	return answer, nil
 }

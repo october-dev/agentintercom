@@ -133,9 +133,12 @@ scripts. The agent receives the answer in its inbox and sees the question as
 resolved.
 
 These commands use the local workspace owner credential, never an agent
-credential, so an agent cannot answer its own question. Question text and choices
-come from the agent and are printed quoted, so they cannot control your terminal.
-Choices are suggestions; the answer is free text.
+credential: an agent's own credential cannot answer its question. Like the
+other local owner commands, they can be run by anything running as your OS
+user, including an agent with shell access; see the
+[threat model](threat-model.md). Question text and choices come from the agent
+and are printed quoted, so they cannot control your terminal. Choices are
+suggestions; the answer is free text.
 
 ## Start a Claude Code session with native wake
 

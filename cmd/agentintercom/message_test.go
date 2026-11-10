@@ -59,6 +59,6 @@ func TestMessageCLIRefusesUnsafeConnectionsAndOversizeInput(t *testing.T) {
 		_, err := executionClient(address)
 		require(t, err != nil, "unsafe credential destination accepted: %s", address)
 	}
-	_, err := messageBody("", "-", strings.NewReader(strings.Repeat("x", 65537)))
+	_, err := textInput("", "-", strings.NewReader(strings.Repeat("x", maxBodyBytes+1)), "body", maxBodyBytes)
 	require(t, err != nil, "accepted an oversized stdin message")
 }
