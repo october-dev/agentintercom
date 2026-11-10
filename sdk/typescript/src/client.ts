@@ -59,6 +59,42 @@ export interface OperationOptions {
   timeoutMs?: number
 }
 
+export interface DownloadAttachmentOptions extends OperationOptions {
+  /** Bytes requested per chunk, 1 to 524288 (the server maximum). Defaults to 65536. */
+  chunkSize?: number
+}
+
+export interface DownloadedAttachment {
+  attachment: Attachment
+  /** The complete attachment, verified against its size and SHA-256. */
+  data: Uint8Array
+}
+
+const MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
+const MAX_ATTACHMENT_CHUNK_BYTES = 512 * 1024
+
+function downloadFailure(reason: string): never {
+  throw new BusError('INTERNAL', `Attachment download failed: ${reason}`)
+}
+
+function decodeBase64(value: unknown): Uint8Array {
+  if (typeof value !== 'string') downloadFailure('chunk data is missing')
+  let binary: string
+  try {
+    binary = atob(value)
+  } catch {
+    downloadFailure('chunk data is not valid base64')
+  }
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+  return bytes
+}
+
+async function sha256Hex(data: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data))
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 export interface InboxReservationOptions extends OperationOptions {
   waitMs?: number
 }
@@ -549,6 +585,49 @@ export class AgentIntercomClient {
   }
   readAttachment(id: string, offset = 0, limit = 65536, options?: OperationOptions): Promise<AttachmentContent> {
     return request(this.address, this.agentToken, 'GET', `/v1/attachments/${encodeURIComponent(id)}?offset=${offset}&limit=${limit}`, undefined, options)
+  }
+  /**
+   * Downloads a complete attachment with `readAttachment()` chunks and verifies it:
+   * the same attachment ID, contiguous offsets, unchanged size and checksum, a
+   * continuation that advances exactly, the final byte count, and SHA-256. It
+   * refuses an attachment over 16 MiB before reading its bytes, and stops without
+   * requesting another chunk once `signal` is aborted. `timeoutMs` applies to each
+   * chunk request. Nothing is written to disk.
+   */
+  async downloadAttachment(id: string, options: DownloadAttachmentOptions = {}): Promise<DownloadedAttachment> {
+    const { chunkSize = 65536, ...requestOptions } = options
+    if (!Number.isInteger(chunkSize) || chunkSize < 1 || chunkSize > MAX_ATTACHMENT_CHUNK_BYTES) {
+      throw new BusError('INVALID_ARGUMENT', `chunkSize must be an integer from 1 to ${MAX_ATTACHMENT_CHUNK_BYTES}`)
+    }
+    let metadata: Attachment | undefined
+    let data: Uint8Array<ArrayBuffer> = new Uint8Array(0)
+    let offset = 0
+    for (;;) {
+      // request() never sends once the signal is aborted, so cancellation stops
+      // the loop before another chunk is requested.
+      const chunk = await this.readAttachment(id, offset, chunkSize, requestOptions)
+      if (chunk.attachment?.id !== id || chunk.offset !== offset) downloadFailure('attachment ID or offset changed')
+      if (metadata === undefined) {
+        const { size, sha256 } = chunk.attachment
+        if (!Number.isSafeInteger(size) || size < 0 || size > MAX_ATTACHMENT_BYTES) {
+          downloadFailure('size is outside the 16 MiB attachment bound')
+        }
+        if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(sha256)) downloadFailure('checksum is malformed')
+        metadata = chunk.attachment
+        data = new Uint8Array(size)
+      } else if (chunk.attachment.size !== metadata.size || chunk.attachment.sha256?.toLowerCase() !== metadata.sha256.toLowerCase()) {
+        downloadFailure('size or checksum changed during the download')
+      }
+      const bytes = decodeBase64(chunk.dataBase64)
+      if (offset + bytes.length > metadata.size) downloadFailure('received more bytes than the attachment size')
+      data.set(bytes, offset)
+      offset += bytes.length
+      if (chunk.nextOffset === undefined || chunk.nextOffset === null) break
+      if (bytes.length === 0 || chunk.nextOffset !== offset) downloadFailure('invalid continuation offset')
+    }
+    if (offset !== metadata.size) downloadFailure(`received ${offset} of ${metadata.size} bytes`)
+    if ((await sha256Hex(data)) !== metadata.sha256.toLowerCase()) downloadFailure('SHA-256 does not match')
+    return { attachment: metadata, data }
   }
   async deleteAttachment(id: string, options?: OperationOptions): Promise<void> {
     await request(this.address, this.agentToken, 'DELETE', `/v1/attachments/${encodeURIComponent(id)}`, undefined, options)
