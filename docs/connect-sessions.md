@@ -117,6 +117,29 @@ supported native integration. Connection and receipt status must not be
 interpreted as proof the model is working. No named-client qualification or
 hosted OAuth support is claimed by generating configuration.
 
+## Answer an agent's question
+
+When an agent calls `ask_user`, the question waits for the workspace owner. On a
+headless machine you can answer it from a terminal:
+
+```sh
+agentintercom question list --workspace my-project
+agentintercom question answer --workspace my-project --id <question-id> --answer "Yes, deploy after the tests pass"
+```
+
+To keep a private answer out of shell history, use `--answer-file <file>`, or
+`--answer-file -` to read it from stdin. Add `--json` to either command for
+scripts. The agent receives the answer in its inbox and sees the question as
+resolved.
+
+These commands use the local workspace owner credential, never an agent
+credential: an agent's own credential cannot answer its question. Like the
+other local owner commands, they can be run by anything running as your OS
+user, including an agent with shell access; see the
+[threat model](threat-model.md). Question text and choices come from the agent
+and are printed quoted, so they cannot control your terminal. Choices are
+suggestions; the answer is free text.
+
 ## Start a Claude Code session with native wake
 
 On macOS, Linux or WSL, after installing and signing in to Claude Code:
