@@ -50,6 +50,8 @@ Usage:
   agentintercom workspace list [--json]
   agentintercom connect --workspace <name> [--name <session-label>] [--format json|toml|entry] [--output <new-file>]
   agentintercom sessions --workspace <name> [--json]
+  agentintercom question list --workspace <name> [--json]
+  agentintercom question answer --workspace <name> --id <question-id> (--answer <text> | --answer-file <file|->) [--json]
   agentintercom start [--port <port>]
   agentintercom stop
   agentintercom status
@@ -1063,6 +1065,8 @@ func run() error {
 		return connectCommand(args[1:], os.Stdout)
 	case "sessions":
 		return sessionsCommand(args[1:], os.Stdout)
+	case "question":
+		return questionCommand(args[1:], os.Stdin, os.Stdout)
 	case "start":
 		return start(args[1:])
 	case "gateway":

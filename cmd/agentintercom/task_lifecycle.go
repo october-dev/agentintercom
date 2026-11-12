@@ -93,9 +93,14 @@ func completeTask(args []string, in io.Reader, out io.Writer) error {
 	if flags.NArg() != 0 || *id == "" {
 		return errors.New("task complete requires --id <task-id> and no positional arguments")
 	}
-	text, err := inputText(*note, *noteFile, in, "--note", maxTaskNoteBytes, false)
-	if err != nil {
-		return err
+	// The completion note is optional; only read input when the caller gave some.
+	text := ""
+	if *note != "" || *noteFile != "" {
+		var err error
+		text, err = textInput(*note, *noteFile, in, "note", maxTaskNoteBytes)
+		if err != nil {
+			return err
+		}
 	}
 	client, err := executionClient(*address)
 	if err != nil {
@@ -131,7 +136,7 @@ func addTaskProgress(args []string, in io.Reader, out io.Writer) error {
 	if *kind != "progress" && *kind != "note" && *kind != "blocker" {
 		return errors.New("--kind must be progress, note, or blocker")
 	}
-	body, err := inputText(*text, *textFile, in, "--text", maxTaskProgressBytes, true)
+	body, err := textInput(*text, *textFile, in, "text", maxTaskProgressBytes)
 	if err != nil {
 		return err
 	}

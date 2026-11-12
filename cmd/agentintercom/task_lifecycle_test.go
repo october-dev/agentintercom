@@ -163,25 +163,22 @@ func TestTaskCLIAddAndListInsideAnAgentSession(t *testing.T) {
 }
 
 func TestTaskCLIInputValidation(t *testing.T) {
-	text, err := inputText("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes)), "--text", maxTaskProgressBytes, true)
+	text, err := textInput("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes)), "text", maxTaskProgressBytes)
 	requireNoError(t, err)
 	require(t, len(text) == maxTaskProgressBytes, "rejected text at the limit")
-	note, err := inputText("", "", nil, "--note", maxTaskNoteBytes, false)
-	requireNoError(t, err)
-	require(t, note == "", "an omitted note must stay empty")
 
 	for name, run := range map[string]func() error{
 		"both inputs": func() error {
-			_, err := inputText("a", "-", strings.NewReader("b"), "--text", maxTaskProgressBytes, true)
+			_, err := textInput("a", "-", strings.NewReader("b"), "text", maxTaskProgressBytes)
 			return err
 		},
 		"over the limit": func() error {
-			_, err := inputText("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes+1)), "--text", maxTaskProgressBytes, true)
+			_, err := textInput("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes+1)), "text", maxTaskProgressBytes)
 			return err
 		},
-		"empty progress": func() error { _, err := inputText(" \n", "", nil, "--text", maxTaskProgressBytes, true); return err },
+		"empty progress": func() error { _, err := textInput(" \n", "", nil, "text", maxTaskProgressBytes); return err },
 		"missing file": func() error {
-			_, err := inputText("", filepath.Join(t.TempDir(), "none"), nil, "--note", maxTaskNoteBytes, false)
+			_, err := textInput("", filepath.Join(t.TempDir(), "none"), nil, "note", maxTaskNoteBytes)
 			return err
 		},
 		"progress without subcommand": func() error { return taskLifecycleCommand("progress", nil, nil, &bytes.Buffer{}) },
@@ -200,7 +197,7 @@ func TestTaskCLIInputValidation(t *testing.T) {
 		"progress add --text x":      "requires --id",
 		"progress list --id t extra": "requires --id",
 		"progress add --id t --kind done --text x": "--kind must be",
-		"progress add --id t":                      "text is required",
+		"progress add --id t":                      "text must contain 1 to",
 		"complete --id t --note a --note-file -":   "use either --note or --note-file",
 	} {
 		fields := strings.Fields(args)

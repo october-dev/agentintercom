@@ -42,13 +42,17 @@ func executionClient(address string) (bus.Client, error) {
 		HTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: refuseMCPRedirect}}, nil
 }
 
-// inputText reads text from exactly one of an inline flag or its file flag
-// ("-" is stdin), so private text can stay out of shell history. name is the
-// inline flag, for example "--body"; limit is the server's byte limit.
-func inputText(inline, file string, input io.Reader, name string, limit int, required bool) (string, error) {
+// The server's limit for a message or channel post body (validateText calls in
+// bus/runtime.go and bus/channels.go).
+const maxBodyBytes = 65536
+
+// textInput returns the text given inline or through the matching file flag,
+// where - reads stdin so private text stays out of shell history. name is the
+// inline flag's name and limit is the server's byte limit for that field.
+func textInput(text, file string, input io.Reader, name string, limit int) (string, error) {
 	if file != "" {
-		if inline != "" {
-			return "", fmt.Errorf("use either %s or %s-file", name, name)
+		if text != "" {
+			return "", fmt.Errorf("use either --%s or --%s-file", name, name)
 		}
 		if file != "-" {
 			f, err := os.Open(file)
@@ -62,15 +66,12 @@ func inputText(inline, file string, input io.Reader, name string, limit int, req
 		if err != nil {
 			return "", err
 		}
-		inline = string(data)
+		text = string(data)
 	}
-	if len(inline) > limit {
-		return "", fmt.Errorf("%s must be at most %d bytes", strings.TrimPrefix(name, "--"), limit)
+	if strings.TrimSpace(text) == "" || len(text) > limit {
+		return "", fmt.Errorf("%s must contain 1 to %d bytes; use --%s or --%s-file (use - for stdin)", name, limit, name, name)
 	}
-	if required && strings.TrimSpace(inline) == "" {
-		return "", fmt.Errorf("%s is required; use %s or %s-file (use - for stdin)", strings.TrimPrefix(name, "--"), name, name)
-	}
-	return inline, nil
+	return text, nil
 }
 
 func sendMessageCommand(args []string, in io.Reader, out io.Writer) error {
@@ -102,7 +103,7 @@ func sendMessageCommand(args []string, in io.Reader, out io.Writer) error {
 	if *expiry < 0 || *expiry > 30*24*time.Hour || (*expiry > 0 && expiry.Milliseconds() == 0) {
 		return errors.New("--expires must be zero or between 1ms and 720h")
 	}
-	text, err := inputText(*body, *file, in, "--body", 65536, true)
+	text, err := textInput(*body, *file, in, "body", maxBodyBytes)
 	if err != nil {
 		return err
 	}
