@@ -70,8 +70,10 @@ Usage:
   agentintercom scope prune --before <timestamp> [--yes] [--json] [--address <addr>]
   agentintercom message send --to <session-id> --body <text> [--mode request] [--reply-to <message-id>] [--key <retry-key>] [--json]
   agentintercom inbox [--follow] [--limit <count>] [--wait 25s] [--json]
+  agentintercom inbox inject [--connection-file <path>] [--address <addr>] [--wait <ms>] [--ack] [--json]
   agentintercom message ack <message-id> [--json]
   agentintercom message receipt <message-id> [--json] [--address <addr>]
+  agentintercom watch --scope <scope-id> [--agent <id>] [--type <prefix>] [--from <rev>] [--once]
   agentintercom agent list [--json] [--address <addr>]
   agentintercom link --scope <scope-id> <agent-a> <agent-b>
   agentintercom agent run --id <id> --name <name> [--scope <local-scope-id>] [--connect-to <peer>] -- <command> [args...]
@@ -1104,7 +1106,12 @@ func run() error {
 		}
 	case "backup":
 		return backupDatabase(args[1:])
+	case "watch":
+		return runWatch(args[1:])
 	case "inbox":
+		if len(args) >= 2 && args[1] == "inject" {
+			return runInboxInject(args[2:])
+		}
 		return inboxCommand(args[1:], os.Stdout)
 	case "message":
 		if len(args) >= 2 && args[1] == "send" {

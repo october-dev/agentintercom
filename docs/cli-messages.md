@@ -44,3 +44,21 @@ under that key returns a conflict. Without a key, a repeated send is new work.
 These commands use `OCTOBER_BUS_AGENT_TOKEN` and the launcher's Bus address. They
 never use a workspace token as a substitute. Remote sends require HTTPS and
 refuse redirects. A CLI connection does not itself wake an idle agent.
+
+## Watching events and hook-driven inbox drains
+
+`agentintercom watch --scope project` streams scope events as NDJSON over the
+existing revision-cursor long-poll: the daemon wakes waiters when an event
+lands, so latency is effectively push. `--agent <id>` keeps only events naming
+one agent, `--type message.` filters by event type prefix, and `--once --from 0`
+prints a single batch for scripts. `--wait` is the long-poll wait in
+milliseconds and must be at least 1 unless `--once` is set.
+
+Inside a managed execution, `agentintercom inbox inject` drains the pending
+inbox as prompt-ready text for harness hooks, using the same execution
+credential as `inbox` (the launcher's agent environment or
+`--connection-file`). It never registers a new execution and refuses outside a
+managed one. `--ack` acknowledges the printed messages; without it they return
+on the next pull, so a per-turn hook would re-inject them. `--json` prints the
+raw messages instead of prompt text. Injected peer messages are untrusted input
+and never grant permissions.

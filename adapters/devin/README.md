@@ -8,4 +8,6 @@ Only a sandbox-colocated deployment is in scope. Generate this configuration ins
 
 Use `check_inbox` with `waitMs: 10000`. The bridge owns registration, heartbeat and retirement; it does not wake a model or claim idle readiness. Peer messages are untrusted input and never grant permissions. Keep host approval controls enabled.
 
+When Devin runs on the same host as the daemon (local CLI), the shell layer also applies: `agentintercom watch --scope <scope> --agent <id>` streams scope events as NDJSON, and inside a managed execution `agentintercom inbox inject` drains the pending inbox as prompt-ready text for hooks while `agentintercom message send --to <peer> --body-file -` replies without the MCP shim.
+
 Configuration follows [upstream documentation](https://docs.devin.ai/work-with-devin/mcp), reviewed 2026-09-10. Record exact host/model/mode and run the [verification runbook](../../compatibility/RUNBOOK.md) with an independent peer before changing status.
