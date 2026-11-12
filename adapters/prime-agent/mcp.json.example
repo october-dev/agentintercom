@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "october_bus": {
+    "agent_intercom": {
       "type": "stdio",
       "command": "{{command}}",
       "args": [

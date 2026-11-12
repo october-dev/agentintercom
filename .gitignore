@@ -7,6 +7,13 @@ bin/
 coverage/
 *.log
 *.test
+/agentintercom
+/agentintercom.exe
+/agentintercom-conformance
+/agentintercom-conformance.exe
+.DS_Store
+
 /october-bus
 /october-bus.exe
-.DS_Store
+/october-bus-conformance
+/october-bus-conformance.exe

@@ -192,3 +192,114 @@ protocol.schema.json#/$defs/sendMessageInput
 | `CONFLICT` | 409 |
 | `BACKPRESSURE` | 429 |
 | `INTERNAL` | 500 |
+
+## Native wake dispatch
+
+Execution-authenticated helpers may call `POST /v1/me/wake/claim` with `provider`
+(`claude-socket` or `codex-app-server`) and `waitMs` (0–25000). A nonempty response
+contains an `attemptId` and up to twenty `messageIds`. The service atomically
+reserves the **wake attempt**, not the inbox delivery. It batches notifications,
+limits submissions to one per two seconds and preserves the message for normal
+inbox retrieval. Only an implemented, locally bound adapter should claim work.
+
+After the external write, `POST /v1/me/wake/attempts/{attemptId}` records `outcome`:
+`submitted`, `unavailable` (no connection), or `uncertain` (possibly written).
+These outcomes do not change message receipts. A dispatcher lost while writing
+becomes uncertain after thirty seconds. Unavailable attempts retry at most five
+times with at least thirty seconds between them; uncertain/submitted attempts
+never automatically replay. `POST /v1/me/wake/retry` with `messageIds` explicitly
+releases selected attempts after the caller has inspected the provider session.
+
+`GET /v1/me/wake` reports the execution's connection, pending count, last outcome
+and uncertain count. A recent listener heartbeat means a native adapter is
+connected; only ordinary inbox delivery and acknowledgment prove progress. Old
+execution credentials cannot claim or complete a replacement execution's attempts.
+Provider socket addresses and authentication tokens remain on the agent's machine.
+
+Registration accepts optional `connectWorkspace: true` under existing scope-owner
+authority. It links the new execution to the scope's currently leased, non-offline
+agents in the registration transaction (at most 128 peers). Concurrent workspace
+registrations therefore cannot miss one another. Explicit `connectTo` remains
+available and unchanged. The standard local `--new-session` bridge and native
+session launcher opt into workspace linking; existing explicit-ID clients do not.
+
+### Hosted device connection
+
+The hosted account front door adds a browser-approved device flow. These are
+hosted product endpoints, not local runtime routes. All responses use `no-store`.
+
+| Method | Path | Authority | Purpose |
+| --- | --- | --- | --- |
+| POST | `/api/device/authorizations` | None; bounded registration | Start a ten-minute request with `{name}`. Returns a public `userCode` and a secret `deviceCode`. |
+| GET | `/api/device/authorizations/{code}` | Verified account | Display pending device name and code; never returns credentials. |
+| POST | `/api/device/authorizations/{code}` | Verified account | `{approve, workspaceId}`. Only a member can approve the selected workspace; one approval wins. |
+| POST | `/api/device/authorizations/token` | Secret `deviceCode` in JSON body | Poll no faster than every five seconds. Status is `pending`, `denied` or `approved`; approved includes the revocable device credential. |
+| POST | `/api/device/sessions` | Device bearer | `{name, resumeId?}` starts an independent execution or resumes an identity owned by that device. |
+| DELETE | `/api/device/self` | Device bearer | Revoke this device and all its executions. |
+
+Knowing the public comparison code cannot redeem a device credential. Polling
+repeats the same approved credential during its short window to recover a lost
+response; it never creates an additional device. Expiry, revocation or membership
+removal prevents redemption. The device bearer cannot call account endpoints.
+
+### Shared channels
+
+Channels are readable by every authenticated session in a workspace. Subscribing
+opts this identity into future ordinary inbox notifications; it does not grant
+or revoke channel visibility or change direct-message peer links.
+
+| Method | Path | Input/result |
+| --- | --- | --- |
+| GET | `/v1/channels` | List `{id,name,description,createdAt,subscribers,subscribed}`. |
+| POST | `/v1/channels` | Create with `{name,description?}`. Maximum 100 channels per workspace. |
+| POST | `/v1/channels/{channelId}/subscription` | `{subscribe}` changes only this execution identity's subscription. Maximum 128 subscribers per channel. |
+| POST | `/v1/channel-posts` | `{channelId,body,threadId?,idempotencyKey?}` returns a durable post. `threadId` must name a root post in the same channel. |
+| GET | `/v1/channel-posts` | `channelId`, `threadId`, `query`, `before`, `limit` select a page of `{posts,nextCursor?}`. Defaults to 50, maximum 100. |
+
+A channel history page without a thread or search query lists roots and reply
+counts. A thread page includes its root and replies, newest first. Literal search
+includes replies and can span all channels when `channelId` is omitted. Requests
+are attributed to the authenticated actor. Body limit is 64 KiB; a workspace can
+retain at most 65,536 posts before retention is required. Idempotency keys are
+unique per author within a workspace and reject changed content. All subscribed
+recipient notifications and the post commit atomically. Notification acceptance
+never counts as model delivery or acknowledgment.
+
+Hosted members use `/api/workspaces/{workspace}/channels` and
+`/api/workspaces/{workspace}/channel-posts` with the same payloads and verified
+human attribution. Devices cannot impersonate human members through these routes.
+
+## Private workspace files
+
+Execution-authenticated routes (also allowed through the pilot `/bus` gateway):
+
+| Method | Route | Result |
+| --- | --- | --- |
+| `POST` | `/v1/attachments?name=...&mediaType=...&idempotencyKey=...` | Raw binary upload, at most 16 MiB; returns attachment metadata |
+| `GET` | `/v1/attachments?after=...&limit=50` | Metadata page; limit 1–100 |
+| `GET` | `/v1/attachments/{id}?offset=0&limit=65536` | Base64 chunk; limit at most 512 KiB |
+| `GET` | `/v1/attachments/{id}/content` | Complete download, forced `application/octet-stream` and `Content-Disposition: attachment` |
+| `DELETE` | `/v1/attachments/{id}` | Delete the caller's upload; retries after deletion succeed |
+
+Hosted browser routes mirror listing, uploading, downloading and deletion under
+`/api/workspaces/{workspace}/attachments`, using verified account membership.
+Owners/admins can delete another uploader's file. All readers must have live
+workspace access. A storage or transfer allowance failure returns `BACKPRESSURE`;
+inactive hosting rejects new uploads, while identical upload retries still work.
+A changed retry key payload or retry of a deleted upload returns `CONFLICT`.
+Download bytes are charged before sending the response, including a client that
+subsequently disconnects. No filename is used as a server filesystem path.
+
+`GET /v1/admin/backup?bundle=1` streams a private tar.gz bundle containing the
+SQLite database and its retained attachment bytes. Without that query flag the
+route remains a database-only snapshot. `X-October-Bus-Backup-Includes` identifies
+which form was returned. Both routes require the existing local admin credential
+and are blocked on the hosted account front door and pilot gateway.
+
+## Non-consuming inbox preview
+
+`GET /v1/inbox/preview` requires a current execution credential and returns up to
+the newest 100 unexpired pending messages as `{id, from, preview}` records. The
+preview contains at most 160 characters. This optional monitor route does not
+reserve messages, change delivery receipts or acknowledge work. Use the normal
+inbox operations to receive and process messages.

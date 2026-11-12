@@ -14,7 +14,7 @@ func TestEveryConfigurationRendersWithoutCredentials(t *testing.T) {
 	if len(all) < 28 {
 		t.Fatal("expected the reviewed MCP host configurations")
 	}
-	values := map[string]string{"command": `C:\Bus With Spaces\october-bus.exe`, "scope": "project", "agent": "editor", "name": `Reviewer "One"`, "dataDir": `C:\User Data\bus`, "runtimeDir": `C:\User Data\run`}
+	values := map[string]string{"command": `C:\Bus With Spaces\agentintercom.exe`, "scope": "project", "agent": "editor", "name": `Reviewer "One"`, "dataDir": `C:\User Data\bus`, "runtimeDir": `C:\User Data\run`}
 	for _, manifest := range all {
 		if manifest.Configuration == nil {
 			continue

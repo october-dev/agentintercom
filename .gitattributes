@@ -1,0 +1,2 @@
+# Minified JavaScript may contain literal whitespace inside template strings.
+bus/hostedweb/app.js whitespace=-blank-at-eol linguist-generated=true

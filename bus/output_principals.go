@@ -41,7 +41,7 @@ func validateOutputPermissions(values []OutputPermission) ([]OutputPermission, e
 }
 
 func (s *Store) CreateOutputPrincipal(ctx context.Context, scopeID string, input CreateOutputPrincipalInput) (IssuedOutputPrincipal, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return IssuedOutputPrincipal{}, err
 	}
@@ -110,7 +110,7 @@ ORDER BY c.created_at,c.credential_id,g.permission`, scopeID, outputStreamResour
 	return principals, rows.Err()
 }
 
-func outputPrincipalDetails(ctx context.Context, tx *sql.Tx, scopeID, principalID string) (scopedCredentialRecord, string, []OutputPermission, error) {
+func outputPrincipalDetails(ctx context.Context, tx sqlExecutor, scopeID, principalID string) (scopedCredentialRecord, string, []OutputPermission, error) {
 	record, err := scanScopedCredential(tx.QueryRowContext(ctx, `SELECT `+scopedCredentialColumns+` FROM scoped_credentials WHERE scope_id=? AND credential_id=?`, scopeID, principalID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return scopedCredentialRecord{}, "", nil, Errorf(CodeNotFound, "Output principal was not found")
@@ -147,7 +147,7 @@ func outputPrincipalDetails(ctx context.Context, tx *sql.Tx, scopeID, principalI
 }
 
 func (s *Store) RotateOutputPrincipal(ctx context.Context, scopeID, principalID string) (IssuedOutputPrincipal, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return IssuedOutputPrincipal{}, err
 	}
@@ -173,7 +173,7 @@ func (s *Store) RotateOutputPrincipal(ctx context.Context, scopeID, principalID 
 }
 
 func (s *Store) SetOutputPrincipalEnabled(ctx context.Context, scopeID, principalID string, enabled bool) (OutputPrincipal, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return OutputPrincipal{}, err
 	}

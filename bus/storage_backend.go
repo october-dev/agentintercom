@@ -1,16 +1,23 @@
 package bus
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 type StorageBackend string
 
-const StorageBackendSQLite StorageBackend = "sqlite"
+const (
+	StorageBackendSQLite   StorageBackend = "sqlite"
+	StorageBackendPostgres StorageBackend = "postgres"
+)
 
 type storageBackend interface {
 	Backend() StorageBackend
 	Ping(context.Context) error
 	Close() error
 	Backup(context.Context, string) error
+	BackupBundle(context.Context, io.Writer) error
 
 	CreateScope(context.Context, string) (CreateScopeResult, error)
 	ListScopes(context.Context) ([]ScopeInfo, error)
@@ -28,9 +35,26 @@ type storageBackend interface {
 	LinkAgents(context.Context, string, string, string) error
 	ListPeers(context.Context, Principal) ([]Agent, error)
 
+	ClaimWake(context.Context, Principal, string) (WakeBatch, error)
+	FinishWake(context.Context, Principal, string, string) error
+	WakeStatus(context.Context, Principal) (WakeStatus, error)
+	RetryWake(context.Context, Principal, []string) error
+
+	CreateChannel(context.Context, string, CreateChannelInput) (Channel, error)
+	Channels(context.Context, string) ([]Channel, error)
+	SubscribeChannel(context.Context, Principal, string, bool) error
+	PostChannel(context.Context, string, PostChannelInput) (ChannelPost, error)
+	ChannelHistory(context.Context, string, ChannelHistoryInput) (ChannelPostPage, error)
+	UploadAttachment(context.Context, string, UploadAttachmentInput, []byte) (Attachment, error)
+	Attachments(context.Context, string, string, int) (AttachmentPage, error)
+	ReadAttachment(context.Context, string, string, int64, int) (AttachmentContent, error)
+	DeleteAttachment(context.Context, string, string) error
+	CollectAttachmentGarbage(context.Context) (int, error)
+
 	SendMessage(context.Context, Principal, SendMessageInput) (DeliveryReceipt, error)
 	Receipt(context.Context, Principal, string) (DeliveryReceipt, error)
 	ReserveInbox(context.Context, Principal, int) (*InboxReservation, error)
+	PreviewInbox(context.Context, Principal) ([]InboxNotice, error)
 	NextInboxReservationExpiry(context.Context, Principal) (int64, error)
 	CommitInbox(context.Context, Principal, string) ([]Message, error)
 	ReleaseInbox(context.Context, Principal, string) error

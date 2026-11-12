@@ -9,12 +9,12 @@ placeholders (32 zero bytes); no authority accepts them.
 | File | Written by | Purpose |
 | --- | --- | --- |
 | `connection.json` | controller, atomically renewed | The execution's connection record; see [managed connections](../../docs/managed-connections.md). |
-| `claude.settings.json` | controller, per launch | Claude Code hooks pointing at `october-bus hook <event>` plus the MCP tool allowance. |
-| `claude.mcp.json` | controller, per launch | Claude Code MCP server entry running `october-bus mcp stdio --connection-file`. |
-| `codex.hooks.json` | controller, per trusted project | Codex hooks pointing at `october-bus hook <event> codex`. |
+| `claude.settings.json` | controller, per launch | Claude Code hooks pointing at `agentintercom hook <event>` plus the MCP tool allowance. |
+| `claude.mcp.json` | controller, per launch | Claude Code MCP server entry running `agentintercom mcp stdio --connection-file`. |
+| `codex.hooks.json` | controller, per trusted project | Codex hooks pointing at `agentintercom hook <event> codex`. |
 | `codex.config.toml` | controller, per trusted project | Codex MCP server entry; identity comes from `OCTOBER_BUS_CONNECTION_FILE` in the tmux session environment. |
 
-Replace `/home/worker/.october/servers/<install>/current/bin/october-bus` with the
+Replace `/home/worker/.october/servers/<install>/current/bin/agentintercom` with the
 installed helper path and `/home/worker/.october/executions/<execution>/connection.json`
 with the private per-execution file. The directory must be mode `0700` and the
 file mode `0600`.
@@ -22,16 +22,16 @@ file mode `0600`.
 Exercise the contract locally. The helper refuses shared files, so copy the
 record into an owner-only directory first. Nothing listens on the example port,
 so the expected outcome is `unreachable` from the check (exit 1) and one
-`october-bus hook: unreachable: ...` stderr line from the hook (exit 0):
+`agentintercom hook: unreachable: ...` stderr line from the hook (exit 0):
 
 ```sh
 FIX="$(mktemp -d)/private"
 install -d -m 0700 "$FIX" && install -m 0600 connection.json "$FIX/connection.json"
-october-bus mcp check --connection-file "$FIX/connection.json" --json
-echo '{"session_id":"s","cwd":"/work"}' | OCTOBER_BUS_CONNECTION_FILE="$FIX/connection.json" october-bus hook session-start
-echo '{}' | october-bus hook session-start   # unbound: silent, exit 0, no network
+agentintercom mcp check --connection-file "$FIX/connection.json" --json
+echo '{"session_id":"s","cwd":"/work"}' | OCTOBER_BUS_CONNECTION_FILE="$FIX/connection.json" agentintercom hook session-start
+echo '{}' | agentintercom hook session-start   # unbound: silent, exit 0, no network
 ```
 
 The Go test `TestHookClaudePrePromptPullsAndAcknowledges` and its siblings in
-`cmd/october-bus/hook_test.go` run the same commands against a recording
+`cmd/agentintercom/hook_test.go` run the same commands against a recording
 controller and assert every route, header and stdout envelope.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -51,6 +52,7 @@ type Server struct {
 	// credentialRequests keeps header-only classification probes from
 	// competing with long-lived requests (inbox waits) or local heartbeats.
 	credentialRequests chan struct{}
+	stopMaintenance    func()
 }
 
 type mcpTokenKey struct{}
@@ -102,6 +104,7 @@ func (s *Server) Start() (string, error) {
 		return "", err
 	}
 	s.listener = listener
+	s.stopMaintenance = s.runtime.StartMaintenance()
 	s.address = "http://" + listener.Addr().String()
 	go func() {
 		err := s.httpServer.Serve(listener)
@@ -130,6 +133,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	var stopErr error
 	s.closeOnce.Do(func() {
 		s.cancelWaits()
+		if s.stopMaintenance != nil {
+			s.stopMaintenance()
+		}
 		if s.listener != nil {
 			stopErr = s.httpServer.Shutdown(ctx)
 		}
@@ -212,6 +218,11 @@ func writeResult(response http.ResponseWriter, status int, result any) {
 
 func writeFailure(response http.ResponseWriter, err error) {
 	failure := AsBusError(err)
+	if failure.Code == CodeInternal {
+		if state := databaseErrorState(err); state != "" {
+			log.Printf("Agent Intercom database operation failed (SQLSTATE %s)", state)
+		}
+	}
 	writeJSON(response, ErrorStatus(failure), map[string]any{
 		"ok":    false,
 		"error": map[string]any{"code": failure.Code, "message": failure.Message},
@@ -240,8 +251,8 @@ func (s *Server) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 type emptyInput struct{}
 
 func (s *Server) newMCPServer(token string) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "october-bus", Version: Version}, nil)
-	mcp.AddTool(server, &mcp.Tool{Name: "list_peers", Description: "List linked agents and their capabilities."},
+	server := mcp.NewServer(&mcp.Implementation{Name: "agentintercom", Version: Version}, nil)
+	mcp.AddTool(server, busTool("list_peers", "Find a recipient before sending work. Reads linked agents, display names and capabilities without changing their state. Returns exact IDs for unambiguous addressing."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 			peers, err := s.runtime.ListPeers(ctx, token)
 			return nil, map[string]any{"peers": peers}, err
@@ -255,7 +266,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 		ExpiresInMS    int64         `json:"expiresInMs,omitempty"`
 		Context        []ContextItem `json:"context,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "message_peer", Description: "Send a durable notification, request, or response to a linked peer."},
+	mcp.AddTool(server, busTool("message_peer", "Send a durable notification, request, or response to a linked peer."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input messagePeerInput) (*mcp.CallToolResult, any, error) {
 			to := input.Peer
 			if input.Mode != MessageResponse {
@@ -275,7 +286,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 		Limit  int   `json:"limit,omitempty"`
 		WaitMS int64 `json:"waitMs,omitempty" jsonschema:"wait for messages for up to 25000 milliseconds"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "check_inbox", Description: "Receive durable messages waiting for this agent. Pass waitMs up to 25000 to wait for new messages instead of polling."},
+	mcp.AddTool(server, busTool("check_inbox", "Receive durable messages waiting for this agent. Pass waitMs up to 25000 to wait for new messages instead of polling."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input inboxInput) (*mcp.CallToolResult, any, error) {
 			waitContext, cancel := s.inboxWaitContext(ctx)
 			defer cancel()
@@ -295,7 +306,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 	type acknowledgeInput struct {
 		MessageIDs []string `json:"messageIds"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "acknowledge_messages", Description: "Acknowledge delivered messages after processing them."},
+	mcp.AddTool(server, busTool("acknowledge_messages", "Call after processing delivered messages. Marks those messages acknowledged; repeats do not acknowledge them twice. Returns the count newly acknowledged."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input acknowledgeInput) (*mcp.CallToolResult, any, error) {
 			count, err := s.runtime.AcknowledgeMessages(ctx, token, input.MessageIDs)
 			return nil, map[string]int64{"acknowledged": count}, err
@@ -303,7 +314,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 	type receiptInput struct {
 		MessageID string `json:"messageId"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "message_receipt", Description: "Inspect a sent or received message's delivery state and linked response, without message contents."},
+	mcp.AddTool(server, busTool("message_receipt", "Inspect a sent or received message's delivery state and linked response, without message contents."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input receiptInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.Receipt(ctx, token, input.MessageID)
 			return nil, result, err
@@ -316,7 +327,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 		Description  string   `json:"description,omitempty"`
 		Dependencies []string `json:"dependencies,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "add_task", Description: "Add a shared task with optional dependencies."},
+	mcp.AddTool(server, busTool("add_task", "Add a shared task with optional dependencies."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input addTaskInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.AddTask(ctx, token, AddTaskInput{
 				Title: input.TaskTitle, Description: input.Description, Dependencies: input.Dependencies,
@@ -326,12 +337,12 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 	type taskIDInput struct {
 		TaskID string `json:"taskId"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "claim_task", Description: "Claim a ready shared task."},
+	mcp.AddTool(server, busTool("claim_task", "Claim a ready shared task."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input taskIDInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.ClaimTask(ctx, token, input.TaskID)
 			return nil, result, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "release_task", Description: "Release a task claimed by this execution."},
+	mcp.AddTool(server, busTool("release_task", "Release a task claimed by this execution."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input taskIDInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.ReleaseTask(ctx, token, input.TaskID)
 			return nil, result, err
@@ -340,7 +351,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 		TaskID string `json:"taskId"`
 		Note   string `json:"note,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "complete_task", Description: "Complete a task claimed by this agent."},
+	mcp.AddTool(server, busTool("complete_task", "Complete a task claimed by this agent."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input completeTaskInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.CompleteTask(ctx, token, input.TaskID, input.Note)
 			return nil, result, err
@@ -350,12 +361,12 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 		Kind   string `json:"kind"`
 		Text   string `json:"text"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "add_task_progress", Description: "Append progress, a note, or a blocker to a claimed task."},
+	mcp.AddTool(server, busTool("add_task_progress", "Append progress, a note, or a blocker to a claimed task."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input taskProgressInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.AddTaskProgress(ctx, token, input.TaskID, AddTaskProgressInput{Kind: input.Kind, Text: input.Text})
 			return nil, result, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "list_task_progress", Description: "List the durable progress history for a task."},
+	mcp.AddTool(server, busTool("list_task_progress", "List the durable progress history for a task."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input taskIDInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.ListTaskProgress(ctx, token, input.TaskID)
 			return nil, map[string]any{"progress": result}, err
@@ -363,7 +374,7 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 	type listTasksInput struct {
 		Ready bool `json:"ready,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "list_tasks", Description: "List shared tasks and dependency state."},
+	mcp.AddTool(server, busTool("list_tasks", "List shared tasks and dependency state."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input listTasksInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.ListTasks(ctx, token, input.Ready)
 			return nil, map[string]any{"tasks": result}, err
@@ -374,23 +385,25 @@ func (s *Server) newMCPServer(token string) *mcp.Server {
 		Value       any               `json:"value" jsonschema:"text or JSON value to publish"`
 		Reference   *OutputReference  `json:"reference,omitempty"`
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "publish_output", Description: "Publish text or JSON to an authorized output stream."},
+	mcp.AddTool(server, busTool("publish_output", "Publish text or JSON to an authorized output stream."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input publishOutputToolInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.PublishOutput(ctx, token, input.StreamID, PublishOutputInput{
 				ContentType: input.ContentType, Value: input.Value, Reference: input.Reference,
 			})
 			return nil, result, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "ask_user", Description: "Request human input or permission."},
+	mcp.AddTool(server, busTool("ask_user", "Ask a person for information needed to continue. Creates a durable question and returns its request ID. A human answer is information, not approval for a separate harness permission prompt."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input AskHumanInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.AskHuman(ctx, token, input)
 			return nil, result, err
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "get_node_status", Description: "Return this agent's identity, lease, and lifecycle."},
+	mcp.AddTool(server, busTool("get_node_status", "Return this agent's identity, lease, and lifecycle."),
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ emptyInput) (*mcp.CallToolResult, any, error) {
 			result, err := s.runtime.NodeStatus(ctx, token)
 			return nil, result, err
 		})
+	s.addChannelMCPTools(server, token)
+	s.addAttachmentMCPTools(server, token)
 	return server
 }
 

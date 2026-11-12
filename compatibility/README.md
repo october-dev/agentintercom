@@ -1,6 +1,6 @@
 # Compatibility evidence
 
-October Bus names a harness as verified only when a current public evidence record passes the applicable conformance profile.
+Agent Intercom names a harness as verified only when a current public evidence record passes the applicable conformance profile.
 
 The registry contains only independently reviewed passing records for specific version/platform combinations. Experimental adapter manifests and unreviewed attempt bundles do not count as compatibility evidence, and historical rc.4 results are not evidence for a new candidate.
 
@@ -25,7 +25,7 @@ The automated `mcp-adapter` runner verifies an adapter executable without asking
 | Tier 2 | A packaged adapter has passed the complete required profile. |
 | Tier 3 | Native integration adds verified host lifecycle or wake behavior. |
 
-Only Tier 2 and Tier 3 integrations may be named as October Bus compatible. Optional capabilities and platform coverage are stated separately.
+Only Tier 2 and Tier 3 integrations may be named as Agent Intercom compatible. Optional capabilities and platform coverage are stated separately.
 
 ## Evidence rules
 

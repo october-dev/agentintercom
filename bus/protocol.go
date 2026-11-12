@@ -27,6 +27,7 @@ type MessageParticipantKind string
 
 const (
 	MessageParticipantAgent        MessageParticipantKind = "agent"
+	MessageParticipantHuman        MessageParticipantKind = "human"
 	MessageParticipantA2APrincipal MessageParticipantKind = "a2aPrincipal"
 )
 
@@ -347,6 +348,7 @@ type PruneScopeInput struct {
 }
 
 type RetentionCounts struct {
+	ChannelPosts int64 `json:"channelPosts"`
 	A2ATasks     int64 `json:"a2aTasks"`
 	A2AMessages  int64 `json:"a2aMessages"`
 	Messages     int64 `json:"messages"`
@@ -385,11 +387,12 @@ type CreateScopeResult struct {
 }
 
 type RegisterAgentInput struct {
-	ID           string            `json:"id,omitempty"`
-	DisplayName  string            `json:"displayName"`
-	Capabilities []AgentCapability `json:"capabilities,omitempty"`
-	ConnectTo    []string          `json:"connectTo,omitempty"`
-	LeaseMS      int64             `json:"leaseMs,omitempty"`
+	ID               string            `json:"id,omitempty"`
+	DisplayName      string            `json:"displayName"`
+	Capabilities     []AgentCapability `json:"capabilities,omitempty"`
+	ConnectTo        []string          `json:"connectTo,omitempty"`
+	ConnectWorkspace bool              `json:"connectWorkspace,omitempty"`
+	LeaseMS          int64             `json:"leaseMs,omitempty"`
 }
 
 type RegisterAgentResult struct {
@@ -450,6 +453,9 @@ type Health struct {
 
 // FeatureSessionRetirement includes idempotent retirement and obligation release.
 const FeatureSessionRetirement = "session-retirement"
+
+// FeatureNativeWake includes durable native wake attempts and status.
+const FeatureNativeWake = "native-wake"
 
 const (
 	StorageAvailable   = "available"

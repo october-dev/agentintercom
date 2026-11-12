@@ -14,7 +14,7 @@ func acquireFileLock(path string) (*os.File, error) {
 	}
 	if err := lockFile(file); err != nil {
 		file.Close()
-		return nil, fmt.Errorf("October Bus store or runtime is already owned: %w", err)
+		return nil, fmt.Errorf("Agent Intercom store or runtime is already owned: %w", err)
 	}
 	return file, nil
 }

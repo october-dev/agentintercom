@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkHarnessSetup } from './harness-integration.mjs'
 import {
-  OctoberBusAdminClient,
-  OctoberBusAgentSession,
-  OctoberBusOutputClient,
-  OctoberBusScopeClient,
+  AgentIntercomAdminClient,
+  AgentIntercomAgentSession,
+  AgentIntercomOutputClient,
+  AgentIntercomScopeClient,
   newIdempotencyKey,
   withClaimedTask
 } from '../dist/index.js'
@@ -16,7 +16,7 @@ import {
 const binary = process.env.OCTOBER_BUS_BINARY
 if (!binary) throw new Error('OCTOBER_BUS_BINARY is required')
 
-const root = await mkdtemp(join(tmpdir(), 'october-bus-sdk-'))
+const root = await mkdtemp(join(tmpdir(), 'agentintercom-sdk-'))
 const dataDir = join(root, 'data')
 const runtimeDir = join(root, 'run')
 const runFile = join(runtimeDir, 'bus.json')
@@ -40,20 +40,20 @@ child.stderr.on('data', (value) => {
 async function readRunFile() {
   const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`October Bus exited early: ${stderr}`)
+    if (child.exitCode !== null) throw new Error(`Agent Intercom exited early: ${stderr}`)
     try {
       return JSON.parse(await readFile(runFile, 'utf8'))
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
   }
-  throw new Error(`October Bus did not start: ${stderr}`)
+  throw new Error(`Agent Intercom did not start: ${stderr}`)
 }
 
 try {
   const run = await readRunFile()
   await checkHarnessSetup(binary, run, { ...process.env, OCTOBER_BUS_DATA_DIR: dataDir, OCTOBER_BUS_RUNTIME_DIR: runtimeDir }, root)
-  const admin = new OctoberBusAdminClient(run.address, run.adminToken)
+  const admin = new AgentIntercomAdminClient(run.address, run.adminToken)
   const health = await admin.health()
   assert.equal(health.protocolVersion, '0.1')
   assert.equal(typeof health.runtimeVersion, 'string')
@@ -61,14 +61,14 @@ try {
   const liveness = await admin.liveness()
   assert.equal(liveness.status, 'alive')
   const scope = await admin.createScope({ id: 'typescript-integration' })
-  const owner = new OctoberBusScopeClient(run.address, scope.scopeToken)
-  plannerSession = await OctoberBusAgentSession.start({
+  const owner = new AgentIntercomScopeClient(run.address, scope.scopeToken)
+  plannerSession = await AgentIntercomAgentSession.start({
     address: run.address,
     scopeToken: scope.scopeToken,
     registration: { id: 'planner', displayName: 'Planner', leaseMs: 30_000 },
     heartbeatIntervalMs: 10
   })
-  reviewerSession = await OctoberBusAgentSession.start({
+  reviewerSession = await AgentIntercomAgentSession.start({
     address: run.address,
     scopeToken: scope.scopeToken,
     registration: { id: 'reviewer', displayName: 'Reviewer', connectTo: ['planner'], leaseMs: 30_000 },
@@ -115,6 +115,19 @@ try {
   await reviewerSession.setState('ready', true)
   const planner = plannerSession.client
   const reviewer = reviewerSession.client
+
+  const fileBytes = new Uint8Array([0, 255, 10, 27, 42])
+  const upload = { name: 'shared.bin', mediaType: 'application/octet-stream', idempotencyKey: 'sdk-file' }
+  const file = await planner.uploadAttachment(upload, fileBytes)
+  assert.equal((await planner.uploadAttachment(upload, fileBytes)).id, file.id)
+  assert.equal((await reviewer.listAttachments()).attachments[0].id, file.id)
+  const firstChunk = await reviewer.readAttachment(file.id, 0, 2)
+  const secondChunk = await reviewer.readAttachment(file.id, firstChunk.nextOffset, 512)
+  assert.deepEqual(Buffer.concat([Buffer.from(firstChunk.dataBase64, 'base64'), Buffer.from(secondChunk.dataBase64, 'base64')]), Buffer.from(fileBytes))
+  await assert.rejects(reviewer.deleteAttachment(file.id), error => error.code === 'PERMISSION_DENIED')
+  await planner.deleteAttachment(file.id)
+  await assert.rejects(reviewer.readAttachment(file.id), error => error.code === 'NOT_FOUND')
+
   const node = await planner.nodeStatus()
   assert.equal(node.identity.agentId, 'planner')
   assert.equal(node.identity.executionId, plannerSession.registration.executionId)
@@ -137,7 +150,7 @@ try {
     contentType: 'application/json',
     value: { status: 'ready', url: 'https://example.test/preview' }
   })
-  const outputs = new OctoberBusOutputClient(run.address, outputReader.credential)
+  const outputs = new AgentIntercomOutputClient(run.address, outputReader.credential)
   assert.deepEqual((await outputs.latest(outputStream.id)).value, {
     status: 'ready',
     url: 'https://example.test/preview'
@@ -228,7 +241,7 @@ try {
   await plannerSession.client.retire() // idempotent, without reviving authority
   const recovered = await admin.rotateScopeToken(scope.scopeId)
   await assert.rejects(owner.listAgents(), (error) => error.code === 'UNAUTHENTICATED')
-  const recoveredOwner = new OctoberBusScopeClient(run.address, recovered.scopeToken)
+  const recoveredOwner = new AgentIntercomScopeClient(run.address, recovered.scopeToken)
   assert.equal((await recoveredOwner.listAgents()).length, 2)
   assert.equal((await admin.listScopes()).some((entry) => entry.scopeId === scope.scopeId), true)
   await admin.deleteScope(scope.scopeId)

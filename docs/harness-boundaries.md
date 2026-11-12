@@ -1,6 +1,6 @@
 # Native, remote and unresolved harness boundaries
 
-The [adapter directory](../adapters/README.md) contains implemented experimental candidates. [Issue #62](https://github.com/october-dev/october-bus/issues/62) remains the authoritative target tracker; this document describes boundaries, not another compatibility catalog.
+The [adapter directory](../adapters/README.md) contains implemented experimental candidates. [Issue #62](https://github.com/october-dev/agentintercom/issues/62) remains the authoritative target tracker; this document describes boundaries, not another compatibility catalog.
 
 ## Native integration
 

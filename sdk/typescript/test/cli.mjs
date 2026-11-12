@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 const require = createRequire(import.meta.url)
-const { targets, platformPackage, resolveBinary, run } = require('../cli/october-bus.cjs')
+const { targets, platformPackage, resolveBinary, run } = require('../cli/agentintercom.cjs')
 const { version } = require('../package.json')
 
 test('each supported platform resolves an exact-version optional binary', t => {
@@ -35,7 +35,7 @@ test('each supported platform resolves an exact-version optional binary', t => {
 
 test('unsupported systems and missing optional packages fail with actionable instructions', () => {
   assert.throws(() => platformPackage('freebsd', 'x64'), /build the Go daemon/)
-  assert.throws(() => platformPackage('linux', 'arm'), /No October Bus npm binary/)
+  assert.throws(() => platformPackage('linux', 'arm'), /No Agent Intercom npm binary/)
   assert.throws(() => resolveBinary('linux', 'x64', () => { throw new Error('missing') }), /--include=optional/)
 })
 
