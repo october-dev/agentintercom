@@ -386,7 +386,7 @@ func (g *Gateway) remoteAgentRoutes() *http.ServeMux {
 		"GET /v1/tasks", "POST /v1/tasks", "GET /v1/tasks/page",
 		"POST /v1/tasks/{taskId}/claim", "POST /v1/tasks/{taskId}/release", "POST /v1/tasks/{taskId}/complete",
 		"GET /v1/tasks/{taskId}/progress", "POST /v1/tasks/{taskId}/progress",
-		"POST /v1/escalations", "GET /v1/escalations/{escalationId}",
+		"POST /v1/escalations", "GET /v1/escalations/{escalationId}", "POST /v1/escalations/{escalationId}/cancel",
 		"GET /v1/scope/escalations", "POST /v1/scope/escalations/{escalationId}/resolve", "GET /v1/events",
 		"POST /outputs/{streamId}/values",
 	}

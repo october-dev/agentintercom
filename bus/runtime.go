@@ -651,7 +651,7 @@ func (r *Runtime) CancelEscalation(ctx context.Context, agentToken, escalationID
 	if err := validateIdentity(escalationID, "escalationId", false); err != nil {
 		return HumanEscalation{}, err
 	}
-	result, err := r.store.CancelEscalation(ctx, principal.ScopeID, escalationID, principal.AgentID)
+	result, err := r.store.CancelEscalation(ctx, principal, escalationID)
 	if err == nil {
 		r.notifyScope(principal.ScopeID)
 	}
