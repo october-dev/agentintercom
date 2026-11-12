@@ -22,7 +22,7 @@ agentintercom link --scope my-project cursor-builder claude-reviewer
 agentintercom doctor --harness cursor --scope my-project --json
 ```
 
-Both agents must have registered before linking. Links are reciprocal. A bridge may instead use repeatable `--connect-to <existing-peer>` at registration. Doctor checks local discovery, saved scope authority, executable version where possible, and a temporary bridge's 15 tools; it cannot certify a host's model account, UI or permissions.
+Both agents must have registered before linking. Links are reciprocal. A bridge may instead use repeatable `--connect-to <existing-peer>` at registration. Doctor checks local discovery, saved scope authority, executable version where possible, and that a temporary bridge serves the 15 core tools (it reports the total, which includes later additions); it cannot certify a host's model account, UI or permissions.
 
 Generated commands include absolute binary/data/runtime paths, surviving hosts that filter inherited environment variables. Regenerate after moving an installation or changing data directories. Choose a unique agent ID per simultaneous window. Reusing an ID replaces its earlier execution and revokes its Bus access.
 

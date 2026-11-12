@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="956" height="140" viewBox="0 0 956 140" role="img" aria-label="agent-intercom">
+  <style>
+    .dot { animation: type 1.5s ease-in-out infinite; }
+    @keyframes type { 0%,60%,100% { opacity: .3; } 30% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+  <g shape-rendering="crispEdges">
+    <rect x="20" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="30" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="40" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="50" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="60" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="70" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="80" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="90" y="15" width="10" height="10" fill="#EC4899"/>
+    <rect x="20" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="30" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="40" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="50" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="60" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="70" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="80" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="90" y="25" width="10" height="10" fill="#EC4899"/>
+    <rect x="20" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="30" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="40" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="50" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="60" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="70" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="80" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="90" y="35" width="10" height="10" fill="#EC4899"/>
+    <rect x="20" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="30" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="40" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="50" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="60" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="70" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="80" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="90" y="45" width="10" height="10" fill="#EC4899"/>
+    <rect x="30" y="55" width="10" height="10" fill="#EC4899"/>
+    <rect x="80" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="90" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="100" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="110" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="120" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="130" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="140" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="150" y="75" width="10" height="10" fill="#BE185D"/>
+    <rect x="80" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="90" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="100" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="110" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="120" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="130" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="140" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="150" y="85" width="10" height="10" fill="#BE185D"/>
+    <rect x="80" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="90" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="100" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="110" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="120" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="130" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="140" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="150" y="95" width="10" height="10" fill="#BE185D"/>
+    <rect x="80" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="90" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="100" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="110" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="120" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="130" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="140" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="150" y="105" width="10" height="10" fill="#BE185D"/>
+    <rect x="140" y="115" width="10" height="10" fill="#BE185D"/>
+    <rect class="dot" style="animation-delay:0.0s" x="35.0" y="30.0" width="10" height="10" fill="#FFFFFF"/>
+    <rect class="dot" style="animation-delay:0.2s" x="55.0" y="30.0" width="10" height="10" fill="#FFFFFF"/>
+    <rect class="dot" style="animation-delay:0.4s" x="75.0" y="30.0" width="10" height="10" fill="#FFFFFF"/>
+    <rect class="dot" style="animation-delay:0.8s" x="95.0" y="90.0" width="10" height="10" fill="#FFFFFF"/>
+    <rect class="dot" style="animation-delay:0.9s" x="115.0" y="90.0" width="10" height="10" fill="#FFFFFF"/>
+    <rect class="dot" style="animation-delay:1.1s" x="135.0" y="90.0" width="10" height="10" fill="#FFFFFF"/>
+  </g>
+  <text x="200" y="106" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="80" font-weight="800" letter-spacing="-3" fill="#111111">agent-intercom</text>
+</svg>

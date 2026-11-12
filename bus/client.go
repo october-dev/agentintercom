@@ -62,6 +62,9 @@ func request[T any](ctx context.Context, client Client, method, path string, inp
 	defer response.Body.Close()
 	var envelope responseEnvelope[T]
 	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return zero, fmt.Errorf("Agent Intercom request failed with HTTP %d", response.StatusCode)
+		}
 		return zero, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || !envelope.OK {
