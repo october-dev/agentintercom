@@ -126,11 +126,10 @@ function closePending(key) { delete pending[key]; sessionStorage.setItem(pending
 let modalCount = 0;
 function modal(title, build) {
   const headingId = `modal-title-${++modalCount}`;
-  const opener = document.activeElement;
   const dialog = el('dialog', { 'aria-labelledby': headingId }, el('h2', { id: headingId }, title));
   const close = () => dialog.close();
   dialog.append(build(close), el('div', { class: 'actions end' }, button('Close', close)));
-  dialog.addEventListener('close', () => { dialog.remove(); if (opener?.isConnected) opener.focus(); });
+  dialog.addEventListener('close', () => dialog.remove());
   document.body.append(dialog); dialog.showModal(); return dialog;
 }
 function secretDialog(title, value, description) {
