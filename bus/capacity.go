@@ -2,7 +2,6 @@ package bus
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"sync"
 )
@@ -61,20 +60,23 @@ CREATE INDEX IF NOT EXISTS tasks_page ON tasks(scope_id,task_id);
 // Refuse oversized portable exports before loading their payloads into memory.
 // The conservative JSON escape/record overhead bound may reject smaller archives;
 // the streaming full-database snapshot remains available at any retained size.
-func checkPortableExportBudget(ctx context.Context, tx *sql.Tx, scopeID string) error {
+func checkPortableExportBudget(ctx context.Context, tx sqlExecutor, scopeID string) error {
 	queries := []string{
-		"SELECT COALESCE(SUM(length(CAST(body AS BLOB))+length(CAST(context_json AS BLOB))+2048),0) FROM messages WHERE scope_id=?",
-		"SELECT COALESCE(SUM(length(CAST(description AS BLOB))+length(CAST(dependencies_json AS BLOB))+COALESCE(length(CAST(note AS BLOB)),0)+2048),0) FROM tasks WHERE scope_id=?",
-		"SELECT COALESCE(SUM(length(CAST(text AS BLOB))+1024),0) FROM task_progress WHERE scope_id=?",
-		"SELECT COALESCE(SUM(length(CAST(question AS BLOB))+length(CAST(options_json AS BLOB))+COALESCE(length(CAST(answer AS BLOB)),0)+1024),0) FROM escalations WHERE scope_id=?",
-		"SELECT COALESCE(SUM(length(CAST(capabilities_json AS BLOB))+2048),0) FROM agents WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(description)+2048),0) FROM channels WHERE scope_id=?",
+		"SELECT COUNT(*)*1024 FROM channel_subscriptions WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(body)+2048),0) FROM channel_posts WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(body)+octet_length(context_json)+2048),0) FROM messages WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(description)+octet_length(dependencies_json)+COALESCE(octet_length(note),0)+2048),0) FROM tasks WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(text)+1024),0) FROM task_progress WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(question)+octet_length(options_json)+COALESCE(octet_length(answer),0)+1024),0) FROM escalations WHERE scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(capabilities_json)+2048),0) FROM agents WHERE scope_id=?",
 		"SELECT COUNT(*)*1024 FROM peer_links WHERE scope_id=?",
 		"SELECT COUNT(*)*1024 FROM a2a_publications WHERE scope_id=?",
 		"SELECT COUNT(*)*2048 FROM a2a_tasks WHERE scope_id=?",
 		"SELECT COUNT(*)*2048 FROM a2a_message_correlations c JOIN a2a_tasks t ON t.task_id=c.task_id WHERE t.scope_id=?",
 		"SELECT COUNT(*)*2048 FROM output_streams WHERE scope_id=?",
 		"SELECT COUNT(*)*1024 FROM output_stream_publishers WHERE scope_id=?",
-		"SELECT COALESCE(SUM(length(CAST(v.value_json AS BLOB))+COALESCE(length(CAST(v.reference_json AS BLOB)),0)+1024),0) FROM output_values v JOIN output_streams s ON s.stream_id=v.stream_id WHERE s.scope_id=?",
+		"SELECT COALESCE(SUM(octet_length(v.value_json)+COALESCE(octet_length(v.reference_json),0)+1024),0) FROM output_values v JOIN output_streams s ON s.stream_id=v.stream_id WHERE s.scope_id=?",
 	}
 	var total int64
 	for _, query := range queries {
@@ -86,6 +88,13 @@ func checkPortableExportBudget(ctx context.Context, tx *sql.Tx, scopeID string) 
 		if total > maxArchiveBodyBytes/6 {
 			return Errorf(CodeBackpressure, "Portable archive budget exceeded; use an admin database backup or prune retained history")
 		}
+	}
+	var files int64
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(SUM((size_bytes+2)/3*4+4096),0) FROM attachments WHERE scope_id=? AND deleted_at=0", scopeID).Scan(&files); err != nil {
+		return err
+	}
+	if total*6+files > maxArchiveBodyBytes {
+		return Errorf(CodeBackpressure, "Portable archive exceeds 64 MiB including attachments; use a database-plus-file backup")
 	}
 	return nil
 }

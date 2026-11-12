@@ -34,7 +34,7 @@ func scanScopedCredential(row rowScanner) (scopedCredentialRecord, error) {
 	return credential, err
 }
 
-func createScopedCredential(ctx context.Context, tx *sql.Tx, scopeID, label string, grants []scopedCredentialGrant, now int64) (scopedCredentialRecord, string, error) {
+func createScopedCredential(ctx context.Context, tx sqlExecutor, scopeID, label string, grants []scopedCredentialGrant, now int64) (scopedCredentialRecord, string, error) {
 	var count int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM scoped_credentials WHERE scope_id=?`, scopeID).Scan(&count); err != nil {
 		return scopedCredentialRecord{}, "", err
@@ -64,7 +64,7 @@ func createScopedCredential(ctx context.Context, tx *sql.Tx, scopeID, label stri
 	return record, credentialID + "." + secret, nil
 }
 
-func rotateScopedCredential(ctx context.Context, tx *sql.Tx, scopeID, credentialID string, now int64) (scopedCredentialRecord, string, error) {
+func rotateScopedCredential(ctx context.Context, tx sqlExecutor, scopeID, credentialID string, now int64) (scopedCredentialRecord, string, error) {
 	record, err := scanScopedCredential(tx.QueryRowContext(ctx, `SELECT `+scopedCredentialColumns+` FROM scoped_credentials WHERE scope_id=? AND credential_id=?`, scopeID, credentialID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return scopedCredentialRecord{}, "", Errorf(CodeNotFound, "Scoped credential was not found")
@@ -83,7 +83,7 @@ func rotateScopedCredential(ctx context.Context, tx *sql.Tx, scopeID, credential
 	return record, credentialID + "." + secret, nil
 }
 
-func setScopedCredentialEnabled(ctx context.Context, tx *sql.Tx, scopeID, credentialID string, enabled bool, now int64) (scopedCredentialRecord, bool, error) {
+func setScopedCredentialEnabled(ctx context.Context, tx sqlExecutor, scopeID, credentialID string, enabled bool, now int64) (scopedCredentialRecord, bool, error) {
 	record, err := scanScopedCredential(tx.QueryRowContext(ctx, `SELECT `+scopedCredentialColumns+` FROM scoped_credentials WHERE scope_id=? AND credential_id=?`, scopeID, credentialID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return scopedCredentialRecord{}, false, Errorf(CodeNotFound, "Scoped credential was not found")

@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
 func (s *Store) StorageSummary(ctx context.Context, scopeID string) (StorageSummary, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return StorageSummary{}, err
 	}
@@ -25,30 +26,33 @@ func (s *Store) StorageSummary(ctx context.Context, scopeID string) (StorageSumm
 		recordType string
 		statement  string
 	}{
-		{"message", `SELECT state,COUNT(*),COALESCE(SUM(length(CAST(body AS BLOB))+length(CAST(context_json AS BLOB))),0),
+		{"attachment", `SELECT 'stored',COUNT(*),COALESCE(SUM(size_bytes),0),MIN(created_at) FROM attachments WHERE scope_id=? AND deleted_at=0 HAVING COUNT(*)>0`},
+		{"channelPost", `SELECT 'posted',COUNT(*),COALESCE(SUM(octet_length(body)+octet_length(search_body)),0),MIN(created_at) FROM channel_posts WHERE scope_id=? HAVING COUNT(*)>0`},
+		{"channel", `SELECT 'active',COUNT(*),COALESCE(SUM(octet_length(description)),0),MIN(created_at) FROM channels WHERE scope_id=? HAVING COUNT(*)>0`},
+		{"message", `SELECT state,COUNT(*),COALESCE(SUM(octet_length(body)+octet_length(context_json)),0),
 MIN(CASE state WHEN 'queued' THEN created_at WHEN 'reserved' THEN created_at WHEN 'delivered' THEN delivered_at WHEN 'acknowledged' THEN acknowledged_at WHEN 'expired' THEN expires_at END)
 FROM messages WHERE scope_id=? GROUP BY state ORDER BY state`},
-		{"task", `SELECT status,COUNT(*),COALESCE(SUM(length(CAST(title AS BLOB))+length(CAST(description AS BLOB))+length(CAST(dependencies_json AS BLOB))+COALESCE(length(CAST(note AS BLOB)),0)),0),
+		{"task", `SELECT status,COUNT(*),COALESCE(SUM(octet_length(title)+octet_length(description)+octet_length(dependencies_json)+COALESCE(octet_length(note),0)),0),
 MIN(CASE status WHEN 'open' THEN created_at ELSE updated_at END)
 FROM tasks WHERE scope_id=? GROUP BY status ORDER BY status`},
-		{"taskProgress", `SELECT kind,COUNT(*),COALESCE(SUM(length(CAST(text AS BLOB))),0),MIN(created_at)
+		{"taskProgress", `SELECT kind,COUNT(*),COALESCE(SUM(octet_length(text)),0),MIN(created_at)
 FROM task_progress WHERE scope_id=? GROUP BY kind ORDER BY kind`},
-		{"escalation", `SELECT status,COUNT(*),COALESCE(SUM(length(CAST(question AS BLOB))+length(CAST(options_json AS BLOB))+COALESCE(length(CAST(answer AS BLOB)),0)),0),
+		{"escalation", `SELECT status,COUNT(*),COALESCE(SUM(octet_length(question)+octet_length(options_json)+COALESCE(octet_length(answer),0)),0),
 MIN(CASE status WHEN 'pending' THEN created_at ELSE resolved_at END)
 FROM escalations WHERE scope_id=? GROUP BY status ORDER BY status`},
-		{"event", `SELECT event_type,COUNT(*),COALESCE(SUM(length(CAST(event_type AS BLOB))+length(CAST(subject_id AS BLOB))+length(CAST(attributes_json AS BLOB))),0),MIN(created_at)
+		{"event", `SELECT event_type,COUNT(*),COALESCE(SUM(octet_length(event_type)+octet_length(subject_id)+octet_length(attributes_json)),0),MIN(created_at)
 FROM events WHERE scope_id=? GROUP BY event_type ORDER BY event_type`},
 		{"a2aPublication", `SELECT CASE enabled WHEN 1 THEN 'enabled' ELSE 'disabled' END,COUNT(*),0,MIN(created_at)
 FROM a2a_publications WHERE scope_id=? GROUP BY enabled ORDER BY enabled DESC`},
-		{"a2aTask", `SELECT state,COUNT(*),COALESCE(SUM(length(CAST(context_id AS BLOB))),0),MIN(created_at)
+		{"a2aTask", `SELECT state,COUNT(*),COALESCE(SUM(octet_length(context_id)),0),MIN(created_at)
 FROM a2a_tasks WHERE scope_id=? GROUP BY state ORDER BY state`},
-		{"a2aMessage", `SELECT 'correlated',COUNT(*),COALESCE(SUM(length(CAST(client_message_id AS BLOB))),0),MIN(records.created_at)
+		{"a2aMessage", `SELECT 'correlated',COUNT(*),COALESCE(SUM(octet_length(client_message_id)),0),MIN(records.created_at)
 FROM a2a_message_correlations AS records JOIN a2a_tasks AS tasks ON tasks.task_id=records.task_id WHERE tasks.scope_id=? HAVING COUNT(*)>0`},
-		{"credential", `SELECT CASE enabled WHEN 1 THEN 'enabled' ELSE 'disabled' END,COUNT(*),COALESCE(SUM(length(CAST(label AS BLOB))),0),MIN(created_at)
+		{"credential", `SELECT CASE enabled WHEN 1 THEN 'enabled' ELSE 'disabled' END,COUNT(*),COALESCE(SUM(octet_length(label)),0),MIN(created_at)
 FROM scoped_credentials WHERE scope_id=? GROUP BY enabled ORDER BY enabled DESC`},
-		{"outputStream", `SELECT 'active',COUNT(*),COALESCE(SUM(length(CAST(name AS BLOB))),0),MIN(created_at)
+		{"outputStream", `SELECT 'active',COUNT(*),COALESCE(SUM(octet_length(name)),0),MIN(created_at)
 FROM output_streams WHERE scope_id=?`},
-		{"outputValue", `SELECT records.content_type,COUNT(*),COALESCE(SUM(length(CAST(records.value_json AS BLOB))+COALESCE(length(CAST(records.reference_json AS BLOB)),0)),0),MIN(records.created_at)
+		{"outputValue", `SELECT records.content_type,COUNT(*),COALESCE(SUM(octet_length(records.value_json)+COALESCE(octet_length(records.reference_json),0)),0),MIN(records.created_at)
 FROM output_values AS records JOIN output_streams AS streams ON streams.stream_id=records.stream_id
 WHERE streams.scope_id=? GROUP BY records.content_type ORDER BY records.content_type`},
 	}
@@ -103,7 +107,7 @@ func (message retentionMessage) terminalBefore(before int64) bool {
 	}
 }
 
-func retentionMessageCandidates(ctx context.Context, tx *sql.Tx, scopeID string, before int64) (map[string]retentionMessage, error) {
+func retentionMessageCandidates(ctx context.Context, tx sqlExecutor, scopeID string, before int64) (map[string]retentionMessage, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT message_id,mode,state,response_to,response_message_id,delivered_at,expires_at,acknowledged_at FROM messages WHERE scope_id=?`, scopeID)
 	if err != nil {
 		return nil, err
@@ -148,7 +152,7 @@ func retentionMessageCandidates(ctx context.Context, tx *sql.Tx, scopeID string,
 	return candidates, nil
 }
 
-func retentionTaskCandidates(ctx context.Context, tx *sql.Tx, scopeID string, before int64) ([]string, error) {
+func retentionTaskCandidates(ctx context.Context, tx sqlExecutor, scopeID string, before int64) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT task_id,status,dependencies_json,updated_at FROM tasks WHERE scope_id=?`, scopeID)
 	if err != nil {
 		return nil, err
@@ -202,7 +206,7 @@ func retentionTaskCandidates(ctx context.Context, tx *sql.Tx, scopeID string, be
 	return candidates, nil
 }
 
-func retentionEscalationCandidates(ctx context.Context, tx *sql.Tx, scopeID string, before int64) ([]string, error) {
+func retentionEscalationCandidates(ctx context.Context, tx sqlExecutor, scopeID string, before int64) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT escalation_id FROM escalations WHERE scope_id=? AND status='resolved' AND resolved_at<?`, scopeID, before)
 	if err != nil {
 		return nil, err
@@ -220,7 +224,7 @@ func retentionEscalationCandidates(ctx context.Context, tx *sql.Tx, scopeID stri
 }
 
 func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, execute bool) (PruneScopeResult, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return PruneScopeResult{}, err
 	}
@@ -268,50 +272,50 @@ func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, ex
 		return PruneScopeResult{}, err
 	}
 	var taskProgressCount int64
-	for _, taskID := range tasks {
+	for first := 0; first < len(tasks); first += 500 {
+		ids := tasks[first:min(first+500, len(tasks))]
+		args := []any{scopeID}
+		for _, id := range ids {
+			args = append(args, id)
+		}
 		var count int64
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM task_progress WHERE scope_id=? AND task_id=?`, scopeID, taskID).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM task_progress WHERE scope_id=? AND task_id IN ("+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+")", args...).Scan(&count); err != nil {
 			return PruneScopeResult{}, err
 		}
 		taskProgressCount += count
 	}
+	channelRoots, channelCount, err := channelRetentionCandidates(ctx, tx, scopeID, before)
+	if err != nil {
+		return PruneScopeResult{}, err
+	}
 	result := PruneScopeResult{
 		ScopeID: scopeID, Before: time.UnixMilli(before).UTC().Format(time.RFC3339Nano), DryRun: !execute,
-		Records: RetentionCounts{
+		Records: RetentionCounts{ChannelPosts: channelCount,
 			A2ATasks: int64(len(a2aTasks)), A2AMessages: a2aMessages,
 			Messages: int64(len(messages)), Tasks: int64(len(tasks)), TaskProgress: taskProgressCount, Escalations: int64(len(escalations)), Events: eventCount,
 		},
 	}
 	if execute {
-		// Deleting tasks cascades their correlations before either message is removed.
-		for _, id := range a2aTasks {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM a2a_tasks WHERE scope_id=? AND task_id=?`, scopeID, id); err != nil {
-				return PruneScopeResult{}, err
-			}
-		}
-		for _, message := range messages {
-			if message.mode != MessageResponse {
-				continue
-			}
-			if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE scope_id=? AND message_id=?`, scopeID, message.id); err != nil {
-				return PruneScopeResult{}, err
-			}
-		}
+		// Batch deletes keep a large retention pass from needing one database round
+		// trip per record. References are removed before their parents.
+		var replies, requests []string
 		for _, message := range messages {
 			if message.mode == MessageResponse {
-				continue
-			}
-			if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE scope_id=? AND message_id=?`, scopeID, message.id); err != nil {
-				return PruneScopeResult{}, err
-			}
-		}
-		for _, taskID := range tasks {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM tasks WHERE scope_id=? AND task_id=?`, scopeID, taskID); err != nil {
-				return PruneScopeResult{}, err
+				replies = append(replies, message.id)
+			} else {
+				requests = append(requests, message.id)
 			}
 		}
-		for _, escalationID := range escalations {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM escalations WHERE scope_id=? AND escalation_id=?`, scopeID, escalationID); err != nil {
+		batches := []struct {
+			table, column string
+			ids           []string
+		}{
+			{"channel_posts", "thread_id", channelRoots}, {"channel_posts", "post_id", channelRoots},
+			{"a2a_tasks", "task_id", a2aTasks}, {"messages", "message_id", replies}, {"messages", "message_id", requests},
+			{"tasks", "task_id", tasks}, {"escalations", "escalation_id", escalations},
+		}
+		for _, batch := range batches {
+			if err := deleteRetentionRows(ctx, tx, scopeID, batch.table, batch.column, batch.ids); err != nil {
 				return PruneScopeResult{}, err
 			}
 		}
@@ -319,7 +323,7 @@ func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, ex
 			if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE scope_id=? AND revision<=? AND event_type!='scope.imported'`, scopeID, eventFloor); err != nil {
 				return PruneScopeResult{}, err
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE scopes SET event_floor_revision=MAX(event_floor_revision,?) WHERE scope_id=?`, eventFloor, scopeID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE scopes SET event_floor_revision=CASE WHEN event_floor_revision>? THEN event_floor_revision ELSE ? END WHERE scope_id=?`, eventFloor, eventFloor, scopeID); err != nil {
 				return PruneScopeResult{}, err
 			}
 		}
@@ -328,4 +332,19 @@ func (s *Store) PruneScope(ctx context.Context, scopeID string, before int64, ex
 		return PruneScopeResult{}, err
 	}
 	return result, nil
+}
+
+// Table and column names are static call-site constants, never request input.
+func deleteRetentionRows(ctx context.Context, tx sqlExecutor, scopeID, table, column string, ids []string) error {
+	for first := 0; first < len(ids); first += 500 {
+		batch := ids[first:min(first+500, len(ids))]
+		args := []any{scopeID}
+		for _, id := range batch {
+			args = append(args, id)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE scope_id=? AND "+column+" IN ("+strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")+")", args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }

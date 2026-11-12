@@ -26,7 +26,7 @@ func scanAgentCardPublication(row rowScanner) (agentCardPublication, error) {
 const agentCardPublicationColumns = `publication_id,scope_id,agent_id,enabled,created_at,updated_at`
 
 func (s *Store) CreateAgentCardPublication(ctx context.Context, scopeID, agentID string) (agentCardPublication, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return agentCardPublication{}, err
 	}
@@ -44,7 +44,7 @@ func (s *Store) CreateAgentCardPublication(ctx context.Context, scopeID, agentID
 	now := nowMillis()
 	_, err = tx.ExecContext(ctx, `INSERT INTO a2a_publications(publication_id,scope_id,agent_id,enabled,created_at,updated_at) VALUES(?,?,?,1,?,?)`, publicationID, scopeID, agentID, now, now)
 	if err != nil {
-		if isSQLiteConstraint(err) {
+		if isStorageConstraint(err) {
 			return agentCardPublication{}, Errorf(CodeConflict, "Agent "+agentID+" already has a publication")
 		}
 		return agentCardPublication{}, err
@@ -80,7 +80,7 @@ func (s *Store) ListAgentCardPublications(ctx context.Context, scopeID string) (
 }
 
 func (s *Store) SetAgentCardPublicationEnabled(ctx context.Context, scopeID, publicationID string, enabled bool) (agentCardPublication, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return agentCardPublication{}, err
 	}

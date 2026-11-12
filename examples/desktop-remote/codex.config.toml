@@ -2,6 +2,6 @@
 # cannot live in the command line. The controller exports
 # OCTOBER_BUS_CONNECTION_FILE into the tmux session environment instead; without
 # it the bridge refuses rather than serving an empty tool list.
-[mcp_servers.october-bus-stdio]
-command = "/home/worker/.october/servers/<install>/current/bin/october-bus"
+[mcp_servers.agentintercom-stdio]
+command = "/home/worker/.october/servers/<install>/current/bin/agentintercom"
 args = ["mcp", "stdio"]

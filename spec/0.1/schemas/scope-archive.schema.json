@@ -1,13 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/october-dev/october-bus/spec/0.1/schemas/scope-archive.schema.json",
-  "title": "October Bus portable scope archive 2",
+  "title": "Agent Intercom portable scope archives 2 and 3",
   "type": "object",
   "additionalProperties": false,
   "required": ["format", "version", "exportedAt", "scope", "agents", "links", "messages", "tasks", "taskProgress", "escalations", "agentCardPublications", "a2aTasks", "a2aMessages", "outputStreams", "outputValues"],
   "properties": {
+    "attachments": {"type":"array","maxItems":10000,"items":{"$ref":"#/$defs/attachment"}},
+    "channels": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/channel" } },
+    "channelSubscriptions": { "type": "array", "maxItems": 12800, "items": { "$ref": "#/$defs/channelSubscription" } },
+    "channelPosts": { "type": "array", "maxItems": 65536, "items": { "$ref": "#/$defs/channelPost" } },
     "format": { "const": "october-bus.scope" },
-    "version": { "const": 2 },
+    "version": { "enum": [2, 3] },
     "exportedAt": { "$ref": "#/$defs/instant" },
     "scope": { "$ref": "#/$defs/scope" },
     "agents": { "type": "array", "items": { "$ref": "#/$defs/agent" } },
@@ -23,6 +27,169 @@
     "outputValues": { "type": "array", "items": { "$ref": "#/$defs/outputValue" } }
   },
   "$defs": {
+  "attachment": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^att_[0-9a-f]{32}$"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "mediaType": {
+        "type": "string",
+        "maxLength": 128
+      },
+      "size": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 16777216
+      },
+      "sha256": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "authorKind": {
+        "enum": [
+          "agent",
+          "human"
+        ]
+      },
+      "authorId": {
+        "$ref": "#/$defs/identifier"
+      },
+      "createdAt": {
+        "$ref": "#/$defs/instant"
+      },
+      "uri": {
+        "type": "string",
+        "pattern": "^october-bus://attachments/att_[0-9a-f]{32}$"
+      },
+      "dataBase64": {
+        "type": "string",
+        "contentEncoding": "base64",
+        "maxLength": 22369624
+      },
+      "idempotencyKey": {
+        "$ref": "#/$defs/identifier"
+      },
+      "requestHash": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "mediaType",
+      "size",
+      "sha256",
+      "authorKind",
+      "authorId",
+      "createdAt",
+      "uri",
+      "dataBase64",
+      "requestHash"
+    ]
+  },
+  "channel": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/identifier"
+      },
+      "name": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "description": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "createdAt": {
+        "$ref": "#/$defs/instant"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "description",
+      "createdAt"
+    ]
+  },
+  "channelSubscription": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "channelId": {
+        "$ref": "#/$defs/identifier"
+      },
+      "agentId": {
+        "$ref": "#/$defs/identifier"
+      },
+      "createdAt": {
+        "$ref": "#/$defs/instant"
+      }
+    },
+    "required": [
+      "channelId",
+      "agentId",
+      "createdAt"
+    ]
+  },
+  "channelPost": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/identifier"
+      },
+      "channelId": {
+        "$ref": "#/$defs/identifier"
+      },
+      "authorKind": {
+        "enum": [
+          "agent",
+          "human"
+        ]
+      },
+      "authorId": {
+        "$ref": "#/$defs/identifier"
+      },
+      "body": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 65536
+      },
+      "threadId": {
+        "$ref": "#/$defs/identifier"
+      },
+      "idempotencyKey": {
+        "$ref": "#/$defs/identifier"
+      },
+      "createdAt": {
+        "$ref": "#/$defs/instant"
+      },
+      "replies": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "id",
+      "channelId",
+      "authorKind",
+      "authorId",
+      "body",
+      "createdAt",
+      "replies"
+    ]
+  },
     "identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$" },
     "instant": { "type": "string", "format": "date-time" },
     "capability": {
@@ -84,9 +251,9 @@
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
         "from": { "$ref": "#/$defs/identifier" },
-        "fromKind": { "type": "string", "enum": ["agent", "a2aPrincipal"] },
+        "fromKind": { "type": "string", "enum": ["agent", "a2aPrincipal", "human"] },
         "to": { "$ref": "#/$defs/identifier" },
-        "toKind": { "type": "string", "enum": ["agent", "a2aPrincipal"] },
+        "toKind": { "type": "string", "enum": ["agent", "a2aPrincipal", "human"] },
         "mode": { "type": "string", "enum": ["notify", "request", "response"] },
         "body": { "type": "string", "minLength": 1, "maxLength": 65536 },
         "context": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/contextItem" } },

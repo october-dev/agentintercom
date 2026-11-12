@@ -36,7 +36,7 @@ test('Pi retires a bridge when tool registration fails', async () => {
 })
 
 test('Pi refuses implicit identities and shell commands', async () => {
-  for (const config of [null, {}, { command: 'october-bus', args: [] }, { command: '/bin/sh', args: ['-c', 'anything'] }]) {
+  for (const config of [null, {}, { command: 'agentintercom', args: [] }, { command: '/bin/sh', args: ['-c', 'anything'] }]) {
     await assert.rejects(openBridge(config), /Generate an absolute-path/)
   }
 })

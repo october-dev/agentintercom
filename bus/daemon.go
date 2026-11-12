@@ -81,7 +81,7 @@ func ReadRunFile(path string) (RunFile, error) {
 	}
 	parsed, err := url.Parse(run.Address)
 	if err != nil || parsed.Scheme != "http" || parsed.Hostname() != "127.0.0.1" || run.ProtocolVersion != ProtocolVersion || run.PID < 1 || run.StartedAt == "" || len(run.AdminToken) != 43 {
-		return RunFile{}, errors.New("October Bus run file is invalid")
+		return RunFile{}, errors.New("Agent Intercom run file is invalid")
 	}
 	return run, nil
 }
@@ -164,7 +164,7 @@ func acquireLock(paths DaemonPaths) (*os.File, error) {
 	// let an upgrade take ownership from a live legacy daemon.
 	if run, err := ReadRunFile(paths.RunFile); err == nil && processMayBeAlive(run.PID) {
 		file.Close()
-		return nil, errors.New("October Bus discovery names a live process; stop it before starting another daemon")
+		return nil, errors.New("Agent Intercom discovery names a live process; stop it before starting another daemon")
 	}
 	return file, nil
 }

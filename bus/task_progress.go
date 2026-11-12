@@ -72,11 +72,14 @@ ORDER BY task_id,sequence`, scopeID, recentTaskProgress)
 }
 
 func (s *Store) AddTaskProgress(ctx context.Context, principal Principal, taskID string, input AddTaskProgressInput) (TaskProgress, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
 		return TaskProgress{}, err
 	}
 	defer tx.Rollback()
+	if err := requireHostedTextAllowance(ctx, tx, principal.ScopeID); err != nil {
+		return TaskProgress{}, err
+	}
 	now := nowMillis()
 	if err := requireCurrentExecution(ctx, tx, principal, now); err != nil {
 		return TaskProgress{}, err
@@ -94,7 +97,7 @@ func (s *Store) AddTaskProgress(ctx context.Context, principal Principal, taskID
 		return TaskProgress{}, Errorf(CodeConflict, "Task "+taskID+" is not claimed by this execution")
 	}
 	var count, totalBytes, sequence int64
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(length(CAST(text AS BLOB))),0),COALESCE(MAX(sequence),0)+1 FROM task_progress WHERE task_id=?`, taskID).Scan(&count, &totalBytes, &sequence); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(octet_length(text)),0),COALESCE(MAX(sequence),0)+1 FROM task_progress WHERE task_id=?`, taskID).Scan(&count, &totalBytes, &sequence); err != nil {
 		return TaskProgress{}, err
 	}
 	if count >= maxTaskProgressEvents || totalBytes+int64(len(input.Text)) > maxTaskProgressBytes {

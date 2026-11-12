@@ -5,9 +5,9 @@ These are contributor-reported observations, not reviewed compatibility evidence
 ## Setup
 
 - Harness: Claude Code 2.1.282, authenticated through claude.ai (first-party), model `claude-sonnet-5`.
-- Launch mode: headless print mode, `claude -p` with `--setting-sources project,local --strict-mcp-config --mcp-config .mcp.json`. The `.mcp.json` file was produced by `october-bus harness config claude-code`. The flags excluded the operator's unrelated user-level MCP servers and hooks. Interactive terminal, IDE and desktop modes were not exercised.
+- Launch mode: headless print mode, `claude -p` with `--setting-sources project,local --strict-mcp-config --mcp-config .mcp.json`. The `.mcp.json` file was produced by `agentintercom harness config claude-code`. The flags excluded the operator's unrelated user-level MCP servers and hooks. Interactive terminal, IDE and desktop modes were not exercised.
 - Host approvals: a project-local `permissions.allow` list naming the 15 `october_bus` tools. No permission bypass was used.
-- Runtime: the released `october-bus_0.1.0-rc.5_darwin_arm64` archive, checksum verified against the release's `checksums.txt`, tag commit `8357265c1113b6c7f87fb11d87924ee122e97156`. Private `OCTOBER_BUS_DATA_DIR` and `OCTOBER_BUS_RUNTIME_DIR`.
+- Runtime: the released `agentintercom_0.1.0-rc.5_darwin_arm64` archive, checksum verified against the release's `checksums.txt`, tag commit `8357265c1113b6c7f87fb11d87924ee122e97156`. Private `OCTOBER_BUS_DATA_DIR` and `OCTOBER_BUS_RUNTIME_DIR`.
 - Adapter: `claude-code-mcp` 0.2.0, protocol 0.1, macOS arm64. Not a clean machine.
 - Independent controller: Codex CLI 0.153.4 (the ChatGPT app bundle), model `gpt-5.6-terra`, isolated `CODEX_HOME`. It used the generated Codex config with `default_tools_approval_mode` changed from `prompt` to `approve`, because `codex exec` cannot answer approval prompts.
 

@@ -1,9 +1,9 @@
 [
   {
-    "id": "mcp-october-bus",
+    "id": "mcp-agentintercom",
     "name": "@deepseek-ai/dsh-mcp-client",
     "config": {
-      "serverName": "october_bus",
+      "serverName": "agent_intercom",
       "transport": "stdio",
       "command": "{{command}}",
       "args": [
