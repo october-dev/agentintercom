@@ -42,10 +42,17 @@ func executionClient(address string) (bus.Client, error) {
 		HTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: refuseMCPRedirect}}, nil
 }
 
-func messageBody(body, file string, input io.Reader) (string, error) {
+// The server's limit for a message or channel post body (validateText calls in
+// bus/runtime.go and bus/channels.go).
+const maxBodyBytes = 65536
+
+// textInput returns the text given inline or through the matching file flag,
+// where - reads stdin so private text stays out of shell history. name is the
+// inline flag's name and limit is the server's byte limit for that field.
+func textInput(text, file string, input io.Reader, name string, limit int) (string, error) {
 	if file != "" {
-		if body != "" {
-			return "", errors.New("use either --body or --body-file")
+		if text != "" {
+			return "", fmt.Errorf("use either --%s or --%s-file", name, name)
 		}
 		if file != "-" {
 			f, err := os.Open(file)
@@ -55,16 +62,16 @@ func messageBody(body, file string, input io.Reader) (string, error) {
 			defer f.Close()
 			input = f
 		}
-		data, err := io.ReadAll(io.LimitReader(input, 65537))
+		data, err := io.ReadAll(io.LimitReader(input, int64(limit)+1))
 		if err != nil {
 			return "", err
 		}
-		body = string(data)
+		text = string(data)
 	}
-	if strings.TrimSpace(body) == "" || len(body) > 65536 {
-		return "", errors.New("message body must contain 1 to 65536 bytes; use --body or --body-file (use - for stdin)")
+	if strings.TrimSpace(text) == "" || len(text) > limit {
+		return "", fmt.Errorf("%s must contain 1 to %d bytes; use --%s or --%s-file (use - for stdin)", name, limit, name, name)
 	}
-	return body, nil
+	return text, nil
 }
 
 func sendMessageCommand(args []string, in io.Reader, out io.Writer) error {
@@ -96,7 +103,7 @@ func sendMessageCommand(args []string, in io.Reader, out io.Writer) error {
 	if *expiry < 0 || *expiry > 30*24*time.Hour || (*expiry > 0 && expiry.Milliseconds() == 0) {
 		return errors.New("--expires must be zero or between 1ms and 720h")
 	}
-	text, err := messageBody(*body, *file, in)
+	text, err := textInput(*body, *file, in, "body", maxBodyBytes)
 	if err != nil {
 		return err
 	}
