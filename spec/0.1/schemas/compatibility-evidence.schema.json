@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/october-dev/october-bus/spec/0.1/schemas/compatibility-evidence.schema.json",
-  "title": "October Bus compatibility evidence",
+  "title": "Agent Intercom compatibility evidence",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -62,13 +62,16 @@ func request[T any](ctx context.Context, client Client, method, path string, inp
 	defer response.Body.Close()
 	var envelope responseEnvelope[T]
 	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return zero, fmt.Errorf("Agent Intercom request failed with HTTP %d", response.StatusCode)
+		}
 		return zero, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || !envelope.OK {
 		if envelope.Error.Message != "" {
 			return zero, Errorf(envelope.Error.Code, envelope.Error.Message)
 		}
-		return zero, fmt.Errorf("October Bus request failed with HTTP %d", response.StatusCode)
+		return zero, fmt.Errorf("Agent Intercom request failed with HTTP %d", response.StatusCode)
 	}
 	return envelope.Result, nil
 }
@@ -148,6 +151,16 @@ func (c Client) Heartbeat(ctx context.Context, input HeartbeatInput) (Agent, err
 
 func (c Client) NodeStatus(ctx context.Context) (NodeStatus, error) {
 	return request[NodeStatus](ctx, c, http.MethodGet, "/v1/me", nil)
+}
+
+// Credential classifies the client's bearer credential without authorizing
+// anything. purpose is empty or "retire".
+func (c Client) Credential(ctx context.Context, purpose string) (Credential, error) {
+	path := "/v1/credential"
+	if purpose != "" {
+		path += "?purpose=" + url.QueryEscape(purpose)
+	}
+	return request[Credential](ctx, c, http.MethodGet, path, nil)
 }
 
 func (c Client) ListPeers(ctx context.Context) ([]Agent, error) {

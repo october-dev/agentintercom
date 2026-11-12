@@ -1,6 +1,6 @@
 # Native, remote and unresolved harness boundaries
 
-The [adapter directory](../adapters/README.md) contains implemented experimental candidates. [Issue #62](https://github.com/october-dev/october-bus/issues/62) remains the authoritative target tracker; this document describes boundaries, not another compatibility catalog.
+The [adapter directory](../adapters/README.md) contains implemented experimental candidates. [Issue #62](https://github.com/october-dev/agentintercom/issues/62) remains the authoritative target tracker; this document describes boundaries, not another compatibility catalog.
 
 ## Native integration
 
@@ -25,6 +25,16 @@ The Devin candidate uses its [documented STDIO surface](https://docs.devin.ai/wo
 Use distinct agent IDs per execution and scope-level admission controlled by the sandbox operator. Restart/recreated sandboxes must not silently reuse an unreviewed old credential cache. Test host termination, duplicate execution, revoked scope, lost network and storage restoration. Stop all bridges before retiring the sandbox, and preserve or deliberately delete collaboration data according to operator policy.
 
 This supports colocated collaboration only. Connecting a remote host to a laptop or another tenant needs separately reviewed transport/server authentication, authorization, encryption, revocation and partition behavior. No public bind address, reverse proxy, credential-sharing workaround or new hosted service is enabled by this implementation.
+
+Host controllers can now supply a private, renewable execution connection to the
+[shared native MCP bridge](managed-connections.md), and the same binary reports
+Claude/Codex lifecycle events to that controller with a per-execution hook
+credential. This is transport and lifecycle support for an already authorized
+endpoint, not automatic remote enrollment or a second daemon. The host/controller
+still owns physical execution evidence, safe input delivery and the network route;
+the [Desktop integration contract](desktop-remote-integration.md) lists what
+remains on that side. The [portable contract verification](portable-contract-verification-2026-09.md)
+maps offline and remote-forwarding requirements to this boundary.
 
 ## Targets that cannot yet be implemented honestly
 

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "endpoint": "http://127.0.0.1:43120/mcp",
+  "httpHost": "127.0.0.1:43121",
+  "scopeId": "canvas-6f1c",
+  "agentId": "node-reviewer",
+  "executionId": "epoch-2026-09-21T00:00:00Z",
+  "agentToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "hookToken": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "expiresAt": "2099-01-01T00:00:00Z"
+}

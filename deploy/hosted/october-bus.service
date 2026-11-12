@@ -1,0 +1,27 @@
+[Unit]
+Description=Agent Intercom private coordination runtime
+After=network.target
+
+[Service]
+Type=simple
+User=october-bus
+Group=october-bus
+StateDirectory=october-bus
+StateDirectoryMode=0700
+RuntimeDirectory=october-bus
+RuntimeDirectoryMode=0700
+Environment=OCTOBER_BUS_DATA_DIR=/var/lib/october-bus
+Environment=OCTOBER_BUS_RUNTIME_DIR=/run/october-bus
+ExecStart=/usr/local/bin/october-bus start --port 4765
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

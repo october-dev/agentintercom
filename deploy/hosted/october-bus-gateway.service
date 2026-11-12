@@ -1,0 +1,29 @@
+[Unit]
+Description=Agent Intercom hosted MCP gateway
+Requires=october-bus.service
+After=october-bus.service network.target
+PartOf=october-bus.service
+# `gateway start` waits up to 60 s for the daemon's readiness probe; the
+# daemon unit only orders on process start. Never let a slow boot exhaust the
+# restart budget and leave the connector permanently down.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=october-bus
+Group=october-bus
+Environment=OCTOBER_BUS_DATA_DIR=/var/lib/october-bus
+Environment=OCTOBER_BUS_RUNTIME_DIR=/run/october-bus
+ExecStart=/usr/local/bin/october-bus gateway start --config /var/lib/october-bus/gateway.json --listen 127.0.0.1:8787
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

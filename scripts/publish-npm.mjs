@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
+import { setTimeout } from 'node:timers/promises'
 import { manifest, npm, packageFor, readArtifact, root, targets, validateDistribution } from './npm-distribution.mjs'
 import { sourceIdentity } from './artifact-integrity.mjs'
 
@@ -12,23 +13,29 @@ export function validateChannel(version, channel) {
   assert.ok(channel === 'next' ? prerelease : stable, `${channel} requires a ${channel === 'next' ? 'prerelease' : 'stable'} version`)
 }
 
-export function publishDistribution(packages, runNpm = npm, { version = manifest.version, channel = 'next' } = {}) {
+function publishedIntegrity(pkg, runNpm, version) {
+  let published
+  try {
+    published = JSON.parse(runNpm(['view', `${pkg.name}@${version}`, 'dist.integrity', '--json', '--prefer-online', ...registry], { stdio: ['ignore', 'pipe', 'pipe'] }))
+  } catch (error) {
+    let code
+    try { code = JSON.parse(error.stdout).error?.code } catch { /* network/auth errors must not be ignored */ }
+    if (code !== 'E404') throw error
+    return undefined
+  }
+  assert.ok(typeof published === 'string' && published.length > 0, 'Registry returned invalid artifact integrity; no writes permitted')
+  return published
+}
+
+export async function publishDistribution(packages, runNpm = npm, { version = manifest.version, channel = 'next', wait = setTimeout } = {}) {
   validateChannel(version, channel)
   assert.deepEqual(packages.map(pkg => pkg.name), [...targets.map(target => packageFor(target).name), manifest.name], 'Expected exactly six native packages followed by the parent')
   // Preflight every immutable version before the first write. A conflict or
   // registry outage on the last package must not partially publish the first six.
   const existing = new Set()
   for (const pkg of packages) {
-    let published
-    try {
-      published = JSON.parse(runNpm(['view', `${pkg.name}@${version}`, 'dist.integrity', '--json', ...registry], { stdio: ['ignore', 'pipe', 'pipe'] }))
-    } catch (error) {
-      let code
-      try { code = JSON.parse(error.stdout).error?.code } catch { /* network/auth errors must not be ignored */ }
-      if (code !== 'E404') throw error
-    }
+    const published = publishedIntegrity(pkg, runNpm, version)
     if (published !== undefined) {
-      assert.ok(typeof published === 'string' && published.length > 0, 'Registry returned invalid artifact integrity; no writes permitted')
       assert.equal(published, pkg.integrity, `Refusing to reuse ${pkg.name}@${version} with different contents`)
       existing.add(pkg.name)
     }
@@ -45,7 +52,18 @@ export function publishDistribution(packages, runNpm = npm, { version = manifest
       console.log(`Already published identical artifact: ${pkg.name}@${version}`)
     } else {
       runNpm(['publish', pkg.file, '--ignore-scripts', '--provenance', '--access', 'public', '--tag', channel, ...registry], { stdio: 'inherit' })
-      assert.equal(JSON.parse(runNpm(['view', `${pkg.name}@${version}`, 'dist.integrity', '--json', ...registry])), pkg.integrity)
+      // npm can accept a publication before its public version listing exists.
+      // Retry only missing reads; never repeat the accepted publish operation.
+      for (let attempt = 0; ; attempt++) {
+        const published = publishedIntegrity(pkg, runNpm, version)
+        if (published !== undefined) {
+          assert.equal(published, pkg.integrity, `Published integrity mismatch: ${pkg.name}@${version}`)
+          break
+        }
+        assert.ok(attempt < 59, `Timed out waiting for npm to expose ${pkg.name}@${version}; rerun with the original artifacts after registry propagation`)
+        if (attempt === 0) console.log(`Waiting for npm to expose ${pkg.name}@${version}`)
+        await wait(10_000)
+      }
     }
   }
 }
@@ -69,5 +87,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const { execFileSync } = await import('node:child_process')
     execFileSync(process.execPath, ['scripts/check-compatibility.mjs', '--runtime', manifest.version, '--source-commit', source.commit, '--require-attestation', '--launch-core'], { cwd: root, stdio: 'inherit' })
   }
-  publishDistribution(packages, npm, { channel })
+  await publishDistribution(packages, npm, { channel })
 }

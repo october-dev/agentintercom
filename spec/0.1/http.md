@@ -55,6 +55,7 @@ The `health` object MAY include `features`, a unique array of feature identifier
 | `POST` | `/v1/links` | Scope | `{"linked": true}` (idempotent) |
 | `PATCH` | `/v1/me/heartbeat` | Agent | Renewed presence |
 | `GET` | `/v1/me` | Current agent execution | `nodeStatus`: execution identity, lease and agent state |
+| `GET` | `/v1/credential` | Scope, agent, or scoped principal | `credential`: the bearer's kind |
 | `GET` | `/v1/peers` | Agent | Linked peers |
 | `POST` | `/v1/messages` | Agent | Durable delivery receipt |
 | `GET` | `/v1/messages/{messageId}` | Sender or recipient | Delivery receipt |
@@ -112,7 +113,7 @@ The `health` object MAY include `features`, a unique array of feature identifier
 
 `/health/live` returns HTTP 200 while the server process can answer requests. `/health` and `/health/ready` return HTTP 200 only when the runtime can reach its storage backend. An unavailable backend returns HTTP 503 with `status: not_ready`. Health responses expose the backend name and availability, never its address or credentials.
 
-`POST /v1/links` accepts `linkAgentsInput` (`left` and `right` agent IDs). The link is symmetric, and repeating an existing link succeeds. `POST /v1/messages/ack` accepts `acknowledgeMessagesInput` and returns `acknowledgeMessagesResult`; `acknowledged` counts messages this call moved from delivered to acknowledged, so a repeated acknowledgement returns 0.
+`POST /v1/links` accepts `linkAgentsInput` (`left` and `right` agent IDs) and returns `linkAgentsResult`. The link is symmetric, and repeating an existing link succeeds. `GET /v1/agents` and `GET /v1/peers` return `agentList`. `POST /v1/inbox/{reservationId}/commit` returns `commitInboxResult`, and `POST /v1/inbox/{reservationId}/release` returns `releaseInboxResult`. `GET /v1/tasks` returns `taskList`, `GET /v1/tasks/{taskId}/progress` returns `taskProgressList`, and `POST /v1/tasks/{taskId}/complete` accepts `completeTaskInput` and returns `task`. `GET /v1/scope/escalations` returns `escalationList`, and `POST /v1/scope/escalations/{escalationId}/resolve` accepts `resolveEscalationInput` and returns `humanEscalation`. `POST /v1/messages/ack` accepts `acknowledgeMessagesInput` and returns `acknowledgeMessagesResult`; `acknowledged` counts messages this call moved from delivered to acknowledged, so a repeated acknowledgement returns 0.
 
 The following routes return HTTP status codes other than `200 OK` on success:
 
@@ -139,13 +140,15 @@ All other successful `POST`, `GET`, `PATCH`, `PUT`, and `DELETE` routes return `
 
 `POST /v1/me/retire` takes `{}` and atomically sets the current lease to zero, marks the execution offline, releases reservations, and releases its task claims. The same token can repeat retirement, including after natural expiry, but cannot heartbeat or perform other protected operations. A replaced token cannot retire its successor. Offline heartbeats remain temporary presence updates and do not retire authority. Go and TypeScript sessions serialize lifecycle writes, attempt retirement on close/cancellation/startup-heartbeat failure, and reject state changes after close. Failed network cleanup falls back to lease expiry and is reported by the session.
 
+`GET /v1/credential` classifies the bearer credential without reading a request body or returning scope data. The result is `{"kind": "scope" | "agent" | "principal"}`: a scope token, an unexpired current agent token, or an enabled A2A or output principal credential. Any other credential returns `UNAUTHENTICATED`. `?purpose=retire` applies the retirement rule instead: the current token of an execution returns `agent` even when its lease has expired or it has already retired, while a replaced token returns `UNAUTHENTICATED`. Any other purpose returns `INVALID_ARGUMENT`. A successful classification authorizes nothing: every route still authenticates its bearer and rechecks it as described below. The route exists so a forwarding gateway can decide admission before it accepts a request body.
+
 Protected writes MUST recheck current execution and lease, or scoped credential generation, grant and enabled state, within the transaction that commits the write. Scope-owner mutations also fence token rotation at this boundary. Authentication before dispatch alone is insufficient.
 
 Managed-session lifecycle writes and their local state commits are ordered together. A helper remembers a state change only after a successful heartbeat; scheduled heartbeats use the last confirmed state. A transport failure can hide a committed server write, so callers must explicitly retry their desired state or retire rather than interpreting the error as a server rollback. Readiness does not gate explicit inbox pulls, and no state transition implicitly consumes or discards a delivery batch.
 
 Admin scope listing returns `scopeInfo[]`, allowing recovery when a scope-creation response was lost. Token rotation takes `{}`, returns `createScopeResult`, and retires all existing executions and disables all scoped credentials in that scope in one transaction. Re-register executions and rotate/re-enable only reviewed scoped principals. A lost rotation response can be recovered by rotating again; this issues another token, not the lost secret. Deletion requires `deleteScopeInput` with the exact path ID in `confirmScopeId`; it permanently removes the scope and dependent records. A repeated deletion succeeds with `deleted=false`. Back up before deleting.
 
-The reference runtime admits at most 256 ordinary in-flight HTTP requests, with a separate 32-request budget for heartbeat, retirement, health, and shutdown. Inbox waits have independent limits of 32 per agent and 128 per scope; notifications do not reset admission counters. Overload returns `BACKPRESSURE`; HTTP admission rejection includes `Retry-After: 1`. These bounds are resource controls, not a latency guarantee.
+The reference runtime admits at most 256 ordinary in-flight HTTP requests, with a separate 32-request budget for heartbeat, retirement, health, and shutdown, and another 32-request budget for credential classification. Inbox waits have independent limits of 32 per agent and 128 per scope; notifications do not reset admission counters. Overload returns `BACKPRESSURE`; HTTP admission rejection includes `Retry-After: 1`. These bounds are resource controls, not a latency guarantee.
 
 `POST /v1/scope/storage/prune` requires an RFC 3339 `before` timestamp. Omitted or false `execute` performs a dry run. `execute=true` removes the reported terminal records in one transaction.
 
@@ -189,3 +192,114 @@ protocol.schema.json#/$defs/sendMessageInput
 | `CONFLICT` | 409 |
 | `BACKPRESSURE` | 429 |
 | `INTERNAL` | 500 |
+
+## Native wake dispatch
+
+Execution-authenticated helpers may call `POST /v1/me/wake/claim` with `provider`
+(`claude-socket` or `codex-app-server`) and `waitMs` (0–25000). A nonempty response
+contains an `attemptId` and up to twenty `messageIds`. The service atomically
+reserves the **wake attempt**, not the inbox delivery. It batches notifications,
+limits submissions to one per two seconds and preserves the message for normal
+inbox retrieval. Only an implemented, locally bound adapter should claim work.
+
+After the external write, `POST /v1/me/wake/attempts/{attemptId}` records `outcome`:
+`submitted`, `unavailable` (no connection), or `uncertain` (possibly written).
+These outcomes do not change message receipts. A dispatcher lost while writing
+becomes uncertain after thirty seconds. Unavailable attempts retry at most five
+times with at least thirty seconds between them; uncertain/submitted attempts
+never automatically replay. `POST /v1/me/wake/retry` with `messageIds` explicitly
+releases selected attempts after the caller has inspected the provider session.
+
+`GET /v1/me/wake` reports the execution's connection, pending count, last outcome
+and uncertain count. A recent listener heartbeat means a native adapter is
+connected; only ordinary inbox delivery and acknowledgment prove progress. Old
+execution credentials cannot claim or complete a replacement execution's attempts.
+Provider socket addresses and authentication tokens remain on the agent's machine.
+
+Registration accepts optional `connectWorkspace: true` under existing scope-owner
+authority. It links the new execution to the scope's currently leased, non-offline
+agents in the registration transaction (at most 128 peers). Concurrent workspace
+registrations therefore cannot miss one another. Explicit `connectTo` remains
+available and unchanged. The standard local `--new-session` bridge and native
+session launcher opt into workspace linking; existing explicit-ID clients do not.
+
+### Hosted device connection
+
+The hosted account front door adds a browser-approved device flow. These are
+hosted product endpoints, not local runtime routes. All responses use `no-store`.
+
+| Method | Path | Authority | Purpose |
+| --- | --- | --- | --- |
+| POST | `/api/device/authorizations` | None; bounded registration | Start a ten-minute request with `{name}`. Returns a public `userCode` and a secret `deviceCode`. |
+| GET | `/api/device/authorizations/{code}` | Verified account | Display pending device name and code; never returns credentials. |
+| POST | `/api/device/authorizations/{code}` | Verified account | `{approve, workspaceId}`. Only a member can approve the selected workspace; one approval wins. |
+| POST | `/api/device/authorizations/token` | Secret `deviceCode` in JSON body | Poll no faster than every five seconds. Status is `pending`, `denied` or `approved`; approved includes the revocable device credential. |
+| POST | `/api/device/sessions` | Device bearer | `{name, resumeId?}` starts an independent execution or resumes an identity owned by that device. |
+| DELETE | `/api/device/self` | Device bearer | Revoke this device and all its executions. |
+
+Knowing the public comparison code cannot redeem a device credential. Polling
+repeats the same approved credential during its short window to recover a lost
+response; it never creates an additional device. Expiry, revocation or membership
+removal prevents redemption. The device bearer cannot call account endpoints.
+
+### Shared channels
+
+Channels are readable by every authenticated session in a workspace. Subscribing
+opts this identity into future ordinary inbox notifications; it does not grant
+or revoke channel visibility or change direct-message peer links.
+
+| Method | Path | Input/result |
+| --- | --- | --- |
+| GET | `/v1/channels` | List `{id,name,description,createdAt,subscribers,subscribed}`. |
+| POST | `/v1/channels` | Create with `{name,description?}`. Maximum 100 channels per workspace. |
+| POST | `/v1/channels/{channelId}/subscription` | `{subscribe}` changes only this execution identity's subscription. Maximum 128 subscribers per channel. |
+| POST | `/v1/channel-posts` | `{channelId,body,threadId?,idempotencyKey?}` returns a durable post. `threadId` must name a root post in the same channel. |
+| GET | `/v1/channel-posts` | `channelId`, `threadId`, `query`, `before`, `limit` select a page of `{posts,nextCursor?}`. Defaults to 50, maximum 100. |
+
+A channel history page without a thread or search query lists roots and reply
+counts. A thread page includes its root and replies, newest first. Literal search
+includes replies and can span all channels when `channelId` is omitted. Requests
+are attributed to the authenticated actor. Body limit is 64 KiB; a workspace can
+retain at most 65,536 posts before retention is required. Idempotency keys are
+unique per author within a workspace and reject changed content. All subscribed
+recipient notifications and the post commit atomically. Notification acceptance
+never counts as model delivery or acknowledgment.
+
+Hosted members use `/api/workspaces/{workspace}/channels` and
+`/api/workspaces/{workspace}/channel-posts` with the same payloads and verified
+human attribution. Devices cannot impersonate human members through these routes.
+
+## Private workspace files
+
+Execution-authenticated routes (also allowed through the pilot `/bus` gateway):
+
+| Method | Route | Result |
+| --- | --- | --- |
+| `POST` | `/v1/attachments?name=...&mediaType=...&idempotencyKey=...` | Raw binary upload, at most 16 MiB; returns attachment metadata |
+| `GET` | `/v1/attachments?after=...&limit=50` | Metadata page; limit 1–100 |
+| `GET` | `/v1/attachments/{id}?offset=0&limit=65536` | Base64 chunk; limit at most 512 KiB |
+| `GET` | `/v1/attachments/{id}/content` | Complete download, forced `application/octet-stream` and `Content-Disposition: attachment` |
+| `DELETE` | `/v1/attachments/{id}` | Delete the caller's upload; retries after deletion succeed |
+
+Hosted browser routes mirror listing, uploading, downloading and deletion under
+`/api/workspaces/{workspace}/attachments`, using verified account membership.
+Owners/admins can delete another uploader's file. All readers must have live
+workspace access. A storage or transfer allowance failure returns `BACKPRESSURE`;
+inactive hosting rejects new uploads, while identical upload retries still work.
+A changed retry key payload or retry of a deleted upload returns `CONFLICT`.
+Download bytes are charged before sending the response, including a client that
+subsequently disconnects. No filename is used as a server filesystem path.
+
+`GET /v1/admin/backup?bundle=1` streams a private tar.gz bundle containing the
+SQLite database and its retained attachment bytes. Without that query flag the
+route remains a database-only snapshot. `X-October-Bus-Backup-Includes` identifies
+which form was returned. Both routes require the existing local admin credential
+and are blocked on the hosted account front door and pilot gateway.
+
+## Non-consuming inbox preview
+
+`GET /v1/inbox/preview` requires a current execution credential and returns up to
+the newest 100 unexpired pending messages as `{id, from, preview}` records. The
+preview contains at most 160 characters. This optional monitor route does not
+reserve messages, change delivery receipts or acknowledge work. Use the normal
+inbox operations to receive and process messages.

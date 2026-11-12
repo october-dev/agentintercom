@@ -1,15 +1,15 @@
 # Client SDKs
 
-October Bus ships a Go client in this module and a TypeScript client on npm. From `0.1.0-next.14`, the npm package also installs the matching native Go daemon and exposes the `october-bus` command. SDK imports do not load or start the daemon.
+Agent Intercom provides a Go client in this module and the `agentintercom-cli` npm package for the TypeScript client and matching native Go daemon. Its terminal command is `agentintercom`. SDK imports do not load or start the daemon. Historical npm versions below refer to the previous `@october-dev/october-bus` package.
 
 ## Runtime and SDK compatibility
 
 | Client / distribution | Runtime requirement | Boundary |
 | --- | --- | --- |
 | Go module pinned to `v0.1.0-rc.4` | rc.4's documented protocol subset | Does not include the new managed-retirement helper. |
-| npm versions before `next.14` | Check that published version's documentation | SDK-only packages; installing one does not install a daemon. |
+| npm versions before `next.15` | Check that published version's documentation | SDK-only packages; installing one does not install a daemon. |
 | Updated Go/TypeScript managed sessions in this branch | Ready protocol `0.1` with `/health.features` containing `session-retirement` | Checked before registration; rc.4 and missing feature declarations are rejected. |
-| Bundled npm CLI, starting with published `next.14` | Its exact-version native optional package | Launcher rejects missing/mismatched native packages; remote SDK connections are still checked separately. |
+| Bundled npm CLI, starting with published `next.15` | Its exact-version native optional package | Launcher rejects missing/mismatched native packages; remote SDK connections are still checked separately. |
 | Direct HTTP/SDK calls | An endpoint implementing each operation used | Low-level clients do not negotiate every optional operation automatically. |
 
 The health feature declaration is additive and independent of version labels. It does not confer authority: registration, heartbeat and retirement still authenticate every request. Missing `features` means no declared features; ignore unknown feature names. A compatible independently implemented daemon can advertise `session-retirement` only if it implements the complete retirement contract. Managed-session startup returns `CONFLICT` for incompatible health; transport or unavailable-health errors retain their normal failure semantics. No scope or agent token is sent to the health endpoint.
@@ -103,16 +103,17 @@ Go `SetState` and TypeScript `setState` serialize writes and update their rememb
 
 ## TypeScript
 
-Install the current prerelease:
+Version `0.2.0` is published under `candidate`. Install it explicitly; the
+`latest` tag still selects the links-only `agentintercom-cli@0.0.1` placeholder:
 
 ```bash
-npm install @october-dev/october-bus@next
+npm install agentintercom-cli@0.2.0
 ```
 
 ```ts
-import { OctoberBusAgentSession, OctoberBusOutputClient, OctoberBusScopeClient } from '@october-dev/october-bus'
+import { AgentIntercomAgentSession, AgentIntercomOutputClient, AgentIntercomScopeClient } from 'agentintercom-cli'
 
-const session = await OctoberBusAgentSession.start({
+const session = await AgentIntercomAgentSession.start({
   address,
   scopeToken,
   registration: {
@@ -125,8 +126,8 @@ const session = await OctoberBusAgentSession.start({
 await session.setState('ready', true)
 const peers = await session.client.listPeers({ timeoutMs: 10_000 })
 const messages = await session.client.pullInbox(50, { waitMs: 25_000 })
-const readyTasks = await new OctoberBusScopeClient(address, scopeToken).listTasks({ ready: true })
-const owner = new OctoberBusScopeClient(address, scopeToken)
+const readyTasks = await new AgentIntercomScopeClient(address, scopeToken).listTasks({ ready: true })
+const owner = new AgentIntercomScopeClient(address, scopeToken)
 const publication = await owner.createAgentCardPublication({ agentId: 'reviewer' })
 const issued = await owner.createA2APrincipal({
   publicationId: publication.id,
@@ -157,7 +158,7 @@ const reader = await owner.createOutputPrincipal({
   label: 'Preview page',
   permissions: ['read']
 })
-const outputs = new OctoberBusOutputClient(address, reader.credential)
+const outputs = new AgentIntercomOutputClient(address, reader.credential)
 const latest = await outputs.latest(stream.id)
 ```
 
@@ -175,10 +176,12 @@ Prefer bounded inbox waiting for efficient pull delivery. `pollInbox` provides a
 
 ## Errors
 
-Go returns `*bus.BusError`. TypeScript throws `BusError`. Branch on the protocol error code instead of matching the human-readable message.
+When a Go client operation receives a non-2xx response with an empty or invalid JSON body, its error includes the HTTP status code without exposing the response body.
+
+For protocol errors, Go returns `*bus.BusError` and TypeScript throws `BusError`. Branch on the protocol error code instead of matching the human-readable message.
 
 ```ts
-import { BusError } from '@october-dev/october-bus'
+import { BusError } from 'agentintercom-cli'
 
 try {
   await session.client.claimTask(taskId)

@@ -36,6 +36,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      packages: ${{ steps.provenance.outputs.packages }}
     defaults:
       run:
         working-directory: sdk/typescript
@@ -47,7 +49,7 @@ jobs:
         with:
           go-version: 1.27.x
           cache: true
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -72,9 +74,27 @@ jobs:
       - run: npm run build:native -- --all
       - run: npm run test:integration
         env:
-          OCTOBER_BUS_BINARY: ${{ github.workspace }}/dist/npm/linux-x64/bin/october-bus
+          OCTOBER_BUS_BINARY: ${{ github.workspace }}/dist/npm/linux-x64/bin/agentintercom
       - run: npm run pack:distribution -- --all
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Identify the checked tarballs for provenance
+        id: provenance
+        working-directory: .
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { basename } from 'node:path'
+          import { manifest, targets, packageFor, readArtifact } from './scripts/npm-distribution.mjs'
+          const names = [...targets.map(target => packageFor(target).name), manifest.name]
+          const packages = names.map(name => {
+            const { file, integrity } = readArtifact(name)
+            return {
+              file: basename(file),
+              subject: `pkg:npm/${name.replace('@', '%40')}@${manifest.version}`,
+              digest: `sha512:${Buffer.from(integrity.slice('sha512-'.length), 'base64').toString('hex')}`
+            }
+          })
+          console.log(`packages=${JSON.stringify(packages)}`)
+          NODE
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: npm-distribution
           path: dist/npm/*.tgz*
@@ -89,18 +109,47 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: npm-distribution
           path: dist/npm
       - run: npm run test:distribution
         working-directory: sdk/typescript
 
-  publish:
+  provenance:
     needs: [build, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.build.outputs.packages) }}
+    steps:
+      - name: Attest the checked npm tarball
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ matrix.package.subject }}
+          subject-digest: ${{ matrix.package.digest }}
+      - name: Name the portable provenance bundle
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          TARBALL_NAME: ${{ matrix.package.file }}
+        run: cp "$BUNDLE_PATH" "${TARBALL_NAME}.sigstore"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: npm-provenance-${{ strategy.job-index }}
+          path: '*.tgz.sigstore'
+          if-no-files-found: error
+
+  publish:
+    needs: [build, smoke, provenance]
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -108,11 +157,11 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: npm-distribution
           path: dist/npm
@@ -132,7 +181,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -159,7 +208,7 @@ jobs:
         with:
           ref: ${{ steps.candidate.outputs.candidate_sha }}
           path: candidate-source
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: npm-distribution
           path: dist/npm

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agentintercom": {
+      "command": "/home/worker/.october/servers/<install>/current/bin/agentintercom",
+      "args": ["mcp", "stdio", "--connection-file", "/home/worker/.october/executions/<execution>/connection.json"]
+    }
+  }
+}

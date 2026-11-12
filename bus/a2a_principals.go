@@ -19,7 +19,7 @@ func a2aPrincipalFrom(record scopedCredentialRecord, publicationID string) A2APr
 }
 
 func (s *Store) CreateA2APrincipal(ctx context.Context, scopeID string, input CreateA2APrincipalInput) (IssuedA2APrincipal, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return IssuedA2APrincipal{}, err
 	}
@@ -73,7 +73,7 @@ ORDER BY c.created_at,c.credential_id`, scopeID, a2aPublicationResource, a2aInvo
 }
 
 func (s *Store) ListA2APrincipalUsage(ctx context.Context, scopeID string, limits A2APrincipalLimits) ([]A2APrincipalUsage, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s *Store) ListA2APrincipalUsage(ctx context.Context, scopeID string, limit
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT credentials.credential_id,grants.resource_id,
 COALESCE(SUM(CASE WHEN tasks.state NOT IN ('completed','failed','canceled','rejected') THEN 1 ELSE 0 END),0),
-COALESCE(SUM(CASE WHEN tasks.state NOT IN ('completed','failed','canceled','rejected') THEN length(CAST(messages.body AS BLOB)) ELSE 0 END),0)
+COALESCE(SUM(CASE WHEN tasks.state NOT IN ('completed','failed','canceled','rejected') THEN octet_length(messages.body) ELSE 0 END),0)
 FROM scoped_credentials AS credentials
 JOIN scoped_credential_grants AS grants ON grants.credential_id=credentials.credential_id
 LEFT JOIN a2a_message_correlations AS correlations ON correlations.principal_id=credentials.credential_id
@@ -117,7 +117,7 @@ ORDER BY credentials.created_at,credentials.credential_id`, scopeID, a2aPublicat
 	return usage, nil
 }
 
-func a2aPrincipalPublication(ctx context.Context, tx *sql.Tx, scopeID, principalID string) (string, error) {
+func a2aPrincipalPublication(ctx context.Context, tx sqlExecutor, scopeID, principalID string) (string, error) {
 	var publicationID string
 	err := tx.QueryRowContext(ctx, `SELECT g.resource_id FROM scoped_credentials c
 JOIN scoped_credential_grants g ON g.credential_id=c.credential_id
@@ -130,7 +130,7 @@ WHERE c.scope_id=? AND c.credential_id=? AND g.resource_type=? AND g.permission=
 }
 
 func (s *Store) RotateA2APrincipal(ctx context.Context, scopeID, principalID string) (IssuedA2APrincipal, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return IssuedA2APrincipal{}, err
 	}
@@ -156,7 +156,7 @@ func (s *Store) RotateA2APrincipal(ctx context.Context, scopeID, principalID str
 }
 
 func (s *Store) SetA2APrincipalEnabled(ctx context.Context, scopeID, principalID string, enabled bool) (A2APrincipal, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return A2APrincipal{}, err
 	}
@@ -208,7 +208,7 @@ func (s *Store) AuthenticateA2APrincipal(ctx context.Context, credential, public
 }
 
 // Fence both revocation and rotation in the protected operation's transaction.
-func requireCurrentA2APrincipal(ctx context.Context, tx *sql.Tx, principal A2APrincipal) error {
+func requireCurrentA2APrincipal(ctx context.Context, tx sqlExecutor, principal A2APrincipal) error {
 	var digest string
 	err := tx.QueryRowContext(ctx, `SELECT c.token_hash FROM scoped_credentials c
 JOIN scoped_credential_grants g ON g.credential_id=c.credential_id

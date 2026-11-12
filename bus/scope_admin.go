@@ -35,7 +35,7 @@ func (s *Store) RotateScopeToken(ctx context.Context, scopeID string) (CreateSco
 	if err != nil {
 		return CreateScopeResult{}, err
 	}
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return CreateScopeResult{}, err
 	}
@@ -84,6 +84,11 @@ func (s *Store) RotateScopeToken(ctx context.Context, scopeID string) (CreateSco
 	if _, err := tx.ExecContext(ctx, "UPDATE scoped_credentials SET enabled=0,updated_at=? WHERE scope_id=?", now, scopeID); err != nil {
 		return CreateScopeResult{}, err
 	}
+	if s.Backend() == StorageBackendPostgres {
+		if _, err := tx.ExecContext(ctx, "UPDATE hosted_devices SET revoked_at=? WHERE scope_id=? AND revoked_at=0", now, scopeID); err != nil {
+			return CreateScopeResult{}, err
+		}
+	}
 	if err := appendEvent(ctx, tx, scopeID, "scope.credentials_rotated", scopeID, eventAttributes("executions", "retired", "scopedCredentials", "disabled"), now); err != nil {
 		return CreateScopeResult{}, err
 	}
@@ -91,7 +96,7 @@ func (s *Store) RotateScopeToken(ctx context.Context, scopeID string) (CreateSco
 }
 
 func (s *Store) DeleteScope(ctx context.Context, scopeID string) (bool, error) {
-	tx, err := s.beginTx(ctx)
+	tx, err := s.beginTx(ctx, scopeID)
 	if err != nil {
 		return false, err
 	}

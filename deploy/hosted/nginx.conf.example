@@ -1,0 +1,21 @@
+# Alternative to Caddy. Add to the existing nginx configuration only after
+# provisioning a certificate for bus.october.dev with the site's ACME tooling.
+server {
+    listen 443 ssl;
+    server_name bus.october.dev;
+    ssl_certificate /etc/letsencrypt/live/bus.october.dev/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bus.october.dev/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 1m;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    location / {
+        proxy_pass http://127.0.0.1:8787;
+        proxy_set_header Host $http_host;
+        proxy_set_header Connection "";
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 40s;
+        proxy_send_timeout 40s;
+    }
+}
