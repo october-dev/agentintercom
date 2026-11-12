@@ -232,6 +232,13 @@ func TestMessageIdempotencyRejectsPayloadChanges(t *testing.T) {
 	input.Body = "Review something else"
 	_, err = agents.runtime.SendMessage(ctx, agents.plannerToken, input)
 	requireCode(t, err, CodeConflict)
+	// The recipient is part of the deduplication identity: the same key and
+	// body for another recipient is a conflict, not a second send.
+	redirected := input
+	redirected.To = "absent"
+	redirected.Body = "Review this"
+	_, err = agents.runtime.SendMessage(ctx, agents.plannerToken, redirected)
+	requireCode(t, err, CodeConflict)
 	reservation, err := agents.runtime.ReserveInbox(ctx, agents.reviewerToken, 10, 0)
 	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1, "idempotent retry created duplicate work: %#v, %v", reservation, err)
 }
