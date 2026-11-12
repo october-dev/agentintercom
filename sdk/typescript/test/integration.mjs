@@ -124,7 +124,7 @@ try {
   const firstChunk = await reviewer.readAttachment(file.id, 0, 2)
   const secondChunk = await reviewer.readAttachment(file.id, firstChunk.nextOffset, 512)
   assert.deepEqual(Buffer.concat([Buffer.from(firstChunk.dataBase64, 'base64'), Buffer.from(secondChunk.dataBase64, 'base64')]), Buffer.from(fileBytes))
-  const downloaded = await reviewer.downloadAttachment(file.id, { chunkSize: 2 })
+  const downloaded = await reviewer.downloadAttachment(file.id)
   assert.deepEqual(Buffer.from(downloaded.data), Buffer.from(fileBytes))
   assert.equal(downloaded.attachment.sha256, file.sha256)
   const largeBytes = new Uint8Array(600 * 1024).map((_, index) => (index * 31) % 251)

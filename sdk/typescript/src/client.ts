@@ -59,11 +59,6 @@ export interface OperationOptions {
   timeoutMs?: number
 }
 
-export interface DownloadAttachmentOptions extends OperationOptions {
-  /** Bytes requested per chunk, 1 to 524288 (the server maximum). Defaults to 65536. */
-  chunkSize?: number
-}
-
 export interface DownloadedAttachment {
   attachment: Attachment
   /** The complete attachment, verified against its size and SHA-256. */
@@ -579,7 +574,7 @@ export class AgentIntercomClient {
     return request(this.address, this.agentToken, 'GET', `/v1/attachments?after=${encodeURIComponent(after)}&limit=${limit}`, undefined, options)
   }
   uploadAttachment(input: UploadAttachmentInput, data: Uint8Array, options?: OperationOptions): Promise<Attachment> {
-    if (data.byteLength > 16 * 1024 * 1024) throw new BusError('INVALID_ARGUMENT', 'Attachment exceeds 16 MiB')
+    if (data.byteLength > MAX_ATTACHMENT_BYTES) throw new BusError('INVALID_ARGUMENT', 'Attachment exceeds 16 MiB')
     const query = new URLSearchParams({ name: input.name, mediaType: input.mediaType ?? '', idempotencyKey: input.idempotencyKey ?? '' })
     return request(this.address, this.agentToken, 'POST', `/v1/attachments?${query}`, new Blob([new Uint8Array(data)]), options)
   }
@@ -587,25 +582,21 @@ export class AgentIntercomClient {
     return request(this.address, this.agentToken, 'GET', `/v1/attachments/${encodeURIComponent(id)}?offset=${offset}&limit=${limit}`, undefined, options)
   }
   /**
-   * Downloads a complete attachment with `readAttachment()` chunks and verifies it:
+   * Downloads a complete attachment in 512 KiB `readAttachment()` chunks (the server maximum) and verifies it:
    * the same attachment ID, contiguous offsets, unchanged size and checksum, a
    * continuation that advances exactly, the final byte count, and SHA-256. It
    * refuses an attachment over 16 MiB before reading its bytes, and stops without
    * requesting another chunk once `signal` is aborted. `timeoutMs` applies to each
    * chunk request. Nothing is written to disk.
    */
-  async downloadAttachment(id: string, options: DownloadAttachmentOptions = {}): Promise<DownloadedAttachment> {
-    const { chunkSize = 65536, ...requestOptions } = options
-    if (!Number.isInteger(chunkSize) || chunkSize < 1 || chunkSize > MAX_ATTACHMENT_CHUNK_BYTES) {
-      throw new BusError('INVALID_ARGUMENT', `chunkSize must be an integer from 1 to ${MAX_ATTACHMENT_CHUNK_BYTES}`)
-    }
+  async downloadAttachment(id: string, options?: OperationOptions): Promise<DownloadedAttachment> {
     let metadata: Attachment | undefined
     let data: Uint8Array<ArrayBuffer> = new Uint8Array(0)
     let offset = 0
     for (;;) {
       // request() never sends once the signal is aborted, so cancellation stops
       // the loop before another chunk is requested.
-      const chunk = await this.readAttachment(id, offset, chunkSize, requestOptions)
+      const chunk = await this.readAttachment(id, offset, MAX_ATTACHMENT_CHUNK_BYTES, options)
       if (chunk.attachment?.id !== id || chunk.offset !== offset) downloadFailure('attachment ID or offset changed')
       if (metadata === undefined) {
         const { size, sha256 } = chunk.attachment

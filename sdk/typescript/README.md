@@ -136,7 +136,7 @@ const { attachment, data } = await reviewer.downloadAttachment(attachmentId)
 console.log(attachment.name, data.byteLength)
 ```
 
-`downloadAttachment` follows the chunk continuations, checks the attachment ID, offsets, size and SHA-256, and rejects an attachment over 16 MiB before reading it. `timeoutMs` applies to each chunk request, and an aborted `signal` stops it before the next chunk. It returns bytes and never writes to disk. `readAttachment` remains available for reading one chunk.
+`downloadAttachment` follows the chunk continuations (512 KiB per request), checks the attachment ID, offsets, size and SHA-256, and rejects an attachment over 16 MiB before reading it. `timeoutMs` applies to each chunk request, and an aborted `signal` stops it before the next chunk. It returns bytes and never writes to disk. `readAttachment` remains available for reading one chunk.
 
 `pollInbox` provides an abortable async iterator over repeated bounded inbox waits. `withClaimedTask` releases a claim when work or completion fails. Use both with a live agent session so the execution lease remains current while work is claimed.
 
