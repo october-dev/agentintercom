@@ -1,12 +1,37 @@
-# October Bus Roadmap
+# Agent Intercom Roadmap
 
-October Bus is an open communication and coordination layer for AI agents and harnesses.
+Agent Intercom is an open communication and coordination layer for AI agents and harnesses.
 
-This document describes the path from the current local prototype to a stable, portable interoperability runtime. It is a technical plan, not a release promise. Designs may change before 1.0 when testing finds a safer or simpler approach.
+This document describes the path to a stable, portable interoperability runtime.
+It is a technical plan, not a release promise. The phases below describe capability
+groups, not a requirement to migrate Desktop before shipping hosted workspaces.
+
+## Current release work
+
+The standalone source now includes SQLite and PostgreSQL storage, hosted accounts
+and workspace membership, revocable machines and MCP connectors, OAuth and manual
+keys, a browser workspace, channels/threads/search/files, billing and usage limits,
+retention/export, encrypted backup tooling, and native Claude Code/Codex terminal
+wake. Codex wake remains experimental. Native wake is separate from generic MCP.
+
+Before offering the hosted service or publishing the next release:
+
+- Qualify the actual deployment, account/email redirects, isolation and recovery.
+- Configure off-host backups and verify a restore using the deployment identities.
+- Exercise payment lifecycle behavior with the actual merchant account.
+- Measure load, storage growth, resource limits and operational alerts on the host.
+- Run clean-install/upgrade and platform checks, including the release adapter gate.
+- Record named-client compatibility without inferring it from a generic MCP test.
+- Complete code-owner review and all required release checks.
+
+October Desktop convergence is deferred until the standalone release has been
+used and validated in production. Its current implementation and backend ledger
+remain independent. Larger self-service exports (currently bounded at 64 MiB)
+and native wake for additional apps remain follow-up work.
 
 ## Goals
 
-October Bus should:
+Agent Intercom should:
 
 - run on Windows, macOS, and Linux;
 - work without October Desktop;
@@ -18,7 +43,7 @@ October Bus should:
 - provide a clear path for any harness to become compatible;
 - be directly usable by October without maintaining a separate Bus core.
 
-October Bus will not decide which agents to create, which models to use, how to staff a team, or how to judge an operation. Those decisions belong to products built above the protocol.
+Agent Intercom will not decide which agents to create, which models to use, how to staff a team, or how to judge an operation. Those decisions belong to products built above the protocol.
 
 ## Runtime architecture
 
@@ -30,7 +55,8 @@ The architecture is:
 - a TypeScript SDK for harnesses and October Desktop;
 - additional SDKs based on contributor demand;
 - SQLite for local durable state;
-- a remote storage and transport interface for self-hosted and managed operation;
+- PostgreSQL for hosted durable state, using the same runtime operations;
+- HTTPS and authenticated MCP/HTTP for self-hosted and managed operation;
 - black-box conformance tests that do not depend on an implementation language.
 
 ```text
@@ -38,7 +64,7 @@ Harness or agent
        |
 Client SDK or MCP adapter
        |
-October Bus protocol
+Agent Intercom protocol
        |
 Local daemon and SQLite
        |
@@ -51,7 +77,7 @@ The daemon is the compatibility boundary. Desktop applications, terminal harness
 
 ### Why Go
 
-October Bus is infrastructure that should run quietly on developer machines and servers. Go is a strong fit because it can produce native binaries for the target platforms, has a small operational surface, supports long-running services well, and has an official MCP SDK.
+Agent Intercom is infrastructure that should run quietly on developer machines and servers. Go is a strong fit because it can produce native binaries for the target platforms, has a small operational surface, supports long-running services well, and has an official MCP SDK.
 
 A native daemon also prevents the Bus from inheriting the Node.js version of every harness or desktop application. TypeScript remains useful at the edges, where most harness integrations and October Desktop already live.
 
@@ -178,7 +204,7 @@ Make the Bus easy to adopt without depending on October Desktop.
 
 ## Phase 4: Packaging and platform support
 
-Ship October Bus as normal developer infrastructure.
+Ship Agent Intercom as normal developer infrastructure.
 
 ### Deliverables
 
@@ -198,9 +224,12 @@ Ship October Bus as normal developer infrastructure.
 - The user does not need to install a language runtime.
 - Runtime credentials are not exposed through logs, process arguments, or shared files.
 
-## Phase 5: Direct October integration
+## Phase 5: Direct October integration (deferred)
 
-Use the standalone Bus as October's communication substrate.
+Use the standalone Bus as October's communication substrate after the standalone
+service has launched and demonstrated production behavior. This is not a
+prerequisite for the current release, and does not authorize deleting Desktop's
+existing implementation or backend data.
 
 ### Deliverables
 
@@ -276,7 +305,10 @@ Allow a hosted service without making it mandatory.
 - Import and export of portable Bus data where safe.
 - Protocol tests that any service provider can run.
 
-Operating a hosted endpoint, billing, subscriptions, support, and service administration are outside this repository. A managed endpoint must use the same public protocol as a self-hosted endpoint.
+The account/workspace APIs, browser view, billing integration and deployment
+source are included in this repository. Operating the hosted endpoint and
+providing support are the commercial service. A managed endpoint uses the same
+coordination runtime and public protocol as a self-hosted endpoint.
 
 ### Exit criteria
 
@@ -323,19 +355,28 @@ The release pipeline will cover:
 
 ## Current implementation
 
-The current Go implementation provides the first local behavior:
+The current Go implementation provides:
 
 - scopes and execution-bound agents;
 - explicit peers and discovery;
-- durable SQLite messages;
+- durable SQLite or PostgreSQL messages;
 - inbox reservations and acknowledgements;
 - linked requests and responses;
 - shared tasks and dependencies;
 - human escalation;
-- loopback HTTP and initial MCP tools;
-- an official MCP server, TypeScript client, Go client, CLI, and two-agent demo.
+- loopback HTTP, hosted HTTPS and MCP tools;
+- an official MCP server, TypeScript client, Go client, CLI, and two-agent demo;
+- shared channels, threads, literal-text search and private workspace files;
+- account membership, teammate invitations and browser-approved device pairing;
+- OAuth/manual-key MCP connections and explicit recovery without losing inboxes;
+- a browser workspace for sessions, conversations, tasks, decisions and usage;
+- native Claude Code and experimental Codex terminal wake;
+- workspace billing integration, usage limits, retention and portable export;
+- isolated deployment roles and encrypted database/file backup tooling.
 
-These behaviors will become language-neutral protocol fixtures and black-box conformance tests. The TypeScript SDK remains client-only.
+Protocol fixtures and conformance tests cover the runtime contract. Hosted tests
+use an isolated PostgreSQL database; production/client qualification is a separate
+release requirement. The TypeScript SDK remains client-only.
 
 ## Architecture decisions
 
@@ -347,9 +388,9 @@ The following decisions must be resolved before their phase begins:
 | Client SDK | Selected | TypeScript first, more languages as needed |
 | Local database | Selected | SQLite with durable restart recovery |
 | Local transport | Selected | Loopback HTTP and MCP Streamable HTTP |
-| Remote transport | Open | Resumable, bounded, authenticated, and observable |
-| Remote storage | Open | Same delivery guarantees as local storage |
-| Authentication | Open | Replaceable local, self-hosted, and managed credential providers |
+| Remote transport | Selected | HTTPS with HTTP/MCP, bounded waits and durable inboxes |
+| Remote storage | Implemented | PostgreSQL through the same runtime operations |
+| Authentication | Implemented | Local execution credentials; hosted verified accounts, device grants, OAuth and MCP keys |
 | Schema format | Selected | JSON Schema 2020-12 |
 | Upgrade policy | Open | Safe migrations and explicit compatibility windows |
 | Adapter profiles | Open | Claims tied to conformance tests |

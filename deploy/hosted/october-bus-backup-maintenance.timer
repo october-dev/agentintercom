@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Agent Intercom backup integrity and retention
+
+[Timer]
+OnCalendar=*-*-* 03:20:00 UTC
+RandomizedDelaySec=5m
+Persistent=true
+Unit=october-bus-backup-maintenance.service
+
+[Install]
+WantedBy=timers.target

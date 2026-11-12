@@ -13,7 +13,7 @@ test('stable candidate and promotion are explicit, never inferred from a prerele
   }
 })
 
-test('stable promotion preflights all artifacts and promotes parent last; retries are safe', () => {
+test('stable promotion preflights all artifacts and promotes parent last; retries are safe', async () => {
   for (const missing of [true, false]) {
     const writes = []
     const run = () => publishDistribution(packages, args => {
@@ -28,19 +28,19 @@ test('stable promotion preflights all artifacts and promotes parent last; retrie
       return ''
     }, { version: '1.0.0', channel: 'latest' })
     if (missing) {
-      assert.throws(run, /publish candidate first/)
+      await assert.rejects(run, /publish candidate first/)
       assert.deepEqual(writes, [])
     } else {
-      run()
-      run()
+      await run()
+      await run()
       assert.deepEqual(writes, [...packages, ...packages].map(pkg => `${pkg.name}@1.0.0`))
     }
   }
 })
 
-test('stable candidate publishes without assigning latest', () => {
+test('stable candidate publishes without assigning latest', async () => {
   const present = new Set()
-  publishDistribution(packages, args => {
+  await publishDistribution(packages, args => {
     if (args[0] === 'view') {
       const pkg = packages.find(pkg => args[1] === `${pkg.name}@1.0.0`)
       if (!present.has(pkg.name)) throw notFound()
@@ -60,26 +60,30 @@ test('packed SDK pins every native optional package to the parent version', () =
   assert.equal(distributionManifest().devDependencies, undefined)
 })
 
-test('a conflict or outage on the final preflight performs no publishes', () => {
+// Publication fixtures must not depend on the checkout's release version.
+const prereleaseVersion = '1.0.0-rc.1'
+const publishPrerelease = (packages, run, options = {}) => publishDistribution(packages, run, { version: prereleaseVersion, channel: 'next', ...options })
+
+test('a conflict or outage on the final preflight performs no publishes', async () => {
   for (const failure of ['conflict', 'outage']) {
-    assert.throws(() => publishDistribution(packages, args => {
+    await assert.rejects(() => publishPrerelease(packages, args => {
       assert.equal(args[0], 'view', 'preflight must finish before publishing anything')
-      if (args[1] !== `${manifest.name}@${manifest.version}`) throw notFound()
+      if (args[1] !== `${manifest.name}@${prereleaseVersion}`) throw notFound()
       if (failure === 'outage') throw new Error('registry unavailable')
       return JSON.stringify('different')
     }), failure === 'outage' ? /registry unavailable/ : /different contents/)
   }
-  assert.throws(() => publishDistribution(packages.slice(1), () => assert.fail('no registry request expected')), /exactly six/)
-  for (const value of ['null', '""', '{}']) assert.throws(() => publishDistribution(packages, args => {
+  await assert.rejects(() => publishPrerelease(packages.slice(1), () => assert.fail('no registry request expected')), /exactly six/)
+  for (const value of ['null', '""', '{}']) await assert.rejects(() => publishPrerelease(packages, args => {
     assert.equal(args[0], 'view')
     return value
   }), /invalid artifact integrity/)
 })
 
-test('publishes all native packages before the parent, with provenance and exact integrity', () => {
+test('publishes all native packages before the parent, with provenance and exact integrity', async () => {
   const published = []
-  publishDistribution(packages, args => {
-    const pkg = packages.find(pkg => args[1] === pkg.file || args[1] === `${pkg.name}@${manifest.version}`)
+  await publishPrerelease(packages, args => {
+    const pkg = packages.find(pkg => args[1] === pkg.file || args[1] === `${pkg.name}@${prereleaseVersion}`)
     assert.ok(pkg)
     if (args[0] === 'view') {
       if (!published.includes(pkg.name)) throw notFound()
@@ -93,9 +97,9 @@ test('publishes all native packages before the parent, with provenance and exact
   assert.deepEqual(published, packages.map(pkg => pkg.name))
 })
 
-test('a native publish failure prevents the parent package from being published', () => {
+test('a native publish failure prevents the parent package from being published', async () => {
   const attempts = []
-  assert.throws(() => publishDistribution(packages, args => {
+  await assert.rejects(() => publishPrerelease(packages, args => {
     if (args[0] === 'view') throw notFound()
     attempts.push(args[1])
     throw new Error('no publish permission')
@@ -103,12 +107,61 @@ test('a native publish failure prevents the parent package from being published'
   assert.deepEqual(attempts, [packages[0].file])
 })
 
-test('reruns skip identical artifacts but reject different contents and network/auth failures', t => {
+test('reruns skip identical artifacts but reject different contents and network/auth failures', async t => {
   t.mock.method(console, 'log', () => {})
-  publishDistribution(packages, args => {
+  await publishPrerelease(packages, args => {
     assert.equal(args[0], 'view')
-    return JSON.stringify(packages.find(pkg => args[1] === `${pkg.name}@${manifest.version}`).integrity)
+    return JSON.stringify(packages.find(pkg => args[1] === `${pkg.name}@${prereleaseVersion}`).integrity)
   })
-  assert.throws(() => publishDistribution(packages, () => JSON.stringify('different')), /Refusing to reuse/)
-  assert.throws(() => publishDistribution(packages, () => { throw new Error('offline') }), /offline/)
+  await assert.rejects(() => publishPrerelease(packages, () => JSON.stringify('different')), /Refusing to reuse/)
+  await assert.rejects(() => publishPrerelease(packages, () => { throw new Error('offline') }), /offline/)
+})
+
+test('accepted publications wait for visibility without repeating writes or advancing early', async t => {
+  t.mock.method(console, 'log', () => {})
+  const published = []
+  const reads = new Map()
+  const waits = []
+  await publishPrerelease(packages, args => {
+    const pkg = packages.find(pkg => args[1] === pkg.file || args[1] === `${pkg.name}@${prereleaseVersion}`)
+    if (args[0] === 'view') {
+      assert.ok(args.includes('--prefer-online'))
+      if (!published.includes(pkg.name)) throw notFound()
+      reads.set(pkg.name, (reads.get(pkg.name) ?? 0) + 1)
+      if (reads.get(pkg.name) < 3) throw notFound()
+      return JSON.stringify(pkg.integrity)
+    }
+    assert.equal(args[0], 'publish')
+    for (const previous of published) assert.equal(reads.get(previous), 3, 'verify each native package before advancing')
+    published.push(pkg.name)
+  }, { wait: async delay => waits.push(delay) })
+  assert.deepEqual(published, packages.map(pkg => pkg.name), 'publish every artifact exactly once, parent last')
+  assert.deepEqual(waits, Array(14).fill(10_000))
+})
+
+test('publication visibility timeout is bounded and prevents later package writes', async t => {
+  t.mock.method(console, 'log', () => {})
+  const writes = []
+  let waits = 0
+  await assert.rejects(() => publishPrerelease(packages, args => {
+    if (args[0] === 'view') throw notFound()
+    writes.push(args[1])
+  }, { wait: async () => { waits++ } }), /Timed out waiting for npm/)
+  assert.deepEqual(writes, [packages[0].file])
+  assert.equal(waits, 59)
+})
+
+test('post-publication conflicts, malformed metadata and non-404 errors fail without waiting', async () => {
+  for (const failure of ['conflict', 'malformed', 'E401', 'E503']) {
+    const writes = []
+    await assert.rejects(() => publishPrerelease(packages, args => {
+      if (args[0] === 'publish') { writes.push(args[1]); return '' }
+      if (writes.length === 0) throw notFound()
+      if (failure === 'conflict') return JSON.stringify('different')
+      if (failure === 'malformed') return '{}'
+      throw Object.assign(new Error(failure), { stdout: JSON.stringify({ error: { code: failure } }) })
+    }, { wait: async () => assert.fail('Only E404 visibility reads may be retried') }),
+    failure === 'conflict' ? /integrity mismatch/ : failure === 'malformed' ? /invalid artifact integrity/ : new RegExp(failure))
+    assert.deepEqual(writes, [packages[0].file])
+  }
 })

@@ -146,6 +146,47 @@ func TestMCPAddTaskSchemaIncludesTitle(t *testing.T) {
 	t.Fatal("add_task tool was not listed")
 }
 
+// Some MCP hosts (Cursor 3.20.21) reject a tool list that contains a boolean
+// property schema such as `"value": true`, which hides every tool in the server.
+func TestMCPToolSchemasAvoidBooleanPropertySchemas(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	server := NewServer(agents.runtime, ServerOptions{})
+	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	request.Host = "127.0.0.1:4765"
+	request.Header.Set("Authorization", "Bearer "+agents.plannerToken)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json, text/event-stream")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("tools/list failed: status=%d body=%s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Result struct {
+			Tools []struct {
+				Name        string `json:"name"`
+				InputSchema struct {
+					Properties map[string]any `json:"properties"`
+				} `json:"inputSchema"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Result.Tools) == 0 {
+		t.Fatal("no tools were listed")
+	}
+	for _, tool := range payload.Result.Tools {
+		for name, schema := range tool.InputSchema.Properties {
+			if _, isObject := schema.(map[string]any); !isObject {
+				t.Errorf("%s property %q has a non-object schema %v; hosts such as Cursor reject it", tool.Name, name, schema)
+			}
+		}
+	}
+}
+
 func TestDaemonAllowedHostsEnvironment(t *testing.T) {
 	t.Setenv("OCTOBER_BUS_ALLOWED_HOSTS", " a:1 , , b:2 ,a:1 ")
 	root := t.TempDir()

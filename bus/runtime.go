@@ -20,11 +20,15 @@ type Runtime struct {
 	signals            *runtimeSignals
 	inboxWaiters       inboxWaitBudget
 	a2aPrincipalLimits A2APrincipalLimits
+	attachmentRequests chan struct{}
 }
 
 type RuntimeOptions struct {
 	A2APrincipalMessageLimit int64
 	A2APrincipalByteLimit    int64
+	// AttachmentDir defaults beside a SQLite database. PostgreSQL hosting must
+	// explicitly configure a private persistent directory owned by one service.
+	AttachmentDir string
 }
 
 func Open(source string) (*Runtime, error) {
@@ -40,11 +44,15 @@ func OpenWithOptions(source string, options RuntimeOptions) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := store.configureAttachments(options.AttachmentDir); err != nil {
+		store.Close()
+		return nil, err
+	}
 	return openWithStorage(store, limits), nil
 }
 
 func openWithStorage(store storageBackend, limits A2APrincipalLimits) *Runtime {
-	return &Runtime{store: store, signals: newRuntimeSignals(), a2aPrincipalLimits: limits}
+	return &Runtime{store: store, signals: newRuntimeSignals(), a2aPrincipalLimits: limits, attachmentRequests: make(chan struct{}, 4)}
 }
 
 func normalizedA2APrincipalLimits(options RuntimeOptions) (A2APrincipalLimits, error) {
@@ -153,6 +161,44 @@ func (r *Runtime) Principal(ctx context.Context, agentToken string) (Principal, 
 	return r.store.AuthenticateAgent(ctx, agentToken)
 }
 
+// Credential classifies a bearer credential with bounded indexed lookups and
+// no scope data, so a forwarding gateway can decide admission before it reads
+// a request body. Success authorizes nothing: every route still authenticates
+// and rechecks inside its own transaction.
+//
+// The default purpose mirrors scopeAuthority: a scope token, then an unexpired
+// current agent token, then an enabled scoped credential. purpose=retire is the
+// read-only form of the rule Store.RetireAgent applies: the current token of an
+// execution may retire it even when its lease has expired or already ended,
+// while a replaced token may not.
+func (r *Runtime) Credential(ctx context.Context, token, purpose string) (Credential, error) {
+	switch purpose {
+	case "":
+		if _, err := r.store.AuthenticateScope(ctx, token); err == nil {
+			return Credential{Kind: CredentialScope}, nil
+		} else if AsBusError(err).Code != CodeUnauthenticated {
+			return Credential{}, err
+		}
+		kind, err := r.store.CredentialKind(ctx, token)
+		if err != nil {
+			return Credential{}, err
+		}
+		switch kind {
+		case CredentialKindAgent:
+			return Credential{Kind: CredentialAgent}, nil
+		case CredentialKindScopedPrincipal:
+			return Credential{Kind: CredentialPrincipal}, nil
+		}
+		return Credential{}, Errorf(CodeUnauthenticated, "Invalid credential")
+	case "retire":
+		if _, err := r.store.CurrentAgentToken(ctx, token); err != nil {
+			return Credential{}, err
+		}
+		return Credential{Kind: CredentialAgent}, nil
+	}
+	return Credential{}, Errorf(CodeInvalidArgument, "purpose must be omitted or retire")
+}
+
 func (r *Runtime) Heartbeat(ctx context.Context, agentToken string, input HeartbeatInput) (Agent, error) {
 	principal, err := r.Principal(ctx, agentToken)
 	if err != nil {
@@ -188,29 +234,8 @@ func (r *Runtime) SendMessage(ctx context.Context, agentToken string, input Send
 	if err != nil {
 		return DeliveryReceipt{}, err
 	}
-	if err := validateIdentity(input.To, "to", false); err != nil {
+	if err := validateSendMessageInput(&input); err != nil {
 		return DeliveryReceipt{}, err
-	}
-	if err := validateText(input.Body, "body", 65536, false); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if err := validateMessageMode(input.Mode); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if err := validateIdentity(input.ResponseTo, "responseTo", true); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if err := validateText(input.IdempotencyKey, "idempotencyKey", 256, true); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if input.ExpiresInMS < 0 || input.ExpiresInMS > maxExpiryMS {
-		return DeliveryReceipt{}, Errorf(CodeInvalidArgument, "expiresInMs is invalid")
-	}
-	if err := validateContext(input.Context); err != nil {
-		return DeliveryReceipt{}, err
-	}
-	if input.Context == nil {
-		input.Context = []ContextItem{}
 	}
 	result, err := r.store.SendMessage(ctx, principal, input)
 	if err == nil {
@@ -296,6 +321,11 @@ func (r *Runtime) ReserveInbox(ctx context.Context, agentToken string, limit int
 			return nil, nil
 		}
 		wakeAt := deadline
+		if r.store.Backend() == StorageBackendPostgres {
+			// A different server process may commit without a local signal.
+			// Bounded polling also works through PostgreSQL transaction poolers.
+			wakeAt = minTime(wakeAt, time.Now().Add(time.Second))
+		}
 		leaseExpiresAt := time.UnixMilli(principal.LeaseExpiresAt)
 		if leaseExpiresAt.Before(wakeAt) {
 			wakeAt = leaseExpiresAt
@@ -395,19 +425,8 @@ func (r *Runtime) AddTask(ctx context.Context, agentToken string, input AddTaskI
 	if err != nil {
 		return Task{}, err
 	}
-	if err := validateText(input.Title, "title", 256, false); err != nil {
+	if err := validateAddTaskInput(input); err != nil {
 		return Task{}, err
-	}
-	if err := validateText(input.Description, "description", 16384, true); err != nil {
-		return Task{}, err
-	}
-	if len(input.Dependencies) > 128 {
-		return Task{}, Errorf(CodeInvalidArgument, "dependencies exceeds 128 items")
-	}
-	for _, dependency := range input.Dependencies {
-		if err := validateIdentity(dependency, "dependencies", false); err != nil {
-			return Task{}, err
-		}
 	}
 	var result Task
 	if principal == nil {
@@ -653,6 +672,7 @@ func (r *Runtime) ResolveEscalation(ctx context.Context, scopeToken, escalationI
 	}
 	result, err := r.store.ResolveEscalation(ctx, scopeID, escalationID, answer)
 	if err == nil {
+		r.signals.notify(signalKey{scopeID: scopeID, consumerID: result.AgentID})
 		r.notifyScope(scopeID)
 	}
 	return result, err
@@ -671,4 +691,51 @@ func (r *Runtime) NodeStatus(ctx context.Context, agentToken string) (NodeStatus
 		Identity: NodeIdentity{AgentIdentity: principal.AgentIdentity, LeaseExpiresAt: instant(principal.LeaseExpiresAt)},
 		Agent:    agent,
 	}, nil
+}
+
+func validateSendMessageInput(input *SendMessageInput) error {
+	if err := validateIdentity(input.To, "to", false); err != nil {
+		return err
+	}
+	if err := validateText(input.Body, "body", 65536, false); err != nil {
+		return err
+	}
+	if err := validateMessageMode(input.Mode); err != nil {
+		return err
+	}
+	if err := validateIdentity(input.ResponseTo, "responseTo", true); err != nil {
+		return err
+	}
+	if err := validateText(input.IdempotencyKey, "idempotencyKey", 256, true); err != nil {
+		return err
+	}
+	if input.ExpiresInMS < 0 || input.ExpiresInMS > maxExpiryMS {
+		return Errorf(CodeInvalidArgument, "expiresInMs is invalid")
+	}
+	if err := validateContext(input.Context); err != nil {
+		return err
+	}
+	if input.Context == nil {
+		input.Context = []ContextItem{}
+	}
+
+	return nil
+}
+
+func validateAddTaskInput(input AddTaskInput) error {
+	if err := validateText(input.Title, "title", 256, false); err != nil {
+		return err
+	}
+	if err := validateText(input.Description, "description", 16384, true); err != nil {
+		return err
+	}
+	if len(input.Dependencies) > 128 {
+		return Errorf(CodeInvalidArgument, "dependencies exceeds 128 items")
+	}
+	for _, dependency := range input.Dependencies {
+		if err := validateIdentity(dependency, "dependencies", false); err != nil {
+			return err
+		}
+	}
+	return nil
 }

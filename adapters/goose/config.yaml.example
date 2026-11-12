@@ -1,7 +1,7 @@
 {
   "extensions": {
-    "october_bus": {
-      "name": "October Bus",
+    "agent_intercom": {
+      "name": "Agent Intercom",
       "type": "stdio",
       "cmd": "{{command}}",
       "args": [

@@ -1,0 +1,19 @@
+# Add this site to the existing Caddy configuration. Change the domain if needed.
+# DNS must point to this server; Caddy obtains and renews its HTTPS certificate.
+bus.october.dev {
+	header {
+		X-Content-Type-Options nosniff
+		Strict-Transport-Security "max-age=31536000"
+	}
+	request_body {
+		max_size 1MiB
+	}
+	reverse_proxy 127.0.0.1:8787 {
+		# Preserve the public Host; the gateway validates it before forwarding.
+		flush_interval -1
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 35s
+		}
+	}
+}

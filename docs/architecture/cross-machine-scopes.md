@@ -2,7 +2,7 @@
 
 Status: accepted for protocol 0.1
 
-October Bus supports local and cross-machine coordination with one protocol. A scope has one authoritative Bus service for its durable coordination state. Each machine remains authoritative for the agent executions it runs.
+Agent Intercom supports local and cross-machine coordination with one protocol. A scope has one authoritative Bus service for its durable coordination state. Each machine remains authoritative for the agent executions it runs.
 
 ## Deployment shapes
 
@@ -13,7 +13,7 @@ One daemon stores the scope in SQLite and serves local agents through HTTP or MC
 ```text
 local agents
      |
-October Bus
+Agent Intercom
      |
    SQLite
 ```
@@ -26,7 +26,7 @@ Several hosts connect to one authorized Bus endpoint backed by shared durable st
 
 ```text
 host A agents ----\
-                   October Bus service ---- durable storage
+                   Agent Intercom service ---- durable storage
 host B agents ----/
 ```
 

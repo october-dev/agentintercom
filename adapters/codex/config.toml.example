@@ -1,4 +1,4 @@
-[mcp_servers.october_bus]
+[mcp_servers.agent_intercom]
 command = "{{command}}"
 args = ["mcp","stdio","--scope","{{scope}}","--agent","{{agent}}","--name","{{name}}","--data-dir","{{dataDir}}","--runtime-dir","{{runtimeDir}}"]
 startup_timeout_sec = 20

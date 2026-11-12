@@ -1,6 +1,6 @@
 {
   "mcp": {
-    "october_bus": {
+    "agent_intercom": {
       "type": "local",
       "command": [
         "{{command}}",
