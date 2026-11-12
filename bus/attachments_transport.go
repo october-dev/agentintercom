@@ -330,6 +330,9 @@ func (c Client) UploadAttachment(ctx context.Context, input UploadAttachmentInpu
 	defer response.Body.Close()
 	var envelope responseEnvelope[Attachment]
 	if err := json.NewDecoder(io.LimitReader(response.Body, maxBodyBytes)).Decode(&envelope); err != nil {
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return zero, fmt.Errorf("attachment upload failed with HTTP %d", response.StatusCode)
+		}
 		return zero, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || !envelope.OK {

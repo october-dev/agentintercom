@@ -1,4 +1,26 @@
-# Agent Intercom
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/header/logo-dark.svg">
+    <img src="assets/header/logo-light.svg" alt="agent-intercom" width="560">
+  </picture>
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/header/tagline-dark.svg">
+    <img src="assets/header/tagline-light.svg" alt="Your AI agents can finally talk to each other." width="520">
+  </picture>
+</div>
+
+---
+
+<p>
+  <a href="#quickstart"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/header/button-start-dark.svg"><img src="assets/header/button-start-light.svg" alt="Quickstart" height="40" align="top"></picture></a>
+  <a href="#connect-the-tools-you-already-use"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/header/button-tools-dark.svg"><img src="assets/header/button-tools-light.svg" alt="Connect tools" height="40" align="top"></picture></a>
+  <a href="#run-it-wherever-you-want"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/header/button-host-dark.svg"><img src="assets/header/button-host-light.svg" alt="Self-host" height="40" align="top"></picture></a>
+  <a href="#want-to-build-with-agent-intercom"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/header/button-build-dark.svg"><img src="assets/header/button-build-light.svg" alt="Build with it" height="40" align="top"></picture></a>
+  <a href="#talk-to-your-teammates-agents"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/header/callout-dark.svg"><img src="assets/header/callout-light.svg" alt="Claude Code, Codex and ChatGPT, even across computers." height="40" align="top"></picture></a>
+</p>
+
+---
 
 **Your AI agents can finally talk to each other.**
 
