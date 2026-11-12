@@ -33,6 +33,7 @@ func TestTaskCLIClaimProgressComplete(t *testing.T) {
 	b, err := owner.RegisterAgent(ctx, bus.RegisterAgentInput{ID: "b", DisplayName: "Second"})
 	requireNoError(t, err)
 	t.Setenv("OCTOBER_BUS_ADDRESS", owner.Address)
+	t.Setenv("OCTOBER_BUS_SCOPE_TOKEN", "")
 	build, err := owner.AddTask(ctx, bus.AddTaskInput{Title: "Build"})
 	requireNoError(t, err)
 	ship, err := owner.AddTask(ctx, bus.AddTaskInput{Title: "Ship", Dependencies: []string{build.ID}})
@@ -73,6 +74,14 @@ func TestTaskCLIClaimProgressComplete(t *testing.T) {
 	var entries []bus.TaskProgress
 	requireNoError(t, json.Unmarshal([]byte(out), &entries))
 	require(t, len(entries) == 2, "expected 2 progress entries: %#v", entries)
+
+	// The workspace owner can read the same history without an agent session.
+	t.Setenv("OCTOBER_BUS_SCOPE_TOKEN", owner.Token)
+	out, err = runTask(t, "", "", "progress", "list", "--id", build.ID, "--json")
+	requireNoError(t, err)
+	requireNoError(t, json.Unmarshal([]byte(out), &entries))
+	require(t, len(entries) == 2, "owner could not read progress: %#v", entries)
+	t.Setenv("OCTOBER_BUS_SCOPE_TOKEN", "")
 
 	// Release and reclaim keep ownership with the claiming execution.
 	_, err = runTask(t, a.AgentToken, "", "release", "--id", build.ID)
@@ -154,25 +163,25 @@ func TestTaskCLIAddAndListInsideAnAgentSession(t *testing.T) {
 }
 
 func TestTaskCLIInputValidation(t *testing.T) {
-	text, err := taskText("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes)), "--text", maxTaskProgressBytes, true)
+	text, err := inputText("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes)), "--text", maxTaskProgressBytes, true)
 	requireNoError(t, err)
 	require(t, len(text) == maxTaskProgressBytes, "rejected text at the limit")
-	note, err := taskText("", "", nil, "--note", maxTaskNoteBytes, false)
+	note, err := inputText("", "", nil, "--note", maxTaskNoteBytes, false)
 	requireNoError(t, err)
 	require(t, note == "", "an omitted note must stay empty")
 
 	for name, run := range map[string]func() error{
 		"both inputs": func() error {
-			_, err := taskText("a", "-", strings.NewReader("b"), "--text", maxTaskProgressBytes, true)
+			_, err := inputText("a", "-", strings.NewReader("b"), "--text", maxTaskProgressBytes, true)
 			return err
 		},
 		"over the limit": func() error {
-			_, err := taskText("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes+1)), "--text", maxTaskProgressBytes, true)
+			_, err := inputText("", "-", strings.NewReader(strings.Repeat("a", maxTaskProgressBytes+1)), "--text", maxTaskProgressBytes, true)
 			return err
 		},
-		"empty progress": func() error { _, err := taskText(" \n", "", nil, "--text", maxTaskProgressBytes, true); return err },
+		"empty progress": func() error { _, err := inputText(" \n", "", nil, "--text", maxTaskProgressBytes, true); return err },
 		"missing file": func() error {
-			_, err := taskText("", filepath.Join(t.TempDir(), "none"), nil, "--note", maxTaskNoteBytes, false)
+			_, err := inputText("", filepath.Join(t.TempDir(), "none"), nil, "--note", maxTaskNoteBytes, false)
 			return err
 		},
 		"progress without subcommand": func() error { return taskLifecycleCommand("progress", nil, nil, &bytes.Buffer{}) },

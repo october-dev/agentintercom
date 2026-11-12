@@ -49,7 +49,7 @@ func channelCommand(args []string, in io.Reader, out io.Writer) error {
 		result = map[string]bool{"subscribed": args[0] == "join"}
 	case "post":
 		var text string
-		text, err = messageBody(*body, *file, in)
+		text, err = inputText(*body, *file, in, "--body", 65536, true)
 		if err == nil {
 			result, err = client.PostChannel(ctx, bus.PostChannelInput{ChannelID: *id, Body: text, ThreadID: *thread, IdempotencyKey: *key})
 		}

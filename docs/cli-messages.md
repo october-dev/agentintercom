@@ -71,8 +71,9 @@ private text out of shell history, and `--json` for scripts. Progress text is
 limited to 4000 bytes and a completion note to 16 KiB.
 
 `claim`, `release`, `complete` and `progress add` always act as the connected
-session, using `OCTOBER_BUS_AGENT_TOKEN`. Only the claiming execution can release
-or complete a task. Another session's claim, an unfinished dependency, or a
-replaced session returns an error instead of taking the task over. `task add` and
-`task list` use `OCTOBER_BUS_SCOPE_TOKEN` when it is set; inside `agent run`, which
-removes that token, they use the session's credential.
+session, using `OCTOBER_BUS_AGENT_TOKEN`. Only the claiming execution can add
+progress to, release or complete a task. Another session's claim, an unfinished
+dependency, or a replaced session returns an error instead of taking the task
+over. `task add`, `task list` and `task progress list` use
+`OCTOBER_BUS_SCOPE_TOKEN` when it is set; inside `agent run`, which removes
+that token, they use the session's credential.

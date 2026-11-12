@@ -42,10 +42,13 @@ func executionClient(address string) (bus.Client, error) {
 		HTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: refuseMCPRedirect}}, nil
 }
 
-func messageBody(body, file string, input io.Reader) (string, error) {
+// inputText reads text from exactly one of an inline flag or its file flag
+// ("-" is stdin), so private text can stay out of shell history. name is the
+// inline flag, for example "--body"; limit is the server's byte limit.
+func inputText(inline, file string, input io.Reader, name string, limit int, required bool) (string, error) {
 	if file != "" {
-		if body != "" {
-			return "", errors.New("use either --body or --body-file")
+		if inline != "" {
+			return "", fmt.Errorf("use either %s or %s-file", name, name)
 		}
 		if file != "-" {
 			f, err := os.Open(file)
@@ -55,16 +58,19 @@ func messageBody(body, file string, input io.Reader) (string, error) {
 			defer f.Close()
 			input = f
 		}
-		data, err := io.ReadAll(io.LimitReader(input, 65537))
+		data, err := io.ReadAll(io.LimitReader(input, int64(limit)+1))
 		if err != nil {
 			return "", err
 		}
-		body = string(data)
+		inline = string(data)
 	}
-	if strings.TrimSpace(body) == "" || len(body) > 65536 {
-		return "", errors.New("message body must contain 1 to 65536 bytes; use --body or --body-file (use - for stdin)")
+	if len(inline) > limit {
+		return "", fmt.Errorf("%s must be at most %d bytes", strings.TrimPrefix(name, "--"), limit)
 	}
-	return body, nil
+	if required && strings.TrimSpace(inline) == "" {
+		return "", fmt.Errorf("%s is required; use %s or %s-file (use - for stdin)", strings.TrimPrefix(name, "--"), name, name)
+	}
+	return inline, nil
 }
 
 func sendMessageCommand(args []string, in io.Reader, out io.Writer) error {
@@ -96,7 +102,7 @@ func sendMessageCommand(args []string, in io.Reader, out io.Writer) error {
 	if *expiry < 0 || *expiry > 30*24*time.Hour || (*expiry > 0 && expiry.Milliseconds() == 0) {
 		return errors.New("--expires must be zero or between 1ms and 720h")
 	}
-	text, err := messageBody(*body, *file, in)
+	text, err := inputText(*body, *file, in, "--body", 65536, true)
 	if err != nil {
 		return err
 	}

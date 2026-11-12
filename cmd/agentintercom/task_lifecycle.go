@@ -8,23 +8,23 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/october-dev/agentintercom/bus"
 )
 
-// Server limits for task text (validateText in bus/runtime.go).
+// Server limits for task text (CompleteTask and AddTaskProgress in bus/runtime.go).
 const (
 	maxTaskNoteBytes     = 16384
 	maxTaskProgressBytes = 4000
 )
 
-// Task lifecycle commands act as the connected agent session. They use only the
-// execution credential from `agent run` or a harness (OCTOBER_BUS_AGENT_TOKEN),
-// never a workspace owner or administrator credential, so the server's
-// ownership rules (one claimant, release and complete by that execution only)
-// stay in force.
+// Task lifecycle commands act as the connected agent session. Claim, release,
+// complete, and progress add use only the execution credential from `agent run`
+// or a harness (OCTOBER_BUS_AGENT_TOKEN), never a workspace owner or
+// administrator credential, so the server's ownership rules (one claimant,
+// progress, release and complete by that execution only) stay in force.
+// Progress list accepts either credential, like the server route it reads.
 func taskLifecycleCommand(operation string, args []string, in io.Reader, out io.Writer) error {
 	switch operation {
 	case "claim", "release":
@@ -93,7 +93,7 @@ func completeTask(args []string, in io.Reader, out io.Writer) error {
 	if flags.NArg() != 0 || *id == "" {
 		return errors.New("task complete requires --id <task-id> and no positional arguments")
 	}
-	text, err := taskText(*note, *noteFile, in, "--note", maxTaskNoteBytes, false)
+	text, err := inputText(*note, *noteFile, in, "--note", maxTaskNoteBytes, false)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func addTaskProgress(args []string, in io.Reader, out io.Writer) error {
 	if *kind != "progress" && *kind != "note" && *kind != "blocker" {
 		return errors.New("--kind must be progress, note, or blocker")
 	}
-	body, err := taskText(*text, *textFile, in, "--text", maxTaskProgressBytes, true)
+	body, err := inputText(*text, *textFile, in, "--text", maxTaskProgressBytes, true)
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func listTaskProgress(args []string, out io.Writer) error {
 	if flags.NArg() != 0 || *id == "" {
 		return errors.New("task progress list requires --id <task-id> and no positional arguments")
 	}
-	client, err := executionClient(*address)
+	client, err := taskClient(*address)
 	if err != nil {
 		return err
 	}
@@ -192,10 +192,11 @@ func listTaskProgress(args []string, out io.Writer) error {
 	return nil
 }
 
-// taskClient serves `task add` and `task list`, which the server accepts from
-// either authority (taskAuthority in bus/runtime.go). A workspace token keeps
-// precedence, as before; without one, the connected session's execution
-// credential is used, which is what `agent run` provides to its child.
+// taskClient serves `task add`, `task list`, and `task progress list`, which the
+// server accepts from either authority (taskAuthority in bus/runtime.go). A
+// workspace token keeps precedence, as before; without one, the connected
+// session's execution credential is used, which is what `agent run` provides
+// to its child.
 func taskClient(address string) (bus.Client, error) {
 	if os.Getenv("OCTOBER_BUS_SCOPE_TOKEN") != "" {
 		return scopeClient(address)
@@ -204,34 +205,4 @@ func taskClient(address string) (bus.Client, error) {
 		return executionClient(address)
 	}
 	return bus.Client{}, errors.New("this command needs OCTOBER_BUS_SCOPE_TOKEN or a connected session (OCTOBER_BUS_AGENT_TOKEN, set by agent run)")
-}
-
-// taskText reads text from exactly one of the inline flag or its file flag, so
-// private notes can come from a file or stdin instead of shell history.
-func taskText(inline, file string, input io.Reader, name string, limit int, required bool) (string, error) {
-	if file != "" {
-		if inline != "" {
-			return "", fmt.Errorf("use either %s or %s-file", name, name)
-		}
-		if file != "-" {
-			f, err := os.Open(file)
-			if err != nil {
-				return "", err
-			}
-			defer f.Close()
-			input = f
-		}
-		data, err := io.ReadAll(io.LimitReader(input, int64(limit)+1))
-		if err != nil {
-			return "", err
-		}
-		inline = string(data)
-	}
-	if len(inline) > limit {
-		return "", fmt.Errorf("%s must be at most %d bytes", strings.TrimPrefix(name, "--"), limit)
-	}
-	if required && strings.TrimSpace(inline) == "" {
-		return "", fmt.Errorf("%s is required; use %s or %s-file (use - for stdin)", strings.TrimPrefix(name, "--"), name, name)
-	}
-	return inline, nil
 }
