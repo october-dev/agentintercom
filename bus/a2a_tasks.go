@@ -354,3 +354,65 @@ func (r *Runtime) A2ATask(ctx context.Context, credential, publicationID, taskID
 	}
 	return r.store.A2ATask(ctx, principal, taskID)
 }
+
+// A2ATaskHistory loads a task with the request/response bodies of its
+// correlated turns. Unknown and other-principal tasks report NotFound without
+// revealing task existence, and revoked credentials or disabled publications
+// stay denied through the same in-transaction fencing as acceptance.
+func (s *Store) A2ATaskHistory(ctx context.Context, principal A2APrincipal, taskID string) (A2ATaskCorrelation, []A2ATaskHistoryEntry, error) {
+	tx, err := s.beginTx(ctx, principal.ScopeID)
+	if err != nil {
+		return A2ATaskCorrelation{}, nil, err
+	}
+	defer tx.Rollback()
+	if err := requireCurrentA2APrincipal(ctx, tx, principal); err != nil {
+		return A2ATaskCorrelation{}, nil, err
+	}
+	if err := expireMessages(ctx, tx, principal.ScopeID, nowMillis()); err != nil {
+		return A2ATaskCorrelation{}, nil, err
+	}
+	task, err := loadA2ATask(ctx, tx, principal.ID, taskID)
+	if err != nil {
+		return A2ATaskCorrelation{}, nil, err
+	}
+	history := make([]A2ATaskHistoryEntry, 0, len(task.Messages))
+	for _, correlation := range task.Messages {
+		entry := A2ATaskHistoryEntry{ClientMessageID: correlation.ClientMessageID}
+		var body string
+		var created int64
+		err := tx.QueryRowContext(ctx, `SELECT body,created_at FROM messages WHERE scope_id=? AND message_id=?`, principal.ScopeID, correlation.BusRequestMessageID).Scan(&body, &created)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Retention prunes a terminal task with its messages as one unit,
+			// so a missing row should not happen; skip rather than fail the poll.
+			continue
+		}
+		if err != nil {
+			return A2ATaskCorrelation{}, nil, err
+		}
+		entry.RequestBody, entry.RequestCreatedAt = body, instant(created)
+		if correlation.BusResponseMessageID != "" {
+			err := tx.QueryRowContext(ctx, `SELECT body,created_at FROM messages WHERE scope_id=? AND message_id=?`, principal.ScopeID, correlation.BusResponseMessageID).Scan(&body, &created)
+			if err == nil {
+				entry.ResponseMessageID, entry.ResponseBody, entry.ResponseCreatedAt = correlation.BusResponseMessageID, body, instant(created)
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return A2ATaskCorrelation{}, nil, err
+			}
+		}
+		history = append(history, entry)
+	}
+	if err := tx.Commit(); err != nil {
+		return A2ATaskCorrelation{}, nil, err
+	}
+	return task, history, nil
+}
+
+func (r *Runtime) A2ATaskHistory(ctx context.Context, credential, publicationID, taskID string) (A2ATaskCorrelation, []A2ATaskHistoryEntry, error) {
+	principal, err := r.AuthenticateA2APrincipal(ctx, credential, publicationID)
+	if err != nil {
+		return A2ATaskCorrelation{}, nil, err
+	}
+	if err := validateIdentity(taskID, "taskId", false); err != nil {
+		return A2ATaskCorrelation{}, nil, err
+	}
+	return r.store.A2ATaskHistory(ctx, principal, taskID)
+}

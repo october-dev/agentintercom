@@ -75,7 +75,7 @@ func TestA2ASendMessageEnforcesAuthenticationVersionAndContent(t *testing.T) {
 	_, err = transport.GetTask(ctx, a2aTestParams("invalid", string(a2a.Version)), &a2a.GetTaskRequest{ID: "hidden-task"})
 	require(t, errors.Is(err, a2a.ErrUnauthenticated), "unauthenticated task lookup error = %v", err)
 	_, err = transport.GetTask(ctx, a2aTestParams(issued.Credential, string(a2a.Version)), &a2a.GetTaskRequest{ID: "hidden-task"})
-	require(t, errors.Is(err, a2a.ErrUnsupportedOperation), "unsupported task lookup error = %v", err)
+	require(t, errors.Is(err, a2a.ErrTaskNotFound), "unknown task lookup error = %v", err)
 
 	reservation, err := agents.runtime.ReserveInbox(ctx, agents.reviewerToken, 10, 0)
 	require(t, err == nil && reservation == nil, "rejected requests created work: %#v, %v", reservation, err)
