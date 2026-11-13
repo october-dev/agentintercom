@@ -356,6 +356,36 @@ test('docs checker slugs formatted, setext, and duplicate headings like GitHub',
   }
 })
 
+test('docs checker keeps code-span text literal and reads formatted setext subjects', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docsspan-test-'))
+  try {
+    writeFileSync(
+      join(repo, 'SPANS.md'),
+      '## The `_meta` field\n\n[meta](#the-_meta-field).\n\n' +
+        '## The `OCTOBER_BUS_*` variables\n\n[busvars](#the-october_bus_-variables).\n\n' +
+        '## The `__init__` method\n\n[init](#the-__init__-method).\n\n' +
+        '*Quickstart*\n===========\n\n[emphsetext](#quickstart).\n\n' +
+        '`config` options\n--------------\n\n[cfg](#config-options).\n'
+    )
+    const good = checkFiles(repo, ['SPANS.md'])
+    assert.equal(good.ok, true, good.out)
+
+    // Near-miss anchors against the same headings must still fail: the
+    // unprotected slug, and a duplicate suffix that was never generated.
+    writeFileSync(
+      join(repo, 'SPANS-BAD.md'),
+      '## The `_meta` field\n\n[nope](#the-meta-field).\n\n' +
+        '*Quickstart*\n===========\n\n[nope](#quickstart-1).\n'
+    )
+    const bad = checkFiles(repo, ['SPANS-BAD.md'])
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /SPANS-BAD\.md:\d+: unknown anchor '#the-meta-field'/)
+    assert.match(bad.out, /SPANS-BAD\.md:\d+: unknown anchor '#quickstart-1'/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
 test('docs checker ignores longer fences, indented code, and HTML comments', { timeout: 60_000 }, () => {
   const repo = mkdtempSync(join(tmpdir(), 'october-docscode-test-'))
   try {

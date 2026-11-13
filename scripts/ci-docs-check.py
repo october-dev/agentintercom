@@ -78,13 +78,24 @@ def github_slug(heading):
     while intra-word underscores survive. An approximation for exotic
     nesting; covered by regression tests for the common forms.
     """
-    text = re.sub(r"`+([^`]*)`+", r"\1", heading)  # code spans
+    spans = []
+
+    def stash(match):
+        spans.append(match.group(1))
+        return "\0span%d\0" % (len(spans) - 1)
+
+    # Code spans are stashed before the markup substitutions: their
+    # contents are literal, so underscores inside them (`` `_meta` ``)
+    # must not be treated as emphasis delimiters below.
+    text = re.sub(r"`+([^`]*)`+", stash, heading)
     text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", "", text)  # images: no text
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # inline links
     text = re.sub(r"\[([^\]]+)\]\[[^\]]*\]", r"\1", text)  # reference links
     text = re.sub(r"<([^<>@]*@[^<>]*)>", r"\1", text)  # email autolinks
     text = re.sub(r"</?[A-Za-z][^<>]*>", "", text)  # remaining HTML tags
     text = re.sub(r"(?<!\w)_|_(?!\w)", "", text)  # emphasis underscores
+    for index, content in enumerate(spans):
+        text = text.replace("\0span%d\0" % index, content)
     text = text.strip().lower()
     text = re.sub(r"[^\w \-]", "", text, flags=re.UNICODE)
     return text.replace(" ", "-")
@@ -154,11 +165,16 @@ def document_anchors(lines):
         stripped = line.strip()
         if (
             not stripped
-            or stripped.startswith(("#", ">", "-", "*", "+", "`", "~"))
+            or stripped.startswith(("#", ">"))
+            or re.match(r"[-*+](\s|$)", stripped)
             or re.match(r"\d+[.)]\s", stripped)
             or REFERENCE_DEF.match(line)
         ):
-            prev = None  # blank, block markup, list item, or definition
+            # Blank, block markup, list item, or definition. Bullet and
+            # numbered markers only count as list items with the whitespace
+            # CommonMark requires, so *Quickstart* and `config` options stay
+            # setext candidates; fences never reach this function unblanked.
+            prev = None
         else:
             prev = stripped
     return anchors
