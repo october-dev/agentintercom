@@ -22,11 +22,12 @@ Usage (CI, pull_request events only)::
 
     python3 scripts/ci-docs-classify.py --base <base-sha> --head <head-sha>
 
-writes ``docs_only``, ``docs_files`` (JSON list of changed ``.md`` files
-present at head, for the link checker) and ``reason`` to ``$GITHUB_OUTPUT``
-and prints them to stdout. ``--entries-json`` accepts canned diff entries
-for the self-test (see ``scripts/ci-docs-fastpath.test.mjs``) instead of
-running git.
+writes ``docs_only`` and ``reason`` to ``$GITHUB_OUTPUT`` and prints them
+to stdout. (Link validation runs separately over all tracked Markdown via
+``ci-docs-check.py --all``; the classifier only decides fast path versus
+full checks.) ``--entries-json`` accepts canned diff entries for the
+self-test (see ``scripts/ci-docs-fastpath.test.mjs``) instead of running
+git.
 """
 
 import json
@@ -70,41 +71,36 @@ def is_allowlisted(path):
 def classify_entries(entries):
     """Classify canned ``(status, [paths])`` diff entries.
 
-    Returns ``(docs_only, reason, docs_files)``. Every unknown input fails
-    closed to ``docs_only=False``.
+    Returns ``(docs_only, reason)``. Every unknown input fails closed to
+    ``docs_only=False``.
     """
     if not entries:
-        return False, "empty changeset runs full checks", []
-    docs_files = []
+        return False, "empty changeset runs full checks"
     for entry in entries:
         if not isinstance(entry, (list, tuple)) or len(entry) != 2:
-            return False, "unparseable diff entry runs full checks", []
+            return False, "unparseable diff entry runs full checks"
         status, paths = entry
         if not isinstance(status, str) or not status:
-            return False, "unparseable diff status runs full checks", []
+            return False, "unparseable diff status runs full checks"
         if not isinstance(paths, list) or not paths:
-            return False, "unparseable diff paths run full checks", []
+            return False, "unparseable diff paths run full checks"
         kind = status[0]
         if kind in ("A", "M", "D"):
             if len(paths) != 1:
-                return False, "malformed diff entry runs full checks", []
+                return False, "malformed diff entry runs full checks"
             if not is_allowlisted(paths[0]):
-                return False, "non-docs change runs full checks: %s" % paths[0], []
-            if kind in ("A", "M") and paths[0] not in docs_files:
-                docs_files.append(paths[0])
+                return False, "non-docs change runs full checks: %s" % paths[0]
         elif kind == "R":
             # Both sides of a rename must stay inside the allowlist.
             if len(paths) != 2:
-                return False, "malformed rename runs full checks", []
+                return False, "malformed rename runs full checks"
             old, new = paths
             if not is_allowlisted(old) or not is_allowlisted(new):
-                return False, "rename crossing docs boundary runs full checks", []
-            if new not in docs_files:
-                docs_files.append(new)
+                return False, "rename crossing docs boundary runs full checks"
         else:
             # Type changes, copies, unmerged, unknown, or anything else.
-            return False, "unrecognized change runs full checks: %s" % status, []
-    return True, "all changes are allowlisted prose docs", sorted(docs_files)
+            return False, "unrecognized change runs full checks: %s" % status
+    return True, "all changes are allowlisted prose docs"
 
 
 def git_name_status(repo, base, head):
@@ -142,18 +138,15 @@ def git_name_status(repo, base, head):
     return entries
 
 
-def write_output(docs_only, reason, docs_files):
+def write_output(docs_only, reason):
     line = "docs_only=%s" % ("true" if docs_only else "false")
-    files = "docs_files=%s" % json.dumps(sorted(docs_files))
     clean_reason = " ".join(reason.split())
     print(line)
-    print(files)
     print("reason=%s" % clean_reason)
     output_path = os.environ.get("GITHUB_OUTPUT")
     if output_path:
         with open(output_path, "a", encoding="utf-8") as handle:
             handle.write(line + "\n")
-            handle.write(files + "\n")
             handle.write("reason=%s\n" % clean_reason)
 
 
@@ -185,7 +178,7 @@ def main(argv):
             entries = json.loads(entries_json)
             if not isinstance(entries, list):
                 raise ValueError("entries JSON must be a list")
-            docs_only, reason, docs_files = classify_entries(
+            docs_only, reason = classify_entries(
                 [(status, paths) for status, paths in entries]
             )
         elif base and head:
@@ -194,16 +187,16 @@ def main(argv):
             except Exception as exc:
                 # A diff we cannot compute is not a docs-only diff: run
                 # everything rather than failing the whole workflow open.
-                write_output(False, "diff unavailable runs full checks: %s" % exc, [])
+                write_output(False, "diff unavailable runs full checks: %s" % exc)
                 return 0
-            docs_only, reason, docs_files = classify_entries(entries)
+            docs_only, reason = classify_entries(entries)
         else:
             print("error: need --base/--head or --entries-json", file=sys.stderr)
             return 2
     except Exception as exc:  # noqa: BLE001 - fail closed with a loud error.
         print("error: classifier failed closed: %s" % exc, file=sys.stderr)
         return 1
-    write_output(docs_only, reason, docs_files)
+    write_output(docs_only, reason)
     return 0
 
 

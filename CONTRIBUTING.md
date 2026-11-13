@@ -59,7 +59,7 @@ New adapters should keep registration, heartbeat, credential handling, and clean
 - Protocol, runtime, dependency, security, and workflow changes require code-owner review.
 - Resolve review conversations and request a new review after material changes.
 - Never merge with a failed, skipped, or incomplete required check.
-- Pull requests that touch only the prose allowlist (`README.md`, root contributor docs, `docs/releases.md`, `docs/release-notes-*.md`) take a fast path: documentation links/anchors across all tracked Markdown are validated once, and every required check still runs, gating on that result instead of the runtime matrix. Any other change, or any classifier doubt, runs the full checks.
+- Pull requests that touch only the prose allowlist (`README.md`, root contributor docs, `docs/releases.md`, `docs/release-notes-*.md`) take a fast path: documentation links/anchors across all tracked Markdown are validated once, and every required check still runs, gating on that result instead of the runtime matrix. Any other change, or any classifier doubt, runs the full checks. Link validation runs on every pull request, including code and mixed ones; run it locally with `python3 scripts/ci-docs-check.py --all`.
 - Changes to a pinned dependency must update the public pin record in the same pull request.
 - Release tags are created only from reviewed commits with passing checks.
 

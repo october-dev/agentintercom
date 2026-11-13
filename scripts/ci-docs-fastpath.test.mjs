@@ -16,8 +16,7 @@ const classifyEntries = (entries) => {
     encoding: 'utf8'
   })
   const docsOnly = /^docs_only=(true|false)$/m.exec(out)?.[1] === 'true'
-  const docsFiles = JSON.parse(/^docs_files=(.+)$/m.exec(out)?.[1] ?? 'null')
-  return { docsOnly, docsFiles, out }
+  return { docsOnly, out }
 }
 
 test('classifier fast-paths only the prose allowlist', () => {
@@ -33,16 +32,6 @@ test('classifier fast-paths only the prose allowlist', () => {
     ['A', ['docs/release-notes-9.9.9.md']]
   ])
   assert.equal(all.docsOnly, true)
-  assert.deepEqual(all.docsFiles, [
-    'CHANGELOG.md',
-    'CODE_OF_CONDUCT.md',
-    'CONTRIBUTING.md',
-    'README.md',
-    'ROADMAP.md',
-    'SECURITY.md',
-    'docs/release-notes-9.9.9.md',
-    'docs/releases.md'
-  ])
 })
 
 test('classifier fails closed on code, mixed, and sensitive paths', () => {
@@ -124,7 +113,6 @@ test('classifier resolves --base/--head diffs end to end in git', { timeout: 60_
         env: { ...process.env, ...env }
       })
     assert.match(run(docsOnly), /^docs_only=true$/m)
-    assert.match(run(docsOnly), /"README\.md"/)
     assert.match(run(code), /^docs_only=false$/m)
     // Unknown revisions fail closed to full checks without failing the job.
     assert.match(run('deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'), /^docs_only=false$/m)
@@ -134,7 +122,6 @@ test('classifier resolves --base/--head diffs end to end in git', { timeout: 60_
     run(docsOnly, { GITHUB_OUTPUT: outputFile })
     const written = readFileSync(outputFile, 'utf8')
     assert.match(written, /^docs_only=true$/m)
-    assert.match(written, /^docs_files=\[/m)
     assert.match(written, /^reason=.+$/m)
   } finally {
     rmSync(repo, { recursive: true, force: true })
@@ -239,8 +226,8 @@ test('docs checker follows HTML links and own-repo blob URLs', { timeout: 60_000
     assert.match(bad.out, /BROKEN\.md:\d+: unknown anchor '#missing'/)
     assert.match(bad.out, /BROKEN\.md:\d+: missing link target: assets\/gone\.svg/)
     assert.match(bad.out, /BROKEN\.md:\d+: missing link target: assets\/gone2\.svg/)
-    assert.match(bad.out, /BROKEN\.md:\d+: missing link target: docs\/gone\.md/)
-    assert.match(bad.out, /BROKEN\.md:\d+: unknown anchor '#no-such-anchor' in docs\/target\.md/)
+    assert.match(bad.out, /BROKEN\.md:\d+: missing link target: \/docs\/gone\.md/)
+    assert.match(bad.out, /BROKEN\.md:\d+: unknown anchor '#no-such-anchor' in \/docs\/target\.md/)
   } finally {
     rmSync(repo, { recursive: true, force: true })
   }
@@ -307,6 +294,121 @@ test('docs checker --all validates every tracked Markdown file', { timeout: 60_0
 
     // Conflicting inputs are a usage error, not a silent default.
     assert.throws(() => execFileSync('python3', [check, '--all', '--files-json', '[]'], { cwd: root }), /Command failed/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('docs checker resolves own-repo URLs from the repository root', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docsroot-test-'))
+  try {
+    mkdirSync(join(repo, 'docs'), { recursive: true })
+    mkdirSync(join(repo, 'assets'), { recursive: true })
+    writeFileSync(join(repo, 'docs', 'target.md'), '# Getting Started\n')
+    writeFileSync(join(repo, 'assets', 'logo.svg'), '<svg></svg>\n')
+    writeFileSync(
+      join(repo, 'docs', 'page.md'),
+      '# Page\n\n' +
+        '[nested blob](https://github.com/october-dev/agentintercom/blob/main/docs/target.md) ' +
+        '[frag](https://github.com/october-dev/agentintercom/blob/main/docs/target.md#getting-started) ' +
+        '![raw](https://raw.githubusercontent.com/october-dev/agentintercom/main/assets/logo.svg)\n'
+    )
+    const good = checkFiles(repo, ['docs/page.md'])
+    assert.equal(good.ok, true, good.out)
+
+    // A root target that does not exist must fail even when a same-named
+    // file sits beside the linking document (resolving from docs/ would
+    // wrongly pass).
+    writeFileSync(
+      join(repo, 'docs', 'nasty.md'),
+      '# Nasty\n\n[wrong dir](https://github.com/october-dev/agentintercom/blob/main/target.md)\n'
+    )
+    const bad = checkFiles(repo, ['docs/nasty.md'])
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /nasty\.md:\d+: missing link target: \/target\.md/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('docs checker slugs formatted, setext, and duplicate headings like GitHub', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docshead-test-'))
+  try {
+    writeFileSync(join(repo, 'guide.md'), '# Guide\n')
+    writeFileSync(
+      join(repo, 'HEADS.md'),
+      '# _Quickstart_\n\n[emphasis](#quickstart) and [ident](#agent_id-keeps-underscores).\n\n' +
+        '# agent_id keeps underscores\n\n' +
+        '# See the [Guide](guide.md)\n\n[linked](#see-the-guide).\n\n' +
+        'Big Title\n=========\n\n[setext h1](#big-title).\n\n' +
+        'Small Title\n-----------\n\n[setext h2](#small-title).\n\n' +
+        '# Setup\n\n# Setup\n\n# Setup-1\n\n[dup](#setup-1-1).\n'
+    )
+    const good = checkFiles(repo, ['HEADS.md'])
+    assert.equal(good.ok, true, good.out)
+
+    writeFileSync(join(repo, 'DUP-BAD.md'), '# Setup\n\n# Setup\n\n# Setup-1\n\n[nope](#setup-1-2).\n')
+    const bad = checkFiles(repo, ['DUP-BAD.md'])
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /DUP-BAD\.md:\d+: unknown anchor '#setup-1-2'/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('docs checker ignores longer fences, indented code, and HTML comments', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docscode-test-'))
+  try {
+    writeFileSync(
+      join(repo, 'CODE.md'),
+      '# Code\n\n````md\nExample fence:\n\n```md\n[example](missing.md)\n```\n````\n\n' +
+        'Paragraph.\n\n    [indented](missing.md)\n\n' +
+        '<!-- [draft](missing.md) -->\n\n<!--\n[multi](missing.md)\n-->\n'
+    )
+    const good = checkFiles(repo, ['CODE.md'])
+    assert.equal(good.ok, true, good.out)
+
+    // A real broken link after a long fence still fails, as does an
+    // indented link that belongs to list content rather than a code block.
+    writeFileSync(
+      join(repo, 'CODE-BAD.md'),
+      '# Bad\n\n````\n```\n[example](missing.md)\n```\n````\n\n[broken](missing.md)\n'
+    )
+    const bad = checkFiles(repo, ['CODE-BAD.md'])
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /CODE-BAD\.md:\d+: missing link target: missing\.md/)
+    writeFileSync(join(repo, 'LIST.md'), '# List\n\n- item\n    [broken](missing.md)\n')
+    const listed = checkFiles(repo, ['LIST.md'])
+    assert.equal(listed.ok, false, listed.out)
+    assert.match(listed.out, /LIST\.md:\d+: missing link target: missing\.md/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('docs checker handles escapes, queries, spans, and remote URLs', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docsedge-test-'))
+  try {
+    writeFileSync(join(repo, 'target.md'), '# Target\n')
+    writeFileSync(join(repo, 'my file.md'), '# Spaced\n')
+    writeFileSync(
+      join(repo, 'EDGE.md'),
+      '# Edge\n\n' +
+        '`a ``` [example](missing.md)` is one span.\n\n' +
+        'Not a link: \\[example\\](missing.md).\n\n' +
+        '[spaced](my%20file.md) and [query](target.md?plain=1).\n\n' +
+        '[proto-relative](//cdn.example.invalid/y.md) is remote.\n'
+    )
+    const good = checkFiles(repo, ['EDGE.md'])
+    assert.equal(good.ok, true, good.out)
+
+    // Queries and escapes decode before the existence check, so genuinely
+    // missing decoded targets still fail.
+    writeFileSync(join(repo, 'EDGE-BAD.md'), '# Bad\n\n[q](gone.md?x=1) [s](other%20gone.md)\n')
+    const bad = checkFiles(repo, ['EDGE-BAD.md'])
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /EDGE-BAD\.md:\d+: missing link target: gone\.md/)
+    assert.match(bad.out, /EDGE-BAD\.md:\d+: missing link target: other gone\.md/)
   } finally {
     rmSync(repo, { recursive: true, force: true })
   }

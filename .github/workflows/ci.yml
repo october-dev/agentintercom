@@ -59,7 +59,7 @@ jobs:
       - name: Fail closed when docs classification did not succeed
         if: ${{ needs.classify.result != 'success' }}
         run: |
-          echo "docs classification did not succeed; failing closed."
+          echo "Docs fast-path classify job did not succeed (see the classify job log); failing closed."
           exit 1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         if: needs.classify.outputs.docs_only != 'true'
@@ -129,7 +129,7 @@ jobs:
       - name: Fail closed when docs classification did not succeed
         if: ${{ needs.classify.result != 'success' }}
         run: |
-          echo "docs classification did not succeed; failing closed."
+          echo "Docs fast-path classify job did not succeed (see the classify job log); failing closed."
           exit 1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: needs.classify.outputs.docs_only != 'true'
@@ -181,7 +181,7 @@ jobs:
       - name: Fail closed when docs classification did not succeed
         if: ${{ needs.classify.result != 'success' }}
         run: |
-          echo "docs classification did not succeed; failing closed."
+          echo "Docs fast-path classify job did not succeed (see the classify job log); failing closed."
           exit 1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         if: needs.classify.outputs.docs_only != 'true'
@@ -274,7 +274,7 @@ jobs:
       - name: Fail closed when docs classification did not succeed
         if: ${{ needs.classify.result != 'success' }}
         run: |
-          echo "docs classification did not succeed; failing closed."
+          echo "Docs fast-path classify job did not succeed (see the classify job log); failing closed."
           exit 1
       - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
         if: needs.classify.outputs.docs_only != 'true'
