@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -24,6 +25,11 @@ const userServiceName = "dev.october.agent-intercom"
 // service manager reports success. Tests override it.
 var serviceActivationTimeout = 30 * time.Second
 
+// errServiceUnsupported reports that a platform has no automatic login-service
+// support. Callers must treat it as "not applicable" (manual daemons keep
+// their existing reuse path), never as a failed upgrade.
+var errServiceUnsupported = errors.New("automatic login services are available on Linux and macOS; on Windows run agentintercom start in your chosen startup task")
+
 func stableBinaryPath(paths bus.DaemonPaths) string {
 	name := "agentintercom"
 	if runtime.GOOS == "windows" {
@@ -33,8 +39,54 @@ func stableBinaryPath(paths bus.DaemonPaths) string {
 }
 
 func stableExecutable() (string, error) {
-	dest, _, err := installStableExecutable()
-	return dest, err
+	dest, changed, err := installStableExecutable()
+	if err != nil {
+		return "", err
+	}
+	if changed {
+		// A copy without activation must not look current later: record it
+		// so the next service install activates instead of skipping.
+		paths, err := bus.DefaultDaemonPaths()
+		if err != nil {
+			return "", err
+		}
+		if err := markServiceActivationPending(paths, bus.Version); err != nil {
+			return "", err
+		}
+	}
+	return dest, nil
+}
+
+// pendingServicePath locates the marker recording that a service install
+// copied a build (or wrote a unit) without verifying the replacement daemon
+// yet. Comparing files on disk cannot identify the running build, and a
+// same-version retry after a failed activation would otherwise see matching
+// files and falsely report "already current".
+func pendingServicePath(paths bus.DaemonPaths) string {
+	return filepath.Join(paths.DataDir, "service-pending")
+}
+
+func pendingServiceActivation(paths bus.DaemonPaths) bool {
+	data, err := readConfigFile(pendingServicePath(paths))
+	return err == nil && len(data) > 0
+}
+
+func markServiceActivationPending(paths bus.DaemonPaths, localVersion string) error {
+	record, err := json.Marshal(map[string]string{
+		"version":   localVersion,
+		"createdAt": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return err
+	}
+	return writeConfigFile(pendingServicePath(paths), append(record, '\n'))
+}
+
+// clearServiceActivationPending removes the marker best-effort. A stale
+// marker only forces an extra restart on the next install; it can never
+// produce a false "already current", so clearing must not fail a success.
+func clearServiceActivationPending(paths bus.DaemonPaths) {
+	_ = os.Remove(pendingServicePath(paths))
 }
 
 func installStableExecutable() (string, bool, error) {
@@ -124,6 +176,9 @@ func probeDaemon(paths bus.DaemonPaths) (bus.Health, bus.RunFile, error) {
 func awaitServiceDaemon(paths bus.DaemonPaths, timeout time.Duration, accept func(bus.Health, bus.RunFile) bool) (bus.Health, bus.RunFile, error) {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
+	var lastHealth bus.Health
+	var lastRun bus.RunFile
+	observed := false
 	for {
 		health, run, err := probeDaemon(paths)
 		if err == nil && (accept == nil || accept(health, run)) {
@@ -131,8 +186,17 @@ func awaitServiceDaemon(paths bus.DaemonPaths, timeout time.Duration, accept fun
 		}
 		if err != nil {
 			lastErr = err
+			observed = false
+		} else {
+			// A reachable daemon reporting the wrong state supersedes any
+			// earlier transport failure; report it, not the stale error.
+			lastErr = nil
+			lastHealth, lastRun, observed = health, run, true
 		}
 		if time.Now().After(deadline) {
+			if observed {
+				return bus.Health{}, bus.RunFile{}, fmt.Errorf("daemon did not reach the expected state in time (last observed version %q pid %d)", lastHealth.RuntimeVersion, lastRun.PID)
+			}
 			if lastErr != nil {
 				return bus.Health{}, bus.RunFile{}, lastErr
 			}
@@ -167,7 +231,7 @@ func serviceFile(platform, home, binary string, paths bus.DaemonPaths) (string, 
 `
 		return filepath.Join(home, "Library", "LaunchAgents", userServiceName+".plist"), []byte(body), nil
 	default:
-		return "", nil, errors.New("automatic login services are available on Linux and macOS; on Windows run agentintercom start in your chosen startup task")
+		return "", nil, errServiceUnsupported
 	}
 }
 
@@ -185,8 +249,11 @@ func manageService(action string, out io.Writer) error {
 // manageServiceOn runs the login-service action for one platform. Re-running
 // install after upgrading the package is the supported upgrade: it replaces
 // the stable executable, reactivates the user service, restarts the managed
-// daemon only when it is not already on this build, and verifies the running
-// version before reporting success.
+// daemon unless it is provably already on this build, and verifies the
+// replacement process before reporting success. Managed-service state (the
+// unit, the installed bytes, the pending marker) drives the restart decision;
+// HTTP readiness never gates activation, so an unhealthy managed daemon is
+// restarted rather than mistaken for absent or current.
 func manageServiceOn(platform, action, localVersion string, out io.Writer) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -201,12 +268,28 @@ func manageServiceOn(platform, action, localVersion string, out io.Writer) error
 		return err
 	}
 	binaryChanged := false
+	hadPending := false
+	hadProcess := false
+	wasHealthy := false
 	var beforeHealth bus.Health
 	var beforeRun bus.RunFile
-	wasRunning := false
 	if action == "install" {
-		if beforeHealth, beforeRun, err = probeDaemon(paths); err == nil {
-			wasRunning = true
+		if run, rerr := bus.ReadRunFile(paths.RunFile); rerr == nil {
+			hadProcess = true
+			beforeRun = run
+		}
+		if health, _, herr := probeDaemon(paths); herr == nil {
+			wasHealthy = true
+			beforeHealth = health
+		}
+		// Validate platform support before recording pending state, so an
+		// unsupported platform never leaves a pending marker behind.
+		if _, _, err := serviceFile(platform, home, stableBinaryPath(paths), paths); err != nil {
+			return err
+		}
+		hadPending = pendingServiceActivation(paths)
+		if err := markServiceActivationPending(paths, localVersion); err != nil {
+			return err
 		}
 		binary, binaryChanged, err = installStableExecutable()
 		if err != nil {
@@ -263,20 +346,34 @@ func manageServiceOn(platform, action, localVersion string, out io.Writer) error
 			return err
 		}
 		if platform == "linux" {
-			return run("--user", "daemon-reload")
+			if err := run("--user", "daemon-reload"); err != nil {
+				return err
+			}
 		}
+		clearServiceActivationPending(paths)
 		return nil
 	}
 	unitChanged := !bytes.Equal(old, body)
-	if platform == "darwin" && wasRunning && !binaryChanged && !unitChanged && beforeHealth.RuntimeVersion == localVersion {
-		fmt.Fprintln(out, "Login service is already current; the running daemon was left untouched.")
-		return nil
+	if platform == "darwin" && !binaryChanged && !unitChanged && !hadPending && wasHealthy && beforeHealth.RuntimeVersion == localVersion {
+		// Positive evidence only: a healthy daemon on this build with no
+		// pending activation. Re-probe so a daemon that fell over between
+		// the probes falls through to reactivation instead of reading current.
+		if current, _, err := probeDaemon(paths); err == nil && current.RuntimeVersion == localVersion {
+			clearServiceActivationPending(paths)
+			fmt.Fprintln(out, "Login service is already current; the running daemon was left untouched.")
+			return nil
+		}
 	}
 	if err = writeConfigFile(path, body); err != nil {
 		return err
 	}
 	if platform == "linux" {
-		return activateLinuxService(run, unit, paths, localVersion, binaryChanged, unitChanged, wasRunning, beforeRun, out)
+		return activateLinuxService(serviceActivation{
+			run: run, unit: unit, paths: paths, localVersion: localVersion,
+			binaryChanged: binaryChanged, unitChanged: unitChanged, hadPending: hadPending,
+			hadProcess: hadProcess, wasHealthy: wasHealthy,
+			beforeHealth: beforeHealth, beforeRun: beforeRun, out: out,
+		})
 	}
 	if len(old) > 0 {
 		_ = run("bootout", domain, path)
@@ -284,43 +381,66 @@ func manageServiceOn(platform, action, localVersion string, out io.Writer) error
 	if err = run("bootstrap", domain, path); err != nil {
 		return fmt.Errorf("service file saved but activation failed; run service install again after restoring your user service manager: %w", err)
 	}
-	return verifyServiceDaemon(paths, localVersion, wasRunning, beforeRun, "bootstrap", out)
+	return verifyServiceDaemon(paths, localVersion, hadProcess, beforeRun, "bootstrap", out)
 }
 
-// activateLinuxService reloads user systemd, enables the unit, and restarts an
-// already-active daemon only when the installed build changed underneath it.
-func activateLinuxService(run func(...string) error, unit string, paths bus.DaemonPaths, localVersion string, binaryChanged, unitChanged, wasRunning bool, beforeRun bus.RunFile, out io.Writer) error {
+// serviceActivation carries the managed-service state observed before a Linux
+// activation: what changed on disk, whether a previous attempt left work
+// pending, and what (if anything) answered before activation started.
+type serviceActivation struct {
+	run           func(...string) error
+	unit          string
+	paths         bus.DaemonPaths
+	localVersion  string
+	binaryChanged bool
+	unitChanged   bool
+	hadPending    bool
+	hadProcess    bool
+	wasHealthy    bool
+	beforeHealth  bus.Health
+	beforeRun     bus.RunFile
+	out           io.Writer
+}
+
+// activateLinuxService reloads user systemd, enables the unit, and restarts
+// unless the managed daemon is provably already on this build. Readiness never
+// gates activation: an unhealthy or unreachable managed daemon is restarted
+// (restart also starts an inactive unit), never skipped. Every restart is
+// followed by verification of the replacement process.
+func activateLinuxService(activation serviceActivation) error {
+	run, unit, paths := activation.run, activation.unit, activation.paths
+	localVersion, out := activation.localVersion, activation.out
 	if err := run("--user", "daemon-reload"); err != nil {
 		return fmt.Errorf("service file saved but activation failed; run service install again after restoring your user service manager: %w", err)
 	}
 	if err := run("--user", "enable", "--now", unit); err != nil {
 		return fmt.Errorf("service file saved but activation failed; run service install again after restoring your user service manager: %w", err)
 	}
-	current, _, err := awaitServiceDaemon(paths, serviceActivationTimeout, nil)
-	if err != nil {
-		return fmt.Errorf("service file saved but the daemon did not become healthy; check service status and run service install again: %w", err)
-	}
-	if wasRunning && (binaryChanged || unitChanged || current.RuntimeVersion != localVersion) {
-		if err := run("--user", "restart", unit); err != nil {
-			return fmt.Errorf("service file saved but restarting the login service failed; the running daemon may still be on the previous build: %w", err)
+	if !activation.binaryChanged && !activation.unitChanged && !activation.hadPending && activation.wasHealthy && activation.beforeHealth.RuntimeVersion == localVersion {
+		// Positive evidence only. Re-probe so a daemon that fell over
+		// between the probes falls through to restart instead of reading
+		// current.
+		if current, _, err := probeDaemon(paths); err == nil && current.RuntimeVersion == localVersion {
+			clearServiceActivationPending(paths)
+			fmt.Fprintln(out, "Login service is already current; the running daemon was left untouched.")
+			return nil
 		}
-		return verifyServiceDaemon(paths, localVersion, wasRunning, beforeRun, "restart", out)
 	}
-	if current.RuntimeVersion != localVersion {
-		return fmt.Errorf("service file saved but the running daemon reports version %q instead of %q; check service status and run service install again", current.RuntimeVersion, localVersion)
+	if err := run("--user", "restart", unit); err != nil {
+		return fmt.Errorf("service file saved but restarting the login service failed; the running daemon may still be on the previous build: %w", err)
 	}
-	if wasRunning {
-		fmt.Fprintln(out, "Login service is already current; the running daemon was left untouched.")
-		return nil
-	}
-	fmt.Fprintln(out, "Login service installed. It starts with your user session; Linux startup without a login additionally requires administrator-enabled linger.")
-	return nil
+	return verifyServiceDaemon(paths, localVersion, activation.hadProcess, activation.beforeRun, "restart", out)
 }
 
-// managedDaemonNeedsUpgrade reports whether a managed login service exists and
-// its running daemon differs from this build, either by reported version or by
-// installed bytes. Manually started daemons and unreachable ones are left to
-// the existing reuse path; only a positively stale managed daemon upgrades.
+// managedDaemonNeedsUpgrade reports whether a managed login-service upgrade
+// must run before normal installation proceeds. Platforms without automatic
+// login-service support and installations without a managed unit are not
+// applicable: manually started daemons keep the existing reuse path. A managed
+// installation whose daemon is unreachable, reports another version, differs
+// in installed bytes or unit, or has a pending activation is stale and must
+// activate; only a positively current managed daemon is reused. Genuine
+// inspection errors are returned so the caller fails loudly instead of
+// silently reusing a daemon it could not evaluate.
 func managedDaemonNeedsUpgrade(paths bus.DaemonPaths) (bool, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -330,8 +450,11 @@ func managedDaemonNeedsUpgrade(paths bus.DaemonPaths) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	path, _, err := serviceFile(runtime.GOOS, home, binary, paths)
+	path, expected, err := serviceFile(runtime.GOOS, home, stableBinaryPath(paths), paths)
 	if err != nil {
+		if errors.Is(err, errServiceUnsupported) {
+			return false, nil
+		}
 		return false, err
 	}
 	owned, err := readConfigFile(path)
@@ -341,30 +464,37 @@ func managedDaemonNeedsUpgrade(paths bus.DaemonPaths) (bool, error) {
 	if len(owned) == 0 || !bytes.Contains(owned, []byte("Managed by Agent Intercom")) {
 		return false, nil
 	}
+	if pendingServiceActivation(paths) {
+		return true, nil
+	}
 	health, _, err := probeDaemon(paths)
 	if err != nil {
-		return false, nil
+		return true, nil
 	}
 	if health.RuntimeVersion != bus.Version {
+		return true, nil
+	}
+	if !bytes.Equal(owned, expected) {
 		return true, nil
 	}
 	return !sameExecutableBytes(binary, stableBinaryPath(paths)), nil
 }
 
 // verifyServiceDaemon waits for the daemon to answer on the new build after a
-// restart, requiring a new process identity when one was running before. It
+// restart, requiring a new process identity when a process existed before. It
 // reports failures instead of letting a stale or missing daemon read as success.
-func verifyServiceDaemon(paths bus.DaemonPaths, localVersion string, wasRunning bool, beforeRun bus.RunFile, operation string, out io.Writer) error {
+func verifyServiceDaemon(paths bus.DaemonPaths, localVersion string, hadProcess bool, beforeRun bus.RunFile, operation string, out io.Writer) error {
 	health, run, err := awaitServiceDaemon(paths, serviceActivationTimeout, func(next bus.Health, nextRun bus.RunFile) bool {
 		if next.RuntimeVersion != localVersion {
 			return false
 		}
-		return !wasRunning || nextRun.PID != beforeRun.PID || nextRun.StartedAt != beforeRun.StartedAt
+		return !hadProcess || nextRun.PID != beforeRun.PID || nextRun.StartedAt != beforeRun.StartedAt
 	})
 	if err != nil {
 		return fmt.Errorf("service file saved but the daemon did not come up on the new build after %s; check service status and run service install again: %w", operation, err)
 	}
-	if wasRunning {
+	clearServiceActivationPending(paths)
+	if hadProcess {
 		fmt.Fprintf(out, "Login service upgraded and restarted on version %s (pid %d). Workspaces and messages are preserved; reconnect MCP in your apps.\n", health.RuntimeVersion, run.PID)
 		return nil
 	}
