@@ -164,7 +164,17 @@ func installCommand(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if _, err = bus.ReadRunFile(p.RunFile); err != nil && !*noService {
+		needsService := false
+		if _, err = bus.ReadRunFile(p.RunFile); err != nil {
+			needsService = !*noService
+		} else if !*noService {
+			// A managed daemon left running from an older install must be
+			// upgraded to this build instead of silently reused.
+			if stale, serr := managedDaemonNeedsUpgrade(p); serr == nil && stale {
+				needsService = true
+			}
+		}
+		if needsService {
 			if err = manageService("install", out); err != nil {
 				return err
 			}

@@ -96,6 +96,24 @@ Linux startup before login additionally requires administrator-enabled linger;
 macOS LaunchAgents start with the user's GUI login. This command does not change
 system-wide login policy or install a root service.
 
+## Upgrading the login service
+
+After upgrading the package, re-run `agentintercom service install` (or
+`agentintercom install`, which upgrades a stale managed daemon instead of
+reusing it). The flow replaces the stable executable, reactivates the user
+service, and restarts the managed daemon only when it is not already on the
+new build: on Linux it runs `daemon-reload` and `enable --now`, then `restart`
+when the running daemon reports an older version or the installed bytes or
+unit changed; on macOS it re-bootstraps unless everything is already current.
+Reinstalling an unchanged build never restarts the running daemon.
+
+Every install verifies the running daemon's health/version before reporting
+success, so activation failures are reported as failures, never as a
+successful upgrade. The restart keeps the same data directory, preserving
+workspaces, accepted messages, credentials, and unrelated app settings;
+reconnect MCP in your apps (or restart them) after an upgrade restart so they
+attach to the new daemon process.
+
 ## Monitor without consuming messages
 
 Inside an execution with agent credentials, `agentintercom inbox --follow`
