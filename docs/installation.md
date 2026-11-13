@@ -106,11 +106,13 @@ on the invoking build instead of reusing it). The flow replaces the stable
 executable, records a pending activation, reactivates the user service, and
 restarts unless the managed daemon is provably already on this build: healthy,
 reporting this version, with matching installed bytes and unit and no pending
-activation. On Linux it runs `daemon-reload` and `enable --now`, then
+activation. On Linux it runs `daemon-reload` and `enable`, then
 `restart` (`restart` also starts an inactive unit, so an unhealthy managed
-daemon is recovered rather than skipped); on macOS it re-bootstraps unless
+daemon is recovered rather than skipped, and a stopped service is started
+exactly once); on macOS it re-bootstraps unless
 everything is already current. Reinstalling an unchanged build never restarts
-the running daemon.
+a healthy running daemon when the installed unit is unchanged and no
+activation is pending.
 
 Every restart is verified before success is reported: the replacement must
 answer health on the new version with a new process identity. A failed or

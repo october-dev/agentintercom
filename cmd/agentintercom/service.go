@@ -39,22 +39,29 @@ func stableBinaryPath(paths bus.DaemonPaths) string {
 }
 
 func stableExecutable() (string, error) {
-	dest, changed, err := installStableExecutable()
+	source, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	if changed {
-		// A copy without activation must not look current later: record it
-		// so the next service install activates instead of skipping.
-		paths, err := bus.DefaultDaemonPaths()
-		if err != nil {
-			return "", err
-		}
+	paths, err := bus.DefaultDaemonPaths()
+	if err != nil {
+		return "", err
+	}
+	dest := stableBinaryPath(paths)
+	if filepath.Clean(source) != filepath.Clean(dest) && !sameExecutableBytes(source, dest) {
+		// Record pending activation BEFORE the new bytes become visible: a
+		// copy without activation must not look current later, and a managed
+		// daemon's build must never be replaced without evidence the running
+		// process is stale. If recording fails, the old bytes stay in place.
 		if err := markServiceActivationPending(paths, bus.Version); err != nil {
 			return "", err
 		}
 	}
-	return dest, nil
+	installed, _, err := installStableExecutable()
+	if err != nil {
+		return "", err
+	}
+	return installed, nil
 }
 
 // pendingServicePath locates the marker recording that a service install
@@ -68,7 +75,14 @@ func pendingServicePath(paths bus.DaemonPaths) string {
 
 func pendingServiceActivation(paths bus.DaemonPaths) bool {
 	data, err := readConfigFile(pendingServicePath(paths))
-	return err == nil && len(data) > 0
+	if err != nil {
+		// An unreadable or rejected marker is not absence: conservatively
+		// require activation so an unevaluated daemon can never read
+		// current. The subsequent marker write rechecks the file and fails
+		// loudly while it stays unreadable.
+		return true
+	}
+	return len(data) > 0
 }
 
 func markServiceActivationPending(paths bus.DaemonPaths, localVersion string) error {
@@ -413,7 +427,9 @@ func activateLinuxService(activation serviceActivation) error {
 	if err := run("--user", "daemon-reload"); err != nil {
 		return fmt.Errorf("service file saved but activation failed; run service install again after restoring your user service manager: %w", err)
 	}
-	if err := run("--user", "enable", "--now", unit); err != nil {
+	// Plain enable: the conditional restart below starts an inactive unit,
+	// so --now would start a stopped service twice.
+	if err := run("--user", "enable", unit); err != nil {
 		return fmt.Errorf("service file saved but activation failed; run service install again after restoring your user service manager: %w", err)
 	}
 	if !activation.binaryChanged && !activation.unitChanged && !activation.hadPending && activation.wasHealthy && activation.beforeHealth.RuntimeVersion == localVersion {

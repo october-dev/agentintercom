@@ -86,10 +86,8 @@ func setupFakeDaemon(t *testing.T, manager string) *fakeDaemon {
 			"    printf '{\"protocolVersion\":\"0.1\",\"address\":\"%s\",\"pid\":2000,\"startedAt\":\"" + upgradeAfter + "\",\"adminToken\":\"" + upgradeToken + "\"}' \"$FAKE_ADDRESS\" > \"$FAKE_RUN_FILE\"\n" +
 			"    ;;\n" +
 			"  *\"--user enable --now \"*)\n" +
-			"    [ \"$FAKE_ENABLE_STARTS\" = \"1\" ] && {\n" +
-			"      printf '%s' \"$FAKE_AFTER_VERSION\" > \"$FAKE_VERSION_FILE\"\n" +
-			"      printf '{\"protocolVersion\":\"0.1\",\"address\":\"%s\",\"pid\":2000,\"startedAt\":\"" + upgradeAfter + "\",\"adminToken\":\"" + upgradeToken + "\"}' \"$FAKE_ADDRESS\" > \"$FAKE_RUN_FILE\"\n" +
-			"    }\n" +
+			"    echo \"enable must not start the unit\" >&2\n" +
+			"    exit 1\n" +
 			"    ;;\n" +
 			"esac\nexit 0\n"
 	} else {
@@ -173,7 +171,8 @@ func TestLinuxServiceInstallRestartsStaleDaemon(t *testing.T) {
 	requireNoError(t, manageServiceOn("linux", "install", upgradeVersionB, &out))
 	log := fake.managerLog(t)
 	require(t, strings.Contains(log, "--user daemon-reload"), "missing daemon-reload: %q", log)
-	require(t, strings.Contains(log, "--user enable --now"), "missing enable --now: %q", log)
+	require(t, strings.Contains(log, "--user enable "), "missing enable: %q", log)
+	require(t, !strings.Contains(log, "--now"), "enable must not start the unit: %q", log)
 	require(t, strings.Contains(log, "--user restart"), "stale daemon was not restarted: %q", log)
 	require(t, strings.Contains(out.String(), "upgraded and restarted"), "missing upgrade report: %q", out.String())
 
@@ -214,7 +213,8 @@ func TestLinuxServiceReinstallWithoutChangesSkipsRestart(t *testing.T) {
 	var out bytes.Buffer
 	requireNoError(t, manageServiceOn("linux", "install", upgradeVersionB, &out))
 	log := fake.managerLog(t)
-	require(t, strings.Contains(log, "--user enable --now"), "missing enable --now: %q", log)
+	require(t, strings.Contains(log, "--user enable "), "missing enable: %q", log)
+	require(t, !strings.Contains(log, "--now"), "enable must not start the unit: %q", log)
 	require(t, !strings.Contains(log, "--user restart"), "unchanged reinstall restarted: %q", log)
 	require(t, strings.Contains(out.String(), "already current"), "missing current report: %q", out.String())
 	run, err := bus.ReadRunFile(fake.runFile)
@@ -336,16 +336,18 @@ func TestLinuxServiceInstallVerifiesNewVersionAfterRestart(t *testing.T) {
 
 func TestLinuxServiceFreshInstallStartsDaemonThroughRestart(t *testing.T) {
 	fake := setupFakeDaemon(t, "systemctl")
-	t.Setenv("FAKE_ENABLE_STARTS", "1")
 
 	// No daemon is provably current, so install restarts; restart also
 	// starts an inactive unit, which both starts fresh daemons and recovers
-	// unhealthy ones without gating on readiness first.
+	// unhealthy ones without gating on readiness first. Plain enable never
+	// starts, so exactly one start is requested (the fake fails any
+	// enable --now outright).
 	var out bytes.Buffer
 	requireNoError(t, manageServiceOn("linux", "install", upgradeVersionB, &out))
 	log := fake.managerLog(t)
-	require(t, strings.Contains(log, "--user enable --now"), "missing enable --now: %q", log)
-	require(t, strings.Contains(log, "--user restart"), "fresh install skipped restart: %q", log)
+	require(t, strings.Contains(log, "--user enable "), "missing enable: %q", log)
+	require(t, !strings.Contains(log, "--now"), "enable must not start the unit: %q", log)
+	require(t, strings.Count(log, "--user restart") == 1, "fresh install must request exactly one start: %q", log)
 	require(t, strings.Contains(out.String(), "Login service installed"), "missing install report: %q", out.String())
 	health, _, err := probeDaemon(fake.paths)
 	requireNoError(t, err)
@@ -472,6 +474,98 @@ func TestServicePendingMarkerRoundTrip(t *testing.T) {
 	require(t, pendingServiceActivation(paths), "marker was not recorded")
 	clearServiceActivationPending(paths)
 	require(t, !pendingServiceActivation(paths), "marker was not cleared")
+}
+
+func TestStableExecutableCopyWithoutActivationRequiresSameVersionRestart(t *testing.T) {
+	fake := setupFakeDaemon(t, "systemctl")
+	requireNoError(t, os.WriteFile(fake.versionFile, []byte(upgradeVersionB), 0600))
+	fake.writeRunFile(t, 1000, upgradeBefore)
+	// Same reported version (for example two dev builds), but the installed
+	// copy does not match this executable.
+	dest := stableBinaryPath(fake.paths)
+	requireNoError(t, os.MkdirAll(filepath.Dir(dest), 0700))
+	requireNoError(t, os.WriteFile(dest, []byte("older build"), 0700))
+	fake.writeCurrentUnit(t, "linux", dest)
+
+	// A copy without activation (the install --no-service path) records
+	// pending state before the new bytes become visible.
+	installed, err := stableExecutable()
+	requireNoError(t, err)
+	require(t, installed == dest, "stable path moved: %q", installed)
+	require(t, pendingServiceActivation(fake.paths), "copy without activation left no pending evidence")
+
+	// The follow-up same-version service install must restart and replace
+	// the old process even though files and versions now match.
+	var out bytes.Buffer
+	requireNoError(t, manageServiceOn("linux", "install", upgradeVersionB, &out))
+	require(t, strings.Contains(fake.managerLog(t), "--user restart"), "same-version activation skipped restart: %q", out.String())
+	require(t, !strings.Contains(out.String(), "already current"), "activation falsely reported current: %q", out.String())
+	require(t, strings.Contains(out.String(), "upgraded and restarted"), "missing upgrade report: %q", out.String())
+	run, err := bus.ReadRunFile(fake.runFile)
+	requireNoError(t, err)
+	require(t, run.PID == 2000 && run.StartedAt == upgradeAfter, "activation left the old process: %#v", run)
+	require(t, !pendingServiceActivation(fake.paths), "successful activation left a pending marker")
+}
+
+func TestStableExecutableMarkerFailureLeavesBytesUnchanged(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("Unix permission semantics")
+	}
+	root := t.TempDir()
+	data := filepath.Join(root, "data")
+	t.Setenv("OCTOBER_BUS_DATA_DIR", data)
+	t.Setenv("OCTOBER_BUS_RUNTIME_DIR", filepath.Join(root, "run"))
+	paths, err := bus.DefaultDaemonPaths()
+	requireNoError(t, err)
+	dest := stableBinaryPath(paths)
+	requireNoError(t, os.MkdirAll(filepath.Dir(dest), 0700))
+	requireNoError(t, os.WriteFile(dest, []byte("older build"), 0700))
+
+	// Recording must fail: the data directory is read-only, so no pending
+	// marker can be written.
+	requireNoError(t, os.Chmod(data, 0500))
+	t.Cleanup(func() { _ = os.Chmod(data, 0700) })
+	if probe, perr := os.CreateTemp(data, ".probe-*"); perr == nil {
+		_ = probe.Close()
+		_ = os.Remove(probe.Name())
+		t.Skip("data directory stayed writable (privileged user?)")
+	}
+	_, err = stableExecutable()
+	require(t, err != nil, "recording failure returned success")
+	kept, rerr := os.ReadFile(dest)
+	requireNoError(t, rerr)
+	require(t, string(kept) == "older build", "failed recording replaced the executable")
+}
+
+func TestInstallFailsOnUnreadablePendingMarker(t *testing.T) {
+	manager := "systemctl"
+	if runtime.GOOS == "darwin" {
+		manager = "launchctl"
+	}
+	fake := setupFakeDaemon(t, manager)
+	// Saved workspace/app state with a daemon that looks current in every
+	// other respect: same version, matching bytes and unit.
+	t.Setenv("FAKE_AFTER_VERSION", bus.Version)
+	requireNoError(t, os.WriteFile(fake.versionFile, []byte(bus.Version), 0600))
+	fake.writeRunFile(t, 1000, upgradeBefore)
+	fake.writeCurrentUnit(t, runtime.GOOS, fake.installCurrentBinary(t))
+	requireNoError(t, bus.SaveScopeToken(fake.paths.DataDir, "default", strings.Repeat("b", 43)))
+	configPath := filepath.Join(fake.root, "codex-config.toml")
+	requireNoError(t, os.WriteFile(configPath, []byte("# managed\n"), 0600))
+	statePath, err := installState("codex")
+	requireNoError(t, err)
+	requireNoError(t, saveInstallState(statePath, []installedConfig{{Path: configPath, Before: nil, After: []byte("# managed\n")}}))
+	stub := filepath.Join(fake.root, "bin", "codex")
+	requireNoError(t, os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0700))
+
+	// The marker path exists but is rejected (a directory, not a file), so
+	// the managed daemon cannot be evaluated: install must fail loudly,
+	// never claim success.
+	requireNoError(t, os.MkdirAll(pendingServicePath(fake.paths), 0700))
+	var out bytes.Buffer
+	err = installCommand([]string{"--only", "codex"}, &out)
+	require(t, err != nil, "unreadable marker returned success: %q", out.String())
+	require(t, !strings.Contains(out.String(), "Reconnect MCP"), "failed install printed success: %q", out.String())
 }
 
 func TestStableExecutableSkipsUnchangedCopy(t *testing.T) {
