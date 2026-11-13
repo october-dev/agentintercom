@@ -10,8 +10,50 @@ permissions:
   contents: read
 
 jobs:
+  # Fail-closed docs classifier (issue #188). Outputs docs_only=true only when
+  # every PR change is on the prose allowlist; any doubt, error, or non-PR
+  # event yields docs_only=false so the full checks below still run. Required
+  # job names are unchanged, so branch protection is unaffected.
+  classify:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      docs_files: ${{ steps.classify.outputs.docs_files }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Test the docs fast-path classifier
+        run: node --test scripts/ci-docs-fastpath.test.mjs
+      - id: classify
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 scripts/ci-docs-classify.py --base "${{ github.event.pull_request.base.sha }}" --head HEAD
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "docs_files=[]" >> "$GITHUB_OUTPUT"
+            echo "reason=non-PR event runs full checks" >> "$GITHUB_OUTPUT"
+            echo "docs_only=false"
+          fi
+
+  docs:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    needs: [classify]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate changed Markdown links and anchors
+        env:
+          DOCS_FILES: ${{ needs.classify.outputs.docs_files }}
+        run: python3 scripts/ci-docs-check.py --files-json "$DOCS_FILES"
+
   runtime:
     timeout-minutes: 20
+    needs: [classify]
     strategy:
       fail-fast: false
       matrix:
@@ -19,36 +61,54 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate changed docs links (docs-only fast path)
+        if: needs.classify.outputs.docs_only == 'true'
+        env:
+          DOCS_FILES: ${{ needs.classify.outputs.docs_files }}
+        run: python3 scripts/ci-docs-check.py --files-json "$DOCS_FILES"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        if: needs.classify.outputs.docs_only != 'true'
         with:
           go-version: 1.27.x
           cache: true
-      - run: go test ./...
-      - if: matrix.os == 'ubuntu-latest'
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: go test ./...
+      - if: matrix.os == 'ubuntu-latest' && needs.classify.outputs.docs_only != 'true'
         run: go test -race -count=1 ./...
-      - run: go vet ./...
-      - run: go build ./cmd/agentintercom
-      - run: go build ./cmd/agentintercom-conformance
-      - run: go run ./cmd/agentintercom demo
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: go vet ./...
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: go build ./cmd/agentintercom
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: go build ./cmd/agentintercom-conformance
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: go run ./cmd/agentintercom demo
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.classify.outputs.docs_only != 'true'
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: sdk/typescript/package-lock.json
-      - run: npm ci --ignore-scripts
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm ci --ignore-scripts
         working-directory: sdk/typescript
-      - if: matrix.os == 'ubuntu-latest'
+      - if: matrix.os == 'ubuntu-latest' && needs.classify.outputs.docs_only != 'true'
         run: node --test scripts/managed-runtime-manifest.test.mjs
-      - run: npm run build:native
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run build:native
         working-directory: sdk/typescript
-      - run: npm run pack:distribution
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run pack:distribution
         working-directory: sdk/typescript
-      - run: npm run test:distribution
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run test:distribution
         working-directory: sdk/typescript
 
   npm-platforms:
     timeout-minutes: 20
     runs-on: ubuntu-latest
+    needs: [classify]
+    if: needs.classify.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -64,23 +124,37 @@ jobs:
   typescript-sdk:
     timeout-minutes: 10
     runs-on: ubuntu-latest
+    needs: [classify]
     defaults:
       run:
         working-directory: sdk/typescript
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate changed docs links (docs-only fast path)
+        if: needs.classify.outputs.docs_only == 'true'
+        env:
+          DOCS_FILES: ${{ needs.classify.outputs.docs_files }}
+        run: python3 "$GITHUB_WORKSPACE/scripts/ci-docs-check.py" --files-json "$DOCS_FILES" --repo "$GITHUB_WORKSPACE"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.classify.outputs.docs_only != 'true'
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: sdk/typescript/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm run test:errors
-      - run: npm run test:release
-      - run: node --test ../../scripts/verification-bundle.test.mjs
-      - run: npm audit --audit-level=high
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm ci
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run typecheck
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run build
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run test:errors
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run test:release
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: node --test ../../scripts/verification-bundle.test.mjs
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm audit --audit-level=high
 
   node-compatibility:
     timeout-minutes: 10
@@ -89,6 +163,8 @@ jobs:
       matrix:
         node: [20, 22]
     runs-on: ubuntu-latest
+    needs: [classify]
+    if: needs.classify.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -102,23 +178,35 @@ jobs:
   interoperability:
     timeout-minutes: 10
     runs-on: ubuntu-latest
+    needs: [classify]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate changed docs links (docs-only fast path)
+        if: needs.classify.outputs.docs_only == 'true'
+        env:
+          DOCS_FILES: ${{ needs.classify.outputs.docs_files }}
+        run: python3 scripts/ci-docs-check.py --files-json "$DOCS_FILES"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        if: needs.classify.outputs.docs_only != 'true'
         with:
           go-version: 1.27.x
           cache: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.classify.outputs.docs_only != 'true'
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: sdk/typescript/package-lock.json
-      - run: go build -o /tmp/agentintercom ./cmd/agentintercom
-      - run: npm ci
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: go build -o /tmp/agentintercom ./cmd/agentintercom
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm ci
         working-directory: sdk/typescript
-      - run: npm run build
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run build
         working-directory: sdk/typescript
-      - run: npm run test:integration
+      - if: needs.classify.outputs.docs_only != 'true'
+        run: npm run test:integration
         working-directory: sdk/typescript
         env:
           OCTOBER_BUS_BINARY: /tmp/agentintercom
@@ -126,6 +214,8 @@ jobs:
   hosted:
     timeout-minutes: 20
     runs-on: ubuntu-latest
+    needs: [classify]
+    if: needs.classify.outputs.docs_only != 'true'
     services:
       postgres:
         image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
@@ -158,6 +248,8 @@ jobs:
   workspace-ui:
     timeout-minutes: 15
     runs-on: ubuntu-latest
+    needs: [classify]
+    if: needs.classify.outputs.docs_only != 'true'
     defaults:
       run:
         working-directory: web
@@ -178,8 +270,16 @@ jobs:
   vulnerabilities:
     timeout-minutes: 10
     runs-on: ubuntu-latest
+    needs: [classify]
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate changed docs links (docs-only fast path)
+        if: needs.classify.outputs.docs_only == 'true'
+        env:
+          DOCS_FILES: ${{ needs.classify.outputs.docs_files }}
+        run: python3 scripts/ci-docs-check.py --files-json "$DOCS_FILES"
       - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
+        if: needs.classify.outputs.docs_only != 'true'
         with:
           go-version-input: 1.27.x
           go-package: ./...
