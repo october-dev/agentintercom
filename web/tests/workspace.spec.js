@@ -342,3 +342,46 @@ test('workspace deletion requires its name and recovers a failed cancellation', 
   await expect(page.getByRole('heading', { name: 'Make room for your team.', exact: true })).toBeVisible();
   expect(attempts).toEqual([{ confirmName: 'My workspace' }, { confirmName: 'My workspace' }]);
 });
+
+test('dialogs are found by their accessible name and keyboard focus stays predictable', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app');
+  const newWorkspaceTrigger = page.getByRole('button', { name: '+ New workspace', exact: true });
+  await newWorkspaceTrigger.focus();
+  await page.keyboard.press('Enter');
+  const newWorkspace = page.getByRole('dialog', { name: 'New workspace', exact: true });
+  await expect(newWorkspace).toBeVisible();
+  await expect(page.getByLabel('Workspace name', { exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Create workspace', exact: true })).toBeFocused();
+  expect(events).toHaveLength(0);
+  await page.keyboard.press('Escape');
+  await expect(newWorkspace).toHaveCount(0);
+  await expect(newWorkspaceTrigger).toBeFocused();
+  await newWorkspaceTrigger.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'New workspace', exact: true })).toBeVisible();
+  await page.getByRole('dialog', { name: 'New workspace', exact: true }).getByRole('button', { name: 'Close', exact: true }).press('Enter');
+  await expect(page.getByRole('dialog', { name: 'New workspace' })).toHaveCount(0);
+  await expect(newWorkspaceTrigger).toBeFocused();
+  expect(events).toHaveLength(0);
+});
+
+test('confirmation dialogs are named, keyboard-operable and still guard destructive actions', async ({ page }) => {
+  const events = await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Members & devices', exact: true }).click();
+  await page.getByRole('button', { name: 'Revoke', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  const confirmation = page.getByRole('dialog', { name: 'Revoke connection?', exact: true });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation.getByText('My AI app will stop receiving access to this workspace.', { exact: true })).toBeVisible();
+  expect(events).toHaveLength(0);
+  await page.keyboard.press('Escape');
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Revoke', exact: true })).toBeFocused();
+  expect(events).toHaveLength(0);
+  await page.getByRole('button', { name: 'Revoke', exact: true }).press('Enter');
+  await page.getByRole('dialog', { name: 'Revoke connection?', exact: true }).getByRole('button', { name: 'Revoke connection', exact: true }).press('Enter');
+  await expect(page.getByText(/MCP app · Revoked/)).toBeVisible();
+  expect(events.filter(event => event.method === 'DELETE')).toHaveLength(1);
+});

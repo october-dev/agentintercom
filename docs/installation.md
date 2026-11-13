@@ -14,6 +14,8 @@ install is `agentintercom-cli`; the command you run is `agentintercom`.
 
 For a source build, see [Build from source](#build-from-source) below.
 
+Use `agentintercom install --help` to see installation options without changing configuration or starting a service. Successful help requests exit with status 0.
+
 For Claude Code and Codex:
 
 ```sh
