@@ -33,6 +33,33 @@ cd sdk/typescript
 OCTOBER_BUS_BINARY=/tmp/agentintercom npm run test:integration
 ```
 
+## Workspace UI (browser) development
+
+The browser workspace needs no production credentials, paid AI subscription, or running hosted account service. The browser tests intercept every `/api` and auth request with fake accounts and API responses on loopback, so a clean checkout plus Node.js is enough. CI runs this workflow with Node.js 24 (see the `workspace-ui` job in `.github/workflows/ci.yml`); Node.js 20 or newer matches the repo floor.
+
+Source lives in `web/src`; the Go server embeds and serves generated files from `bus/hostedweb/`. Never edit `bus/hostedweb/` by hand: edit `web/src`, rebuild, and commit the regenerated files in the same pull request.
+
+From a clean checkout:
+
+```bash
+cd web
+npm ci --ignore-scripts
+npm run build
+npx playwright install chromium
+npm test
+```
+
+`npm ci --ignore-scripts` installs UI dependencies, `npm run build` regenerates `bus/hostedweb/app.js`, `bus/hostedweb/index.html`, and `bus/hostedweb/style.css` from `web/src`, `npx playwright install chromium` fetches the browser the tests drive (add `--with-deps` on a fresh Linux machine for OS packages), and `npm test` serves the built bundle on `http://127.0.0.1:4794` and runs the mocked Playwright suite. Rebuild after every `web/src` change; CI rebuilds and fails on drift with `git diff --exit-code -- ../bus/hostedweb`, so an uncommitted regeneration breaks the build.
+
+Run one browser test by name while iterating:
+
+```bash
+cd web
+npx playwright test -g "part of the test name"
+```
+
+Watch it in a real browser window with `npx playwright test --headed -g "part of the test name"`. To drive a browser executable you already have instead of the downloaded one, set `CHROMIUM_PATH=/path/to/chromium` (see `web/playwright.config.js`). The tests also write full-page screenshots to `/tmp/agentintercom-*.png`, which is a quick way to inspect layout without keeping a browser open.
+
 ## Protocol changes
 
 Protocol behavior belongs in the versioned specification and schemas. A change must include tests and explain its effect on existing clients. See [the specification policy](spec/README.md).
