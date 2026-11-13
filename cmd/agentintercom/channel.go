@@ -14,6 +14,11 @@ func channelCommand(args []string, in io.Reader, out io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("use channel list/create/join/leave/post/read")
 	}
+	switch args[0] {
+	case "list", "create", "join", "leave", "post", "read":
+	default:
+		return errors.New("use channel list/create/join/leave/post/read")
+	}
 	flags := flag.NewFlagSet("channel "+args[0], flag.ContinueOnError)
 	address := flags.String("address", "", "Bus address")
 	id := flags.String("id", "", "channel ID")
@@ -55,8 +60,6 @@ func channelCommand(args []string, in io.Reader, out io.Writer) error {
 		}
 	case "read":
 		result, err = client.ChannelHistory(ctx, bus.ChannelHistoryInput{ChannelID: *id, ThreadID: *thread, Query: *query, Before: *before, Limit: *limit})
-	default:
-		return errors.New("use channel list/create/join/leave/post/read")
 	}
 	if err != nil {
 		return err
