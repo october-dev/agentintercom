@@ -326,6 +326,24 @@ async function start() {
 }
 start().catch(error => { root.replaceChildren(el('main', { id: 'main', class: 'auth-wrap' }, brand(), el('section', { class: 'card consent' }, el('h1', {}, 'Couldn’t open your workspace'), el('p', {}, error.message), button('Try again', () => location.reload())))); });
 
+// Newest-first history lists (conversations, channels) share one live-refresh
+// pattern: poll the newest page, then walk back over burst pages until they
+// overlap what is already on screen. The walk is bounded; when it ends without
+// overlapping, the caller leaves an explicit gap-loading control behind.
+const historyCatchUpPages = 3;
+async function catchUpHistory(fetchPage, rendered, stale) {
+  const pages = [];
+  let cursor = '';
+  for (let i = 0; i < historyCatchUpPages; i++) {
+    const page = await fetchPage(cursor);
+    if (stale()) return { pages: [], stale: true };
+    pages.push(page);
+    if (page.items.some(item => rendered.has(item.id)) || !page.nextCursor) return { pages, connected: true };
+    cursor = page.nextCursor;
+  }
+  return { pages, connected: false, cursor };
+}
+
 async function messagesView() {
   const generation = state.generation;
   const scopePath = path('');
@@ -346,7 +364,7 @@ async function messagesView() {
   let live = true, polling = false;
   viewCleanups.push(() => { live = false; });
   const receipt = message => message.responseMessageId ? 'Replied' : message.state === 'acknowledged' ? (message.toKind === 'human' ? 'Read' : 'Acknowledged') : message.state === 'delivered' ? 'Delivered to app' : message.state === 'expired' ? 'Expired' : 'Waiting for delivery';
-  const append = (page, fresh = false) => {
+  const append = (page, fresh = false, anchor = null) => {
     const rows = fresh ? [...page.messages].reverse() : page.messages;
     for (const message of rows) {
       const fingerprint = JSON.stringify(message);
@@ -358,6 +376,7 @@ async function messagesView() {
       if (message.toKind === 'human' && message.to === state.user.id && message.state !== 'acknowledged' && message.state !== 'expired') item.append(button('Mark read', async () => { await api(scopePath + '/messages/read', { method: 'POST', body: { messageIds: [message.id] } }); await render(); }, 'subtle-button'));
       if (previous) previous.node.replaceWith(item);
       else if (fresh) list.prepend(item);
+      else if (anchor) list.insertBefore(item, anchor);
       else list.append(item);
       rendered.set(message.id, { fingerprint, node: item });
     }
@@ -365,15 +384,50 @@ async function messagesView() {
   const page = await api(scopePath + '/messages?' + query);
   append(page);
   const refreshQuery = query.toString();
-  const timer = setInterval(async () => {
-    if (state.generation !== generation) { clearInterval(timer); return; }
+  const stale = () => !live || state.generation !== generation;
+  const fetchHistory = async cursor => {
+    const params = new URLSearchParams(refreshQuery);
+    if (cursor) params.set('before', cursor);
+    const data = await api(scopePath + '/messages?' + params);
+    return { items: data.messages, nextCursor: data.nextCursor };
+  };
+  const gaps = new Map();
+  const fillGap = async control => {
+    for (let i = 0; i < historyCatchUpPages; i++) {
+      const data = await fetchHistory(control.cursor);
+      if (stale()) return;
+      const anchor = control.button.parentNode === list ? control.button : null;
+      const connected = data.items.some(item => rendered.has(item.id));
+      append({ messages: data.items }, false, anchor);
+      control.cursor = data.nextCursor;
+      if (connected || !data.nextCursor) { control.button.remove(); gaps.delete(control.anchorId); return; }
+    }
+  };
+  const refresh = async () => {
     if (!live || polling || document.hidden) return;
     polling = true;
-    try { const next = await api(scopePath + '/messages?' + refreshQuery); if (live) { if (next.messages.length) list.querySelector('.empty')?.remove(); append(next, true); } }
-    catch (error) { if (live) inform('Conversation refresh failed. ' + error.message, true); }
+    try {
+      const anchorId = list.querySelector('article')?.id || '';
+      const result = await catchUpHistory(fetchHistory, rendered, stale);
+      if (result.stale || stale()) return;
+      for (let i = result.pages.length - 1; i >= 0; i--) append({ messages: result.pages[i].items }, true);
+      if (result.pages.some(p => p.items.length)) list.querySelector('.empty')?.remove();
+      if (!result.connected && result.cursor && !gaps.has(anchorId)) {
+        const control = { anchorId, cursor: result.cursor, button: null };
+        control.button = button(anchorId ? 'Load missed messages' : 'Earlier messages', () => fillGap(control));
+        gaps.set(anchorId, control);
+        const anchor = anchorId ? rendered.get(anchorId)?.node ?? null : null;
+        if (anchor) list.insertBefore(control.button, anchor);
+        else container.insertBefore(control.button, list.nextSibling);
+      }
+    } catch (error) { if (!stale()) inform('Conversation refresh failed. ' + error.message, true); }
     finally { polling = false; }
-  }, 5000);
+  };
+  const timer = setInterval(() => { if (state.generation !== generation) { clearInterval(timer); return; } refresh(); }, 5000);
   viewCleanups.push(() => clearInterval(timer));
+  const onVisible = () => { if (!document.hidden) refresh(); };
+  document.addEventListener('visibilitychange', onVisible);
+  viewCleanups.push(() => document.removeEventListener('visibilitychange', onVisible));
   if (!page.messages.length) list.append(el('section', { class: 'card empty' }, el('h2', {}, state.search ? 'No matching messages' : 'Start a conversation'), el('p', { class: 'muted' }, state.search ? 'Try a different phrase or session.' : 'Choose a connected session below and send it a request.')));
   container.append(list);
   if (page.nextCursor) {
@@ -458,15 +512,15 @@ async function channelsView() {
   for (const session of directory.sessions) names.set('agent:' + session.id, session.displayName);
   const list = el('div', { class: 'conversation-list', 'aria-label': 'Channel posts' });
   const rendered = new Map();
-  const append = (page, fresh = false) => {
+  const append = (page, fresh = false, anchor = null) => {
     const posts = fresh ? [...page.posts].reverse() : page.posts;
     for (const post of posts) {
       const fingerprint = JSON.stringify(post), previous = rendered.get(post.id);
       if (previous?.fingerprint === fingerprint) continue;
-      const item = el('article', { class: 'card' }, el('div', { class: 'row' }, el('strong', {}, names.get(post.authorKind + ':' + post.authorId) || post.authorId), el('small', {}, date(post.createdAt))), el('p', { class: 'message' }, post.body));
+      const item = el('article', { class: 'card', id: post.id }, el('div', { class: 'row' }, el('strong', {}, names.get(post.authorKind + ':' + post.authorId) || post.authorId), el('small', {}, date(post.createdAt))), el('p', { class: 'message' }, post.body));
       item.append(attachmentLinks(scopePath, post.body));
       if (!state.threadId || state.channelSearch) item.append(button(post.replies ? `${post.replies} ${post.replies === 1 ? 'reply' : 'replies'}` : 'Open thread', async () => { state.threadId = post.threadId || post.id; state.channelSearch = ''; await render(); }));
-      if (previous) previous.node.replaceWith(item); else if (fresh) list.prepend(item); else list.append(item);
+      if (previous) previous.node.replaceWith(item); else if (fresh) list.prepend(item); else if (anchor) list.insertBefore(item, anchor); else list.append(item);
       rendered.set(post.id, { fingerprint, node: item });
     }
   };
@@ -482,9 +536,50 @@ async function channelsView() {
     state.channelSearch = ''; await render();
   })));
   let live = true, polling = false;
-  const timer = setInterval(async () => { if (state.generation !== generation) { clearInterval(timer); return; }
-    if (!live || polling || document.hidden) return; polling = true; try { const next = await api(scopePath + '/channel-posts?' + query); if (live) { if (next.posts.length) list.querySelector('.empty')?.remove(); append(next, true); } } catch (error) { if (live) inform('Channel refresh failed. ' + error.message, true); } finally { polling = false; } }, 5000);
-  viewCleanups.push(() => { live = false; clearInterval(timer); });
+  const stale = () => !live || state.generation !== generation;
+  const refreshQuery = query.toString();
+  const fetchHistory = async cursor => {
+    const params = new URLSearchParams(refreshQuery);
+    if (cursor) params.set('before', cursor);
+    const data = await api(scopePath + '/channel-posts?' + params);
+    return { items: data.posts, nextCursor: data.nextCursor };
+  };
+  const gaps = new Map();
+  const fillGap = async control => {
+    for (let i = 0; i < historyCatchUpPages; i++) {
+      const data = await fetchHistory(control.cursor);
+      if (stale()) return;
+      const anchor = control.button.parentNode === list ? control.button : null;
+      const connected = data.items.some(item => rendered.has(item.id));
+      append({ posts: data.items }, false, anchor);
+      control.cursor = data.nextCursor;
+      if (connected || !data.nextCursor) { control.button.remove(); gaps.delete(control.anchorId); return; }
+    }
+  };
+  const refresh = async () => {
+    if (!live || polling || document.hidden) return;
+    polling = true;
+    try {
+      const anchorId = list.querySelector('article')?.id || '';
+      const result = await catchUpHistory(fetchHistory, rendered, stale);
+      if (result.stale || stale()) return;
+      for (let i = result.pages.length - 1; i >= 0; i--) append({ posts: result.pages[i].items }, true);
+      if (result.pages.some(p => p.items.length)) list.querySelector('.empty')?.remove();
+      if (!result.connected && result.cursor && !gaps.has(anchorId)) {
+        const control = { anchorId, cursor: result.cursor, button: null };
+        control.button = button(anchorId ? 'Load missed posts' : 'Earlier posts', () => fillGap(control));
+        gaps.set(anchorId, control);
+        const anchor = anchorId ? rendered.get(anchorId)?.node ?? null : null;
+        if (anchor) list.insertBefore(control.button, anchor);
+        else container.insertBefore(control.button, list.nextSibling);
+      }
+    } catch (error) { if (!stale()) inform('Channel refresh failed. ' + error.message, true); }
+    finally { polling = false; }
+  };
+  const timer = setInterval(() => { if (state.generation !== generation) { clearInterval(timer); return; } refresh(); }, 5000);
+  const onVisible = () => { if (!document.hidden) refresh(); };
+  document.addEventListener('visibilitychange', onVisible);
+  viewCleanups.push(() => { live = false; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); });
   return container;
 }
 
