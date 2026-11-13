@@ -313,6 +313,174 @@ test('data controls confirm pauses and cleanup, then download a portable archive
   expect(cleanups.map(c => c.execute)).toEqual([false, true]);
 });
 
+test('conversations reach sessions beyond the first page and isolate workspace switches', async ({ page }) => {
+  await fixture(page);
+  const sessionRequests = [];
+  let delayedResponses = 0, delayFirst = 0;
+  const page1 = [
+    { id: 'session-001', displayName: 'Agent Dup', deviceId: 'device-1', deviceName: 'Laptop A', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' },
+    { id: 'session-002', displayName: 'Agent Dup', deviceId: 'device-2', deviceName: 'Laptop B', reachable: false, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' },
+  ];
+  for (let i = 3; i <= 100; i++) page1.push({ id: `session-${String(i).padStart(3, '0')}`, displayName: `Agent ${i}`, deviceId: 'device-1', deviceName: 'Laptop A', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' });
+  const page2 = [{ id: 'session-101', displayName: 'Late Agent', deviceId: 'device-3', deviceName: 'Old laptop', reachable: false, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' }];
+  await page.route('**/api/workspaces', route => route.fulfill({ json: { ok: true, result: [
+    { id: 'workspace-1', name: 'My workspace', role: 'owner', memberLimit: 5 },
+    { id: 'workspace-2', name: 'Second workspace', role: 'owner', memberLimit: 5 },
+  ] } }));
+  await page.route('**/api/workspaces/workspace-1/sessions*', async route => {
+    const url = new URL(route.request().url());
+    sessionRequests.push(url.pathname + url.search);
+    if (url.searchParams.get('after')) {
+      return route.fulfill({ json: { ok: true, result: { sessions: page2 } } });
+    }
+    if (delayFirst) { await new Promise(r => setTimeout(r, delayFirst)); delayedResponses++; }
+    await route.fulfill({ json: { ok: true, result: { sessions: page1, nextCursor: 'session-100' } } });
+  });
+  await page.route('**/api/workspaces/workspace-2/sessions*', async route => {
+    sessionRequests.push(new URL(route.request().url()).pathname);
+    await route.fulfill({ json: { ok: true, result: { sessions: [{ id: 'ws2-session', displayName: 'Second Workspace Agent', deviceId: 'device-9', deviceName: 'Tablet', reachable: true, deliveryMode: 'poll', updatedAt: '2026-10-24T12:00:00Z' }] } } });
+  });
+  const messageQueries = [];
+  await page.route('**/api/workspaces/workspace-1/messages*', async route => {
+    messageQueries.push(new URL(route.request().url()).search);
+    await route.fallback();
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  const sendTo = page.locator('select[name="to"]');
+  await expect(sendTo.locator('option')).toHaveCount(101);
+  await expect(sendTo.locator('option[value="session-101"]')).toHaveText('Late Agent · offline');
+  await expect(sendTo.locator('option[value="session-001"]')).toHaveText('Agent Dup · Laptop A');
+  await expect(sendTo.locator('option[value="session-002"]')).toHaveText('Agent Dup · Laptop B · offline');
+  expect(sessionRequests.some(u => u.includes('after=session-100'))).toBe(true);
+  const filter = page.locator('select[aria-label="Filter by session"]');
+  await expect(filter.locator('option[value="session-101"]')).toHaveText('Late Agent');
+  await filter.selectOption('session-101');
+  await expect.poll(() => messageQueries.some(q => q.includes('agentId=session-101')), { timeout: 5000 }).toBe(true);
+  await expect(page.locator('select[aria-label="Filter by session"]')).toHaveValue('session-101');
+  delayFirst = 1200;
+  const continuationsBefore = sessionRequests.filter(u => u.includes('after=')).length;
+  await page.getByRole('button', { name: 'Refresh conversation', exact: true }).click();
+  await page.locator('select[aria-label="Workspace"]').selectOption('workspace-2');
+  await expect(page.locator('select[name="to"]').locator('option')).toHaveCount(1);
+  await expect(page.locator('select[name="to"]').locator('option[value="ws2-session"]')).toHaveText('Second Workspace Agent');
+  await expect.poll(() => delayedResponses, { timeout: 5000 }).toBe(1);
+  expect(sessionRequests.filter(u => u.includes('after=')).length).toBe(continuationsBefore);
+  await expect(page.locator('select[name="to"]').locator('option')).toHaveCount(1);
+  await expect(page.locator('select[aria-label="Filter by session"]').locator('option')).toHaveCount(2);
+});
+
+test('conversation drafts survive navigation and refresh, stay in their workspace, and clear on send', async ({ page }) => {
+  await fixture(page);
+  await page.route('**/api/workspaces', route => route.fulfill({ json: { ok: true, result: [
+    { id: 'workspace-1', name: 'My workspace', role: 'owner', memberLimit: 5 },
+    { id: 'workspace-2', name: 'Second workspace', role: 'owner', memberLimit: 5 },
+  ] } }));
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  const composer = page.getByLabel('Your message', { exact: true });
+  await composer.fill('Please review this draft.');
+  await page.getByText('Attach a file', { exact: true }).first().click();
+  await page.getByLabel('Attach a file', { exact: true }).setInputFiles({ name: 'review.txt', mimeType: 'text/plain', buffer: Buffer.from('Review content') });
+  await page.getByRole('button', { name: 'Upload and attach', exact: true }).click();
+  await expect(composer).toHaveValue(/Please review this draft\.[\s\S]*october-bus:\/\/attachments\/att_/);
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain('Please review this draft.');
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await expect(composer).toHaveValue(/october-bus:\/\/attachments\/att_/);
+  await page.getByRole('button', { name: 'Refresh conversation', exact: true }).click();
+  await expect(composer).toHaveValue(/october-bus:\/\/attachments\/att_/);
+  await page.locator('select[aria-label="Workspace"]').selectOption('workspace-2');
+  await expect(composer).toHaveValue('');
+  await page.locator('select[aria-label="Workspace"]').selectOption('workspace-1');
+  await expect(composer).toHaveValue(/Please review this draft\./);
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await expect(page.getByText(/Please review this draft\./)).toBeVisible();
+  await expect(composer).toHaveValue('');
+});
+
+test('failed sends keep the draft and retry with the same idempotency key', async ({ page }) => {
+  await fixture(page);
+  const postedKeys = [];
+  await page.route('**/api/workspaces/workspace-1/messages*', async route => {
+    if (route.request().method() === 'POST' && postedKeys.length === 0) {
+      postedKeys.push(route.request().postDataJSON().idempotencyKey);
+      return route.fulfill({ status: 500, json: { ok: false, error: { message: 'Delivery uncertain. Please retry.' } } });
+    }
+    if (route.request().method() === 'POST') postedKeys.push(route.request().postDataJSON().idempotencyKey);
+    await route.fallback();
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await page.getByLabel('Your message', { exact: true }).fill('Retry this request.');
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await expect(page.getByText('Delivery uncertain. Please retry.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('Retry this request.');
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await expect(page.getByText('Retry this request.', { exact: true })).toBeVisible();
+  expect(postedKeys).toHaveLength(2);
+  expect(postedKeys[0]).toBeTruthy();
+  expect(postedKeys[1]).toBe(postedKeys[0]);
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('');
+});
+
+test('channel and thread drafts stay independent and clear only on send', async ({ page }) => {
+  await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Channels', exact: true }).click();
+  await page.getByRole('button', { name: 'Create a channel', exact: true }).click();
+  await page.getByLabel('Channel name', { exact: true }).fill('drafts');
+  await page.getByLabel('Description', { exact: true }).fill('Draft discussion');
+  await page.getByRole('button', { name: 'Create channel', exact: true }).click();
+  await page.getByLabel('Your post', { exact: true }).fill('First post body');
+  await page.getByRole('button', { name: 'Post to channel', exact: true }).click();
+  await expect(page.getByText('First post body', { exact: true })).toBeVisible();
+  await page.getByLabel('Your post', { exact: true }).fill('Second post body');
+  await page.getByRole('button', { name: 'Post to channel', exact: true }).click();
+  await expect(page.getByText('Second post body', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Your post', { exact: true })).toHaveValue('');
+  await page.getByLabel('Your post', { exact: true }).fill('Unsent channel draft');
+  await page.getByRole('button', { name: 'Open thread', exact: true }).first().click();
+  await expect(page.getByLabel('Your reply', { exact: true })).toHaveValue('');
+  await page.getByLabel('Your reply', { exact: true }).fill('Reply draft one');
+  await page.getByRole('button', { name: 'Back to channel', exact: true }).click();
+  await expect(page.getByLabel('Your post', { exact: true })).toHaveValue('Unsent channel draft');
+  await page.getByRole('button', { name: 'Open thread', exact: true }).nth(1).click();
+  await expect(page.getByLabel('Your reply', { exact: true })).toHaveValue('');
+  await page.getByLabel('Your reply', { exact: true }).fill('Reply draft two');
+  await page.getByRole('button', { name: 'Back to channel', exact: true }).click();
+  await page.getByRole('button', { name: 'Open thread', exact: true }).first().click();
+  await expect(page.getByLabel('Your reply', { exact: true })).toHaveValue('Reply draft one');
+  await page.getByRole('button', { name: 'Reply in thread', exact: true }).click();
+  await expect(page.getByText('Reply draft one', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Your reply', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Back to channel', exact: true }).click();
+  await expect(page.getByLabel('Your post', { exact: true })).toHaveValue('Unsent channel draft');
+});
+
+test('drafts never appear under a different signed-in account', async ({ page }) => {
+  await fixture(page);
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await page.getByLabel('Your message', { exact: true }).fill('Owner private draft');
+  const intruder = { id: 'intruder-id', email: 'intruder@example.test', aud: 'authenticated', role: 'authenticated', email_confirmed_at: '2026-01-01T00:00:00Z' };
+  const claims = Buffer.from(JSON.stringify({ sub: intruder.id, aud: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64');
+  await page.route('**/auth/v1/token*', route => route.fulfill({ json: {
+    access_token: 'e30.' + claims + '.fixture', refresh_token: 'fixture-refresh-intruder',
+    expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, token_type: 'bearer', user: intruder,
+  } }));
+  await page.route('**/api/me', route => route.fulfill({ json: { ok: true, result: intruder } }));
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in to October' })).toBeVisible();
+  await page.getByText('Use an existing password', { exact: true }).click();
+  await page.getByLabel('Email address', { exact: true }).last().fill('intruder@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('not-a-real-password');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByText('intruder@example.test', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('');
+});
+
 test('workspace deletion requires its name and recovers a failed cancellation', async ({ page }) => {
   await fixture(page);
   let deleting = false, deleted = false;
