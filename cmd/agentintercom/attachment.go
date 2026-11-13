@@ -21,6 +21,11 @@ func attachmentCommand(args []string, in io.Reader, out io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("use attachment list/upload/download/delete")
 	}
+	switch args[0] {
+	case "list", "upload", "download", "delete":
+	default:
+		return errors.New("use attachment list/upload/download/delete")
+	}
 	flags := flag.NewFlagSet("attachment "+args[0], flag.ContinueOnError)
 	address := flags.String("address", "", "Bus address")
 	id := flags.String("id", "", "attachment ID")
@@ -128,8 +133,6 @@ func attachmentCommand(args []string, in io.Reader, out io.Writer) error {
 	case "delete":
 		err = client.DeleteAttachment(ctx, *id)
 		result = map[string]bool{"deleted": true}
-	default:
-		return errors.New("use attachment list/upload/download/delete")
 	}
 	if err != nil {
 		return err
