@@ -225,28 +225,6 @@ FROM messages WHERE scope_id=? AND from_kind='a2aPrincipal' AND state NOT IN ('a
 	return task, nil
 }
 
-func (s *Store) A2ATask(ctx context.Context, principal A2APrincipal, taskID string) (A2ATaskCorrelation, error) {
-	tx, err := s.beginTx(ctx, principal.ScopeID)
-	if err != nil {
-		return A2ATaskCorrelation{}, err
-	}
-	defer tx.Rollback()
-	if err := requireCurrentA2APrincipal(ctx, tx, principal); err != nil {
-		return A2ATaskCorrelation{}, err
-	}
-	if err := expireMessages(ctx, tx, principal.ScopeID, nowMillis()); err != nil {
-		return A2ATaskCorrelation{}, err
-	}
-	task, err := loadA2ATask(ctx, tx, principal.ID, taskID)
-	if err != nil {
-		return A2ATaskCorrelation{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return A2ATaskCorrelation{}, err
-	}
-	return task, nil
-}
-
 func a2aTaskTerminal(state A2ATaskState) bool {
 	switch state {
 	case A2ATaskCompleted, A2ATaskFailed, A2ATaskCanceled, A2ATaskRejected:
@@ -344,17 +322,6 @@ func (r *Runtime) AcceptA2AMessage(ctx context.Context, credential, publicationI
 	return task, err
 }
 
-func (r *Runtime) A2ATask(ctx context.Context, credential, publicationID, taskID string) (A2ATaskCorrelation, error) {
-	principal, err := r.AuthenticateA2APrincipal(ctx, credential, publicationID)
-	if err != nil {
-		return A2ATaskCorrelation{}, err
-	}
-	if err := validateIdentity(taskID, "taskId", false); err != nil {
-		return A2ATaskCorrelation{}, err
-	}
-	return r.store.A2ATask(ctx, principal, taskID)
-}
-
 // A2ATaskHistory loads a task with the request/response bodies of its
 // correlated turns. Unknown and other-principal tasks report NotFound without
 // revealing task existence, and revoked credentials or disabled publications
@@ -379,8 +346,7 @@ func (s *Store) A2ATaskHistory(ctx context.Context, principal A2APrincipal, task
 	for _, correlation := range task.Messages {
 		entry := A2ATaskHistoryEntry{ClientMessageID: correlation.ClientMessageID}
 		var body string
-		var created int64
-		err := tx.QueryRowContext(ctx, `SELECT body,created_at FROM messages WHERE scope_id=? AND message_id=?`, principal.ScopeID, correlation.BusRequestMessageID).Scan(&body, &created)
+		err := tx.QueryRowContext(ctx, `SELECT body FROM messages WHERE scope_id=? AND message_id=?`, principal.ScopeID, correlation.BusRequestMessageID).Scan(&body)
 		if errors.Is(err, sql.ErrNoRows) {
 			// Retention prunes a terminal task with its messages as one unit,
 			// so a missing row should not happen; skip rather than fail the poll.
@@ -389,11 +355,11 @@ func (s *Store) A2ATaskHistory(ctx context.Context, principal A2APrincipal, task
 		if err != nil {
 			return A2ATaskCorrelation{}, nil, err
 		}
-		entry.RequestBody, entry.RequestCreatedAt = body, instant(created)
+		entry.RequestBody = body
 		if correlation.BusResponseMessageID != "" {
-			err := tx.QueryRowContext(ctx, `SELECT body,created_at FROM messages WHERE scope_id=? AND message_id=?`, principal.ScopeID, correlation.BusResponseMessageID).Scan(&body, &created)
+			err := tx.QueryRowContext(ctx, `SELECT body FROM messages WHERE scope_id=? AND message_id=?`, principal.ScopeID, correlation.BusResponseMessageID).Scan(&body)
 			if err == nil {
-				entry.ResponseMessageID, entry.ResponseBody, entry.ResponseCreatedAt = correlation.BusResponseMessageID, body, instant(created)
+				entry.ResponseMessageID, entry.ResponseBody = correlation.BusResponseMessageID, body
 			} else if !errors.Is(err, sql.ErrNoRows) {
 				return A2ATaskCorrelation{}, nil, err
 			}

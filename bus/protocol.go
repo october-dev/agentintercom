@@ -130,10 +130,8 @@ type A2ATaskCorrelation struct {
 type A2ATaskHistoryEntry struct {
 	ClientMessageID   string `json:"clientMessageId"`
 	RequestBody       string `json:"requestBody"`
-	RequestCreatedAt  string `json:"requestCreatedAt"`
 	ResponseMessageID string `json:"responseMessageId,omitempty"`
 	ResponseBody      string `json:"responseBody,omitempty"`
-	ResponseCreatedAt string `json:"responseCreatedAt,omitempty"`
 }
 
 type AcceptA2AMessageInput struct {
