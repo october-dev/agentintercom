@@ -649,6 +649,8 @@ test('a late upload never writes into another workspace draft', async ({ page })
   await expect(composer).toHaveValue('Workspace two text');
   await page.locator('select[aria-label="Workspace"]').selectOption('workspace-1');
   await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('Workspace one text');
+  await page.locator('select[aria-label="Workspace"]').selectOption('workspace-2');
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('Workspace two text');
 });
 
 test('text typed while a send is pending survives the send', async ({ page }) => {
@@ -693,6 +695,15 @@ test('a draft addressed to a vanished session blocks sending until a new recipie
   await page.getByRole('button', { name: 'Send request', exact: true }).click();
   expect(events.filter(e => e.method === 'POST')).toHaveLength(0);
   await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('Hello there');
+  await page.getByLabel('Your message', { exact: true }).fill('Hello there, edited');
+  await page.getByRole('button', { name: 'Tasks', exact: true }).click();
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('Hello there, edited');
+  await expect(sendTo).toHaveValue('');
+  await sendTo.selectOption('stays-1');
+  await page.getByRole('button', { name: 'Send request', exact: true }).click();
+  await expect(page.getByText('Hello there, edited', { exact: true })).toBeVisible();
+  expect(events.filter(e => e.method === 'POST' && e.path.endsWith('/messages')).at(-1).body.to).toBe('stays-1');
 });
 
 test('a retry after navigation reuses the failed send idempotency key', async ({ page }) => {

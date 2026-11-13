@@ -415,7 +415,7 @@ async function messagesView() {
     const body = field('Your message', { name: 'body', multiline: true, required: true, maxlength: 65536, placeholder: 'What would you like this session to help with?' });
     const restored = drafts.get(messageKey);
     if (restored?.body) body.input.value = restored.body;
-    if (restored?.body && restored.to && !sessions.some(s => s.id === restored.to)) { target.prepend(el('option', { value: '' }, 'Recipient unavailable — choose a session')); target.value = ''; }
+    if (restored?.body && !sessions.some(s => s.id === restored.to)) { target.prepend(el('option', { value: '' }, 'Recipient unavailable — choose a session')); target.value = ''; }
     else if (restored?.to && sessions.some(s => s.id === restored.to)) target.value = restored.to;
     const saveDraft = () => {
       const fingerprint = JSON.stringify([target.value, body.input.value]);
