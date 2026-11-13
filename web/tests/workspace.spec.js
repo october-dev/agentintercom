@@ -342,3 +342,189 @@ test('workspace deletion requires its name and recovers a failed cancellation', 
   await expect(page.getByRole('heading', { name: 'Make room for your team.', exact: true })).toBeVisible();
   expect(attempts).toEqual([{ confirmName: 'My workspace' }, { confirmName: 'My workspace' }]);
 });
+
+// Newest-first history page mirroring the server: `before` names the oldest
+// id of the previous page, `nextCursor` names the oldest id when more remain.
+function historyPage(items, url, pageSize = 50) {
+  const before = url.searchParams.get('before');
+  let start = 0;
+  if (before) {
+    const index = items.findIndex(item => item.id === before);
+    if (index < 0) return { error: 'History cursor is unavailable' };
+    start = index + 1;
+  }
+  const slice = items.slice(start, start + pageSize);
+  return { slice, nextCursor: slice.length && start + pageSize < items.length ? slice[slice.length - 1].id : undefined };
+}
+
+function burstMessages(prefix, count) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `msg-${prefix}-${count - i}`,
+    from: 'owner-id', fromKind: 'human', to: 'session-1', toKind: 'agent',
+    body: `${prefix} message ${count - i}`, state: 'delivered', createdAt: new Date(Date.now() - i * 1000).toISOString(),
+  }));
+}
+
+function burstPosts(prefix, count, channelId = 'channel-1') {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `post-${prefix}-${count - i}`, channelId, authorKind: 'human', authorId: 'owner-id',
+    body: `${prefix} post ${count - i}`, createdAt: new Date(Date.now() - i * 1000).toISOString(), replies: 0,
+  }));
+}
+
+test('conversation bursts larger than one page catch up without losing the middle', async ({ page }) => {
+  const events = await fixture(page);
+  const server = { messages: burstMessages('seed', 50) };
+  await page.route('**/api/workspaces/workspace-1/messages*', async route => {
+    if (route.request().method() !== 'GET') {
+      events.push({ path: new URL(route.request().url()).pathname, method: route.request().method(), body: route.request().postDataJSON() });
+      return route.fulfill({ json: { ok: true, result: {} } });
+    }
+    const window = historyPage(server.messages, new URL(route.request().url()));
+    if (window.error) return route.fulfill({ status: 404, json: { ok: false, error: { message: window.error } } });
+    await route.fulfill({ json: { ok: true, result: { messages: window.slice, nextCursor: window.nextCursor } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  const rows = page.locator('.conversation-list article');
+  await expect(rows).toHaveCount(50);
+  await page.getByLabel('Your message', { exact: true }).fill('draft stays put');
+  server.messages.unshift(...burstMessages('burst', 110));
+  await expect(page.getByText('burst message 110', { exact: true })).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(160, { timeout: 20000 });
+  await expect(page.getByText('burst message 55', { exact: true })).toBeVisible();
+  await expect(rows.first()).toContainText('burst message 110');
+  await expect(rows.last()).toContainText('seed message 1');
+  await expect(page.getByRole('button', { name: 'Load missed messages', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('draft stays put');
+  expect(events.filter(e => e.path?.endsWith('/messages/read'))).toHaveLength(0);
+});
+
+test('conversation bursts beyond catch-up leave an explicit gap control', async ({ page }) => {
+  const events = await fixture(page);
+  const server = { messages: burstMessages('seed', 50) };
+  server.messages[49] = { ...server.messages[49], toKind: 'human', to: 'owner-id' };
+  await page.route('**/api/workspaces/workspace-1/messages*', async route => {
+    if (route.request().method() !== 'GET') {
+      events.push({ path: new URL(route.request().url()).pathname, method: route.request().method(), body: route.request().postDataJSON() });
+      return route.fulfill({ json: { ok: true, result: {} } });
+    }
+    const window = historyPage(server.messages, new URL(route.request().url()));
+    if (window.error) return route.fulfill({ status: 404, json: { ok: false, error: { message: window.error } } });
+    await route.fulfill({ json: { ok: true, result: { messages: window.slice, nextCursor: window.nextCursor } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  const rows = page.locator('.conversation-list article');
+  await expect(rows).toHaveCount(50);
+  await expect(page.getByRole('button', { name: 'Mark read', exact: true })).toHaveCount(1);
+  await page.getByLabel('Your message', { exact: true }).fill('draft stays put');
+  server.messages.unshift(...burstMessages('burst', 200));
+  const gap = page.getByRole('button', { name: 'Load missed messages', exact: true });
+  await expect(gap).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(200);
+  await expect(page.getByText('burst message 200', { exact: true })).toBeVisible();
+  await expect(page.getByText('burst message 25', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('draft stays put');
+  await gap.click();
+  await expect(page.getByText('burst message 25', { exact: true })).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(250);
+  await expect(rows.first()).toContainText('burst message 200');
+  await expect(rows.last()).toContainText('seed message 1');
+  await expect(gap).toHaveCount(0);
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('draft stays put');
+  expect(events.filter(e => e.path?.endsWith('/messages/read'))).toHaveLength(0);
+});
+
+test('returning to a hidden conversation tab catches up without a reload', async ({ page }) => {
+  await fixture(page);
+  const server = { messages: burstMessages('seed', 20) };
+  await page.route('**/api/workspaces/workspace-1/messages*', async route => {
+    const window = historyPage(server.messages, new URL(route.request().url()));
+    await route.fulfill({ json: { ok: true, result: { messages: window.slice, nextCursor: window.nextCursor } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  const rows = page.locator('.conversation-list article');
+  await expect(rows).toHaveCount(20);
+  await page.getByLabel('Your message', { exact: true }).fill('draft stays put');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  server.messages.unshift(...burstMessages('burst', 30));
+  await page.waitForTimeout(6500);
+  await expect(rows).toHaveCount(20);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.getByText('burst message 30', { exact: true })).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(50);
+  await expect(page.getByLabel('Your message', { exact: true })).toHaveValue('draft stays put');
+});
+
+test('channel bursts keep every post reachable when older history is loaded', async ({ page }) => {
+  await fixture(page);
+  const server = { posts: burstPosts('seed', 60) };
+  await page.route('**/api/workspaces/workspace-1/channels', async route => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { ok: true, result: [{ id: 'channel-1', name: 'general', description: 'General discussion', subscribers: 1 }] } });
+    await route.fallback();
+  });
+  await page.route('**/api/workspaces/workspace-1/channel-posts*', async route => {
+    const window = historyPage(server.posts, new URL(route.request().url()));
+    if (window.error) return route.fulfill({ status: 404, json: { ok: false, error: { message: window.error } } });
+    await route.fulfill({ json: { ok: true, result: { posts: window.slice, nextCursor: window.nextCursor } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Channels', exact: true }).click();
+  const rows = page.locator('.conversation-list article');
+  await expect(rows).toHaveCount(50);
+  await page.getByRole('button', { name: 'Earlier posts', exact: true }).click();
+  await expect(rows).toHaveCount(60);
+  await page.getByLabel('Your post', { exact: true }).fill('channel draft stays put');
+  server.posts.unshift(...burstPosts('burst', 200));
+  const gap = page.getByRole('button', { name: 'Load missed posts', exact: true });
+  await expect(gap).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(210);
+  await expect(page.getByText('burst post 200', { exact: true })).toBeVisible();
+  await expect(page.getByText('burst post 25', { exact: true })).toHaveCount(0);
+  await gap.click();
+  await expect(page.getByText('burst post 25', { exact: true })).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(260);
+  await expect(rows.first()).toContainText('burst post 200');
+  await expect(rows.last()).toContainText('seed post 1');
+  await expect(gap).toHaveCount(0);
+  await expect(page.getByLabel('Your post', { exact: true })).toHaveValue('channel draft stays put');
+});
+
+test('returning to a hidden channel tab catches up without a reload', async ({ page }) => {
+  await fixture(page);
+  const server = { posts: burstPosts('seed', 20) };
+  await page.route('**/api/workspaces/workspace-1/channels', async route => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { ok: true, result: [{ id: 'channel-1', name: 'general', description: 'General discussion', subscribers: 1 }] } });
+    await route.fallback();
+  });
+  await page.route('**/api/workspaces/workspace-1/channel-posts*', async route => {
+    const window = historyPage(server.posts, new URL(route.request().url()));
+    await route.fulfill({ json: { ok: true, result: { posts: window.slice, nextCursor: window.nextCursor } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Channels', exact: true }).click();
+  const rows = page.locator('.conversation-list article');
+  await expect(rows).toHaveCount(20);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  server.posts.unshift(...burstPosts('burst', 30));
+  await page.waitForTimeout(6500);
+  await expect(rows).toHaveCount(20);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.getByText('burst post 30', { exact: true })).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(50);
+  await expect(page.getByRole('button', { name: 'Load missed posts', exact: true })).toHaveCount(0);
+});
