@@ -529,6 +529,68 @@ test('returning to a hidden channel tab catches up without a reload', async ({ p
   await expect(page.getByRole('button', { name: 'Load missed posts', exact: true })).toHaveCount(0);
 });
 
+test('a conversation gap larger than one load keeps its control at the remaining gap', async ({ page }) => {
+  const events = await fixture(page);
+  const server = { messages: burstMessages('seed', 50) };
+  await page.route('**/api/workspaces/workspace-1/messages*', async route => {
+    if (route.request().method() !== 'GET') {
+      events.push({ path: new URL(route.request().url()).pathname, method: route.request().method(), body: route.request().postDataJSON() });
+      return route.fulfill({ json: { ok: true, result: {} } });
+    }
+    const window = historyPage(server.messages, new URL(route.request().url()));
+    if (window.error) return route.fulfill({ status: 404, json: { ok: false, error: { message: window.error } } });
+    await route.fulfill({ json: { ok: true, result: { messages: window.slice, nextCursor: window.nextCursor } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Conversations', exact: true }).click();
+  const rows = page.locator('.conversation-list article');
+  await expect(rows).toHaveCount(50);
+  server.messages.unshift(...burstMessages('burst', 400));
+  const gap = page.getByRole('button', { name: 'Load missed messages', exact: true });
+  await expect(gap).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(200);
+  await gap.click();
+  await expect(rows).toHaveCount(350);
+  await expect(gap).toBeVisible();
+  await expect(gap.locator('xpath=preceding-sibling::article[1]')).toContainText('burst message 101');
+  await expect(gap.locator('xpath=following-sibling::article[1]')).toContainText('seed message 50');
+  await gap.click();
+  await expect(rows).toHaveCount(450);
+  await expect(gap).toHaveCount(0);
+  await expect(rows.locator('p.message')).toHaveText(server.messages.map(m => m.body));
+});
+
+test('a channel gap larger than one load keeps its control at the remaining gap', async ({ page }) => {
+  await fixture(page);
+  const server = { posts: burstPosts('seed', 50) };
+  await page.route('**/api/workspaces/workspace-1/channels', async route => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { ok: true, result: [{ id: 'channel-1', name: 'general', description: 'General discussion', subscribers: 1 }] } });
+    await route.fallback();
+  });
+  await page.route('**/api/workspaces/workspace-1/channel-posts*', async route => {
+    const window = historyPage(server.posts, new URL(route.request().url()));
+    if (window.error) return route.fulfill({ status: 404, json: { ok: false, error: { message: window.error } } });
+    await route.fulfill({ json: { ok: true, result: { posts: window.slice, nextCursor: window.nextCursor } } });
+  });
+  await page.goto('/app');
+  await page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name: 'Channels', exact: true }).click();
+  const rows = page.locator('.conversation-list article');
+  await expect(rows).toHaveCount(50);
+  server.posts.unshift(...burstPosts('burst', 400));
+  const gap = page.getByRole('button', { name: 'Load missed posts', exact: true });
+  await expect(gap).toBeVisible({ timeout: 20000 });
+  await expect(rows).toHaveCount(200);
+  await gap.click();
+  await expect(rows).toHaveCount(350);
+  await expect(gap).toBeVisible();
+  await expect(gap.locator('xpath=preceding-sibling::article[1]')).toContainText('burst post 101');
+  await expect(gap.locator('xpath=following-sibling::article[1]')).toContainText('seed post 50');
+  await gap.click();
+  await expect(rows).toHaveCount(450);
+  await expect(gap).toHaveCount(0);
+  await expect(rows.locator('p.message')).toHaveText(server.posts.map(p => p.body));
+});
+
 test('dialogs are found by their accessible name and keyboard focus stays predictable', async ({ page }) => {
   const events = await fixture(page);
   await page.goto('/app');

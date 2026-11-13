@@ -396,7 +396,7 @@ async function messagesView() {
     for (let i = 0; i < historyCatchUpPages; i++) {
       const data = await fetchHistory(control.cursor);
       if (stale()) return;
-      const anchor = control.anchorId ? rendered.get(control.anchorId)?.node ?? null : null;
+      const anchor = control.button.parentNode === list ? control.button : null;
       const connected = data.items.some(item => rendered.has(item.id));
       append({ messages: data.items }, false, anchor);
       control.cursor = data.nextCursor;
@@ -549,7 +549,7 @@ async function channelsView() {
     for (let i = 0; i < historyCatchUpPages; i++) {
       const data = await fetchHistory(control.cursor);
       if (stale()) return;
-      const anchor = control.anchorId ? rendered.get(control.anchorId)?.node ?? null : null;
+      const anchor = control.button.parentNode === list ? control.button : null;
       const connected = data.items.some(item => rendered.has(item.id));
       append({ posts: data.items }, false, anchor);
       control.cursor = data.nextCursor;
