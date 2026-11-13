@@ -77,6 +77,11 @@ Usage:
   agentintercom agent run --id <id> --name <name> [--scope <local-scope-id> | --scope-token-file <file> | --scope-token-fd <n>] [--connect-to <peer>] -- <command> [args...]
   agentintercom task add --title <title> [--description <text>] [--depends-on <task-id>] [--json] [--address <addr>]
   agentintercom task list [--ready] [--json] [--limit <1-500>] [--after <cursor>] [--address <addr>]
+  agentintercom task claim --id <task-id> [--json] [--address <addr>]
+  agentintercom task release --id <task-id> [--json] [--address <addr>]
+  agentintercom task complete --id <task-id> [--note <text> | --note-file <file|->] [--json] [--address <addr>]
+  agentintercom task progress add --id <task-id> [--kind progress|note|blocker] (--text <text> | --text-file <file|->) [--json] [--address <addr>]
+  agentintercom task progress list --id <task-id> [--json] [--address <addr>]
   agentintercom mcp stdio [--scope <scope-id> --agent <id> --name <display>]
   agentintercom mcp stdio --scope <scope-id> --new-session [--name <display>]
   agentintercom mcp stdio --connection-file </absolute/private/connection.json>
@@ -687,7 +692,7 @@ func addTask(args []string) error {
 	if strings.TrimSpace(*title) == "" {
 		return errors.New("task add requires --title")
 	}
-	client, err := scopeClient(*address)
+	client, err := taskClient(*address)
 	if err != nil {
 		return err
 	}
@@ -723,7 +728,7 @@ func listTasks(args []string) error {
 	if flags.NArg() != 0 {
 		return errors.New("task list does not accept positional arguments")
 	}
-	client, err := scopeClient(*address)
+	client, err := taskClient(*address)
 	if err != nil {
 		return err
 	}
@@ -1165,6 +1170,9 @@ func run() error {
 		if len(args) >= 2 && args[1] == "list" {
 			return listTasks(args[2:])
 		}
+		if len(args) >= 2 && (args[1] == "claim" || args[1] == "release" || args[1] == "complete" || args[1] == "progress") {
+			return taskLifecycleCommand(args[1], args[2:], os.Stdin, os.Stdout)
+		}
 	case "mcp":
 		if len(args) >= 2 && args[1] == "stdio" {
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -1215,7 +1223,7 @@ func stdinIsTerminal() bool {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
