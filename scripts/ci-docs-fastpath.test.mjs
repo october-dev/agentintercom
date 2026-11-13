@@ -152,6 +152,17 @@ const checkFiles = (repo, files) => {
   }
 }
 
+const checkAll = (repo) => {
+  try {
+    const out = execFileSync('python3', [check, '--all', '--repo', repo], {
+      encoding: 'utf8'
+    })
+    return { ok: true, out }
+  } catch (error) {
+    return { ok: false, out: `${error.stdout ?? ''}\n${error.stderr ?? ''}` }
+  }
+}
+
 test('docs checker validates links and anchors without network', { timeout: 60_000 }, () => {
   const repo = mkdtempSync(join(tmpdir(), 'october-docscheck-test-'))
   try {
@@ -188,6 +199,114 @@ test('docs checker validates links and anchors without network', { timeout: 60_0
     assert.equal(checkFiles(repo, []).ok, true)
     // Escapes and unreadable targets fail rather than pass silently.
     assert.equal(checkFiles(repo, ['../escape.md']).ok, false)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('docs checker follows HTML links and own-repo blob URLs', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docshtml-test-'))
+  try {
+    mkdirSync(join(repo, 'docs'), { recursive: true })
+    mkdirSync(join(repo, 'assets'), { recursive: true })
+    writeFileSync(join(repo, 'docs', 'target.md'), '# Getting Started\n')
+    writeFileSync(join(repo, 'assets', 'logo.svg'), '<svg></svg>\n')
+    const blob = 'https://github.com/october-dev/agentintercom/blob/main/docs/target.md'
+    writeFileSync(
+      join(repo, 'README.md'),
+      '# Title\n\n' +
+        '<a href="#title">nav</a> <a href="docs/target.md">rel</a>\n\n' +
+        '<img src="assets/logo.svg" alt="logo">\n\n' +
+        '<source srcset="assets/logo.svg 1x, assets/logo.svg 2x">\n\n' +
+        `[page](${blob}) and [frag](${blob}#getting-started).\n\n` +
+        'Pinned [old](https://github.com/october-dev/october-bus/blob/7fc501ac58a1e1cda8195a70ba02f2e9a9ba8ad1/spec/0.1/mcp.md#L44) skipped.\n\n' +
+        'Foreign [x](https://github.com/other/repo/blob/main/x.md) skipped.\n'
+    )
+    const good = checkFiles(repo, ['README.md'])
+    assert.equal(good.ok, true, good.out)
+
+    writeFileSync(
+      join(repo, 'BROKEN.md'),
+      '# Broken\n\n' +
+        '<a href="#missing">nav</a>\n\n' +
+        '<img src="assets/gone.svg">\n\n' +
+        '<source srcset="assets/logo.svg 1x, assets/gone2.svg 2x">\n\n' +
+        '[gone](https://github.com/october-dev/agentintercom/blob/main/docs/gone.md)\n\n' +
+        `[badfrag](${blob}#no-such-anchor)\n`
+    )
+    const bad = checkFiles(repo, ['BROKEN.md'])
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /BROKEN\.md:\d+: unknown anchor '#missing'/)
+    assert.match(bad.out, /BROKEN\.md:\d+: missing link target: assets\/gone\.svg/)
+    assert.match(bad.out, /BROKEN\.md:\d+: missing link target: assets\/gone2\.svg/)
+    assert.match(bad.out, /BROKEN\.md:\d+: missing link target: docs\/gone\.md/)
+    assert.match(bad.out, /BROKEN\.md:\d+: unknown anchor '#no-such-anchor' in docs\/target\.md/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('docs checker ignores autolink-like text and slugs headings like GitHub', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docsslug-test-'))
+  try {
+    writeFileSync(
+      join(repo, 'NOTE.md'),
+      '# A & B\n\n' +
+        'Contact <conduct@example.com> or edit <workspace-id> and <agent_id>.\n\n' +
+        'Ampersand [ok](#a--b) works.\n\n' +
+        '```md\n# fenced-heading\n```\n'
+    )
+    const good = checkFiles(repo, ['NOTE.md'])
+    assert.equal(good.ok, true, good.out)
+
+    writeFileSync(
+      join(repo, 'SLUG-BAD.md'),
+      '# A & B\n\n' +
+        'Single [hyphen](#a-b) does not exist on GitHub.\n\n' +
+        '```md\n# fenced-heading\n```\n\n' +
+        'Fenced [ghost](#fenced-heading) is not a heading.\n'
+    )
+    const bad = checkFiles(repo, ['SLUG-BAD.md'])
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /SLUG-BAD\.md:\d+: unknown anchor '#a-b'/)
+    assert.match(bad.out, /SLUG-BAD\.md:\d+: unknown anchor '#fenced-heading'/)
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test('docs checker --all validates every tracked Markdown file', { timeout: 60_000 }, () => {
+  const repo = mkdtempSync(join(tmpdir(), 'october-docsall-test-'))
+  try {
+    const git = (args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' })
+    git(['init', '-q'])
+    git(['config', 'user.email', 'test@example.invalid'])
+    git(['config', 'user.name', 'Docs check test'])
+    git(['config', 'commit.gpgsign', 'false'])
+    writeFileSync(join(repo, 'README.md'), '# Hi\n\n[ok](#hi)\n')
+    mkdirSync(join(repo, 'docs'), { recursive: true })
+    writeFileSync(join(repo, 'docs', 'other.md'), '# Other\n\n[back](../README.md#hi)\n')
+    git(['add', '.'])
+    git(['commit', '-qm', 'base'])
+    const good = checkAll(repo)
+    assert.equal(good.ok, true, good.out)
+    assert.match(good.out, /docs link check passed \(2 file\(s\)\)/)
+
+    // A broken inbound link in any tracked file fails the whole check ...
+    writeFileSync(join(repo, 'docs', 'other.md'), '# Other\n\n[back](../README.md#renamed-away)\n')
+    git(['commit', '-qam', 'break'])
+    const bad = checkAll(repo)
+    assert.equal(bad.ok, false, bad.out)
+    assert.match(bad.out, /other\.md:\d+: unknown anchor '#renamed-away' in \.\.\/README\.md/)
+
+    // ... while untracked scratch files are invisible to --all.
+    writeFileSync(join(repo, 'SCRATCH.md'), '# Scratch\n\n[nope](#nope)\n')
+    const bad2 = checkAll(repo)
+    assert.equal(bad2.ok, false, bad2.out)
+    assert.doesNotMatch(bad2.out, /SCRATCH/)
+
+    // Conflicting inputs are a usage error, not a silent default.
+    assert.throws(() => execFileSync('python3', [check, '--all', '--files-json', '[]'], { cwd: root }), /Command failed/)
   } finally {
     rmSync(repo, { recursive: true, force: true })
   }
