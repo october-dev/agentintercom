@@ -67,7 +67,7 @@
     "prepack": "npm run build",
     "prepublishOnly": "node -e \"throw new Error('Publish the staged distribution through publish-npm-prerelease.yml, not this source directory')\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test:errors": "node test/errors.mjs && node --test test/sessions.mjs test/cli.mjs",
+    "test:errors": "node test/errors.mjs && node --test test/sessions.mjs test/cli.mjs test/attachments.mjs",
     "test:integration": "node test/integration.mjs",
     "test:release": "node ../../scripts/validate-launch.mjs --scripts-only",
     "validate:launch": "node ../../scripts/validate-launch.mjs",
