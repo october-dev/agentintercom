@@ -40,7 +40,7 @@ func TestA2ATaskCorrelationIsDurableAndIdempotent(t *testing.T) {
 	restarted, err := Open(database)
 	requireNoError(t, err)
 	defer restarted.Close()
-	stored, err := restarted.A2ATask(ctx, issued.Credential, publication.ID, task.ID)
+	stored, _, err := restarted.A2ATaskHistory(ctx, issued.Credential, publication.ID, task.ID)
 	require(t, err == nil && stored.ID == task.ID && len(stored.Messages) == 1 && stored.Messages[0].BusRequestMessageID == correlation.BusRequestMessageID, "correlation did not survive restart: %#v, %v", stored, err)
 }
 
@@ -58,14 +58,14 @@ func TestA2ATaskTracksBusDeliveryAndResponse(t *testing.T) {
 	if _, err := agents.runtime.CommitInbox(ctx, agents.reviewerToken, reservation.ID); err != nil {
 		t.Fatal(err)
 	}
-	working, err := agents.runtime.A2ATask(ctx, issued.Credential, publication.ID, task.ID)
+	working, _, err := agents.runtime.A2ATaskHistory(ctx, issued.Credential, publication.ID, task.ID)
 	require(t, err == nil && working.State == A2ATaskWorking, "delivery did not advance task: %#v, %v", working, err)
 	reply, err := agents.runtime.SendMessage(ctx, agents.reviewerToken, SendMessageInput{
 		To: issued.Principal.ID, Mode: MessageResponse, ResponseTo: inbound.ID, Body: "Found one issue", IdempotencyKey: "review-reply",
 	})
 	requireNoError(t, err)
 	require(t, reply.State == DeliveryAcknowledged, "A2A response was not committed durably: %#v", reply)
-	completed, err := agents.runtime.A2ATask(ctx, issued.Credential, publication.ID, task.ID)
+	completed, _, err := agents.runtime.A2ATaskHistory(ctx, issued.Credential, publication.ID, task.ID)
 	require(t, err == nil && completed.State == A2ATaskCompleted && completed.Messages[0].BusResponseMessageID == reply.MessageID, "response did not complete task: %#v, %v", completed, err)
 }
 
@@ -103,7 +103,7 @@ func TestA2ATaskIsIsolatedByPrincipal(t *testing.T) {
 	requireNoError(t, err)
 	task, err := agents.runtime.AcceptA2AMessage(ctx, owner.Credential, publication.ID, AcceptA2AMessageInput{ClientMessageID: "private-turn", Body: "Private work"})
 	requireNoError(t, err)
-	_, err = agents.runtime.A2ATask(ctx, other.Credential, publication.ID, task.ID)
+	_, _, err = agents.runtime.A2ATaskHistory(ctx, other.Credential, publication.ID, task.ID)
 	requireCode(t, err, CodeNotFound)
 	otherPrincipal, err := agents.runtime.AuthenticateA2APrincipal(ctx, other.Credential, publication.ID)
 	requireNoError(t, err)

@@ -124,6 +124,16 @@ type A2ATaskCorrelation struct {
 	UpdatedAt     string                  `json:"updatedAt"`
 }
 
+// A2ATaskHistoryEntry pairs one correlated Bus request with its optional agent
+// response body so A2A callers can poll task progress. It is principal-scoped:
+// entries only ever carry the calling principal's own turns.
+type A2ATaskHistoryEntry struct {
+	ClientMessageID   string `json:"clientMessageId"`
+	RequestBody       string `json:"requestBody"`
+	ResponseMessageID string `json:"responseMessageId,omitempty"`
+	ResponseBody      string `json:"responseBody,omitempty"`
+}
+
 type AcceptA2AMessageInput struct {
 	TaskID          string `json:"taskId,omitempty"`
 	ContextID       string `json:"contextId,omitempty"`

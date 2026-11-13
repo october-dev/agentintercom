@@ -92,7 +92,7 @@ type storageBackend interface {
 	SetA2APrincipalEnabled(context.Context, string, string, bool) (A2APrincipal, error)
 	AuthenticateA2APrincipal(context.Context, string, string) (A2APrincipal, error)
 	AcceptA2AMessage(context.Context, A2APrincipal, A2APrincipalLimits, AcceptA2AMessageInput) (A2ATaskCorrelation, error)
-	A2ATask(context.Context, A2APrincipal, string) (A2ATaskCorrelation, error)
+	A2ATaskHistory(context.Context, A2APrincipal, string) (A2ATaskCorrelation, []A2ATaskHistoryEntry, error)
 
 	CreateOutputStream(context.Context, string, CreateOutputStreamInput) (OutputStream, error)
 	ListOutputStreams(context.Context, string) ([]OutputStream, error)

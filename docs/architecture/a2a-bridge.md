@@ -28,7 +28,18 @@ SDK versions and A2A protocol versions are independent. The bridge records both.
 - Remote principals are bound to one publication. Their credentials do not inherit scope, agent, MCP, or administrative authority.
 - Agent Intercom shared work items are a coordination pool. They are not A2A Tasks. A2A Tasks represent one delegated interaction and its result stream.
 
-The reference daemon stores owner-controlled publications, scoped remote principals, and durable A2A task correlations. Each accepted A2A message maps to one Bus request and its optional linked response. The published interface accepts A2A `SendMessage` over HTTP+JSON and returns the durable A2A Task. Text parts are supported in the first write surface. Streaming, push notifications, task listing, task reads, and cancellation are not yet supported.
+The reference daemon stores owner-controlled publications, scoped remote principals, and durable A2A task correlations. Each accepted A2A message maps to one Bus request and its optional linked response. The published interface accepts A2A `SendMessage` over HTTP+JSON and returns the durable A2A Task. Text parts are supported in the first write surface. Streaming, push notifications, task listing, and cancellation are not yet supported.
+
+Callers poll a returned task with A2A `GetTask` over the same publication URL and bearer credential. The lookup reuses publication authorization, the `A2A-Version` check, and the principal-scoped task read, so unknown and other-principal tasks report task-not-found without revealing task existence, and revoked credentials or disabled publications stay denied.
+
+`GetTask` returns the durable task identity and current state with this mapping:
+
+- Bus states map one-to-one onto the A2A task states (`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`, `rejected`); the status timestamp is the task's last update time.
+- History holds one user message per correlated turn in acceptance order, each followed by its agent reply when the agent has responded. User messages reuse the caller's `messageId`; agent messages carry the durable Bus response identifier. Every history message sets the task and context IDs and holds a single plain-text part.
+- `historyLength`, when present, limits the response to that many of the most recent history messages (`0` returns no history); an omitted value returns the full history. Negative values are rejected.
+- Agent replies surface in history only; the status carries no duplicate message, and no artifacts are returned.
+
+Bounds: history covers only the polling principal's own turns on that task, each message body holds at most 64 KiB of text, and polls observe the same retention as the underlying Bus messages. Poll after delivery to observe `working`, and after the agent's correlated response to observe `completed` with the reply.
 
 Principal credentials are stored as one-way digests and shown only when created or rotated. Rotation invalidates the previous value immediately. Both the principal and its publication must be enabled for authentication to succeed.
 
