@@ -35,7 +35,7 @@ OCTOBER_BUS_BINARY=/tmp/agentintercom npm run test:integration
 
 ## Workspace UI (browser) development
 
-The browser workspace needs no production credentials, paid AI subscription, or running hosted account service. The browser tests intercept every `/api` and auth request with fake accounts and API responses on loopback, so a clean checkout plus Node.js is enough. CI runs this workflow with Node.js 24 (see the `workspace-ui` job in `.github/workflows/ci.yml`); Node.js 20 or newer matches the repo floor.
+The browser workspace needs no production credentials, paid AI subscription, or running hosted account service. The browser tests intercept every `/api` and auth request with fake accounts and API responses on loopback, so a clean checkout plus Node.js is enough. Use Node.js 22 or newer: the UI's locked dependencies require it (see `web/package-lock.json`), so the TypeScript SDK's Node.js 20 floor does not apply here. CI runs this workflow with Node.js 24 (see the `workspace-ui` job in `.github/workflows/ci.yml`).
 
 Source lives in `web/src`; the Go server embeds and serves generated files from `bus/hostedweb/`. Never edit `bus/hostedweb/` by hand: edit `web/src`, rebuild, and commit the regenerated files in the same pull request.
 
@@ -58,7 +58,7 @@ cd web
 npx playwright test -g "part of the test name"
 ```
 
-Watch it in a real browser window with `npx playwright test --headed -g "part of the test name"`. To drive a browser executable you already have instead of the downloaded one, set `CHROMIUM_PATH=/path/to/chromium` (see `web/playwright.config.js`). The tests also write full-page screenshots to `/tmp/agentintercom-*.png`, which is a quick way to inspect layout without keeping a browser open.
+Watch it in a real browser window with `npx playwright test --headed -g "part of the test name"`. The window closes when the test ends; use `--debug` instead of `--headed` to pause and step through it in the Playwright Inspector. To drive a browser executable you already have instead of the downloaded one, set `CHROMIUM_PATH=/path/to/chromium` (see `web/playwright.config.js`). The mobile onboarding and signed-out sign-in tests also write full-page screenshots to `/tmp/agentintercom-*.png` each time they run, which is a quick way to inspect those layouts without keeping a browser open.
 
 ## Protocol changes
 
