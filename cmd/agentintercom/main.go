@@ -74,9 +74,14 @@ Usage:
   agentintercom message receipt <message-id> [--json] [--address <addr>]
   agentintercom agent list [--json] [--address <addr>]
   agentintercom link --scope <scope-id> <agent-a> <agent-b>
-  agentintercom agent run --id <id> --name <name> [--scope <local-scope-id>] [--connect-to <peer>] -- <command> [args...]
+  agentintercom agent run --id <id> --name <name> [--scope <local-scope-id> | --scope-token-file <file> | --scope-token-fd <n>] [--connect-to <peer>] -- <command> [args...]
   agentintercom task add --title <title> [--description <text>] [--depends-on <task-id>] [--json] [--address <addr>]
   agentintercom task list [--ready] [--json] [--limit <1-500>] [--after <cursor>] [--address <addr>]
+  agentintercom task claim --id <task-id> [--json] [--address <addr>]
+  agentintercom task release --id <task-id> [--json] [--address <addr>]
+  agentintercom task complete --id <task-id> [--note <text> | --note-file <file|->] [--json] [--address <addr>]
+  agentintercom task progress add --id <task-id> [--kind progress|note|blocker] (--text <text> | --text-file <file|->) [--json] [--address <addr>]
+  agentintercom task progress list --id <task-id> [--json] [--address <addr>]
   agentintercom mcp stdio [--scope <scope-id> --agent <id> --name <display>]
   agentintercom mcp stdio --scope <scope-id> --new-session [--name <display>]
   agentintercom mcp stdio --connection-file </absolute/private/connection.json>
@@ -687,7 +692,7 @@ func addTask(args []string) error {
 	if strings.TrimSpace(*title) == "" {
 		return errors.New("task add requires --title")
 	}
-	client, err := scopeClient(*address)
+	client, err := taskClient(*address)
 	if err != nil {
 		return err
 	}
@@ -723,7 +728,7 @@ func listTasks(args []string) error {
 	if flags.NArg() != 0 {
 		return errors.New("task list does not accept positional arguments")
 	}
-	client, err := scopeClient(*address)
+	client, err := taskClient(*address)
 	if err != nil {
 		return err
 	}
@@ -923,6 +928,8 @@ func runAgent(args []string) error {
 	address := flags.String("address", "", "Agent Intercom address")
 	localScope := flags.String("scope", "", "local scope ID; uses protected cached credentials, not environment authority")
 	scopeTokenEnv := flags.String("scope-token-env", "OCTOBER_BUS_SCOPE_TOKEN", "environment variable containing the scope token")
+	scopeTokenFile := flags.String("scope-token-file", "", "owner-only file containing the scope token; read once, never placed in the environment")
+	scopeTokenFD := flags.Int("scope-token-fd", -1, "inherited descriptor (3 or more) to read the scope token from, up to a newline or end of file; closed before the command starts")
 	lease := flags.Duration("lease", 5*time.Minute, "execution lease")
 	heartbeat := flags.Duration("heartbeat", 0, "heartbeat interval")
 	var connectTo stringList
@@ -932,6 +939,11 @@ func runAgent(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	// flag.Visit tells an explicit --scope-token-fd apart from its default, so
+	// an invalid number such as -1 is refused rather than silently routed to
+	// another credential source.
+	scopeTokenFDSet := false
+	flags.Visit(func(value *flag.Flag) { scopeTokenFDSet = scopeTokenFDSet || value.Name == "scope-token-fd" })
 	commandArgs := flags.Args()
 	if *id == "" || *name == "" || len(commandArgs) == 0 {
 		return errors.New("agent run requires --id, --name, and a command after --")
@@ -941,7 +953,23 @@ func runAgent(args []string) error {
 	}
 	scopeToken := os.Getenv(*scopeTokenEnv)
 	resolvedAddress := *address
-	if *localScope != "" {
+	// One source of scope authority. A token read from a file or descriptor is
+	// never in this process's environment, where same-user tools can read it
+	// for the life of the process (e.g. /proc/<pid>/environ, KERN_PROCARGS2).
+	sources := 0
+	for _, set := range []bool{*localScope != "", *scopeTokenFile != "", scopeTokenFDSet} {
+		if set {
+			sources++
+		}
+	}
+	if sources > 1 {
+		return errors.New("use only one of --scope, --scope-token-file and --scope-token-fd")
+	}
+	if (*scopeTokenFile != "" || scopeTokenFDSet) && scopeToken != "" {
+		return fmt.Errorf("--scope-token-file and --scope-token-fd keep the scope token out of the environment; unset %s", *scopeTokenEnv)
+	}
+	switch {
+	case *localScope != "":
 		if *address != "" || scopeToken != "" || os.Getenv("OCTOBER_BUS_AGENT_TOKEN") != "" {
 			return errors.New("--scope uses local discovery only; do not mix --address or inherited scope/agent credentials")
 		}
@@ -950,8 +978,20 @@ func runAgent(args []string) error {
 			return err
 		}
 		scopeToken, resolvedAddress = owner.Token, owner.Address
-	} else if scopeToken == "" {
-		return fmt.Errorf("use --scope <local-scope-id> or provide %s", *scopeTokenEnv)
+	case *scopeTokenFile != "":
+		token, err := readScopeTokenFile(*scopeTokenFile)
+		if err != nil {
+			return fmt.Errorf("--scope-token-file: %w", err)
+		}
+		scopeToken = token
+	case scopeTokenFDSet:
+		token, err := readScopeTokenFD(*scopeTokenFD)
+		if err != nil {
+			return err
+		}
+		scopeToken = token
+	case scopeToken == "":
+		return fmt.Errorf("use --scope <local-scope-id>, --scope-token-file, --scope-token-fd, or provide %s", *scopeTokenEnv)
 	}
 	if resolvedAddress == "" {
 		resolvedAddress = os.Getenv("OCTOBER_BUS_ADDRESS")
@@ -1130,6 +1170,9 @@ func run() error {
 		if len(args) >= 2 && args[1] == "list" {
 			return listTasks(args[2:])
 		}
+		if len(args) >= 2 && (args[1] == "claim" || args[1] == "release" || args[1] == "complete" || args[1] == "progress") {
+			return taskLifecycleCommand(args[1], args[2:], os.Stdin, os.Stdout)
+		}
 	case "mcp":
 		if len(args) >= 2 && args[1] == "stdio" {
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -1180,7 +1223,7 @@ func stdinIsTerminal() bool {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
