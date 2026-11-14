@@ -65,6 +65,30 @@ async function api(url, options = {}) {
 }
 async function copy(value) { await navigator.clipboard.writeText(value); inform('Copied to clipboard.'); }
 
+const drafts = new Map();
+const draftKey = name => `${state.user.id}\n${state.workspace.id}\n${name}`;
+function openConversation(id) { state.conversationAgent = id; const key = draftKey('message'); if (!drafts.get(key)?.body) drafts.delete(key); }
+function forgetDraftsFor(userId) { if (!userId) return; for (const key of [...drafts.keys()]) if (key.startsWith(userId + '\n')) drafts.delete(key); }
+async function fetchSessions(scopePath, token) {
+  const sessions = [], seen = new Set();
+  let cursor = '';
+  for (;;) {
+    const page = await api(scopePath + '/sessions' + (cursor ? '?after=' + encodeURIComponent(cursor) : ''));
+    if (token.stale()) break;
+    let added = 0;
+    for (const session of page.sessions) if (!seen.has(session.id)) { seen.add(session.id); sessions.push(session); added++; }
+    cursor = page.nextCursor;
+    if (!cursor || !added) break;
+  }
+  return sessions;
+}
+function sessionLabels(sessions) {
+  const tally = labels => { const counts = new Map(); for (const label of labels) counts.set(label, (counts.get(label) || 0) + 1); return counts; };
+  const onDevice = s => s.deviceName === s.displayName ? s.displayName : `${s.displayName} · ${s.deviceName}`;
+  const names = tally(sessions.map(s => s.displayName)), devices = tally(sessions.map(onDevice));
+  return new Map(sessions.map(s => [s.id, names.get(s.displayName) === 1 ? s.displayName : devices.get(onDevice(s)) === 1 ? onDevice(s) : `${onDevice(s)} · ${s.id}`]));
+}
+
 const uploadKeys = new WeakMap();
 async function fileRequest(url, options = {}) {
   const { data, error } = await state.auth.getSession();
@@ -96,7 +120,7 @@ function attachmentPicker(scopePath, textInput) {
   const attach = button('Upload and attach', async () => {
     const selected = file.input.files[0]; if (!selected) throw new Error('Choose a file first.');
     const submit = file.input.closest('form')?.querySelector('[type="submit"]'); if (submit) submit.disabled = true;
-    try { const uploaded = await uploadFile(scopePath, selected); textInput.value += `${textInput.value ? '\n\n' : ''}${uploaded.name}: ${uploaded.uri}`; file.input.value = ''; inform('File attached. Send your message to share the reference.'); }
+    try { const uploaded = await uploadFile(scopePath, selected); if (!textInput.isConnected) { inform('File uploaded. Copy its reference from Files to share it.'); return; } textInput.value += `${textInput.value ? '\n\n' : ''}${uploaded.name}: ${uploaded.uri}`; textInput.dispatchEvent(new Event('input', { bubbles: true })); file.input.value = ''; inform('File attached. Send your message to share the reference.'); }
     finally { if (submit) submit.disabled = false; }
   });
   return el('details', {}, el('summary', {}, 'Attach a file'), file.node, attach, el('p', { class: 'help' }, 'Up to 16 MiB. Uploaded files are visible to everyone in this workspace.'));
@@ -138,7 +162,9 @@ function secretDialog(title, value, description) {
 
 function signIn() {
   clearView();
+  const previousUser = state.user?.id;
   state.user = null;
+  forgetDraftsFor(previousUser);
   const email = field('Email address', { type: 'email', name: 'email', autocomplete: 'email', required: true });
   const emailForm = form([email.node], 'Continue with email', async data => {
     const { error } = await state.auth.signInWithOtp({ email: data.get('email'), options: { emailRedirectTo: location.origin + '/app' + (pending.authorization ? '?authorization_id=' + encodeURIComponent(pending.authorization) : pending.device ? '?device_code=' + encodeURIComponent(pending.device) : ''), shouldCreateUser: true } });
@@ -248,7 +274,7 @@ async function sessionsView() {
   const append = data => {
     for (const session of data.sessions) {
       const online = session.reachable === true;
-      list.append(el('article', { class: 'card' }, el('div', { class: 'actions' }, el('h2', {}, session.displayName || session.agentId || session.id), el('span', { class: `badge ${online ? 'live' : ''}` }, online ? 'Connected' : 'Offline')), el('p', { class: 'help' }, session.deviceName), el('p', { class: 'help' }, session.deliveryMode === 'poll' ? 'Inbox available when this app checks for messages. It may need you to resume the conversation.' : 'Native listener connected. Your app’s permissions still apply.'), el('small', {}, `Last seen ${date(session.updatedAt)}`), session.wake?.uncertain ? el('p', { class: 'notice-inline' }, 'A wake submission is uncertain. Inspect the app before retrying; the message is still in its inbox.') : null, el('div', { class: 'actions' }, button('Open conversation', async () => { state.conversationAgent = session.id; state.tab = 'messages'; await render(); }))));
+      list.append(el('article', { class: 'card' }, el('div', { class: 'actions' }, el('h2', {}, session.displayName || session.agentId || session.id), el('span', { class: `badge ${online ? 'live' : ''}` }, online ? 'Connected' : 'Offline')), el('p', { class: 'help' }, session.deviceName), el('p', { class: 'help' }, session.deliveryMode === 'poll' ? 'Inbox available when this app checks for messages. It may need you to resume the conversation.' : 'Native listener connected. Your app’s permissions still apply.'), el('small', {}, `Last seen ${date(session.updatedAt)}`), session.wake?.uncertain ? el('p', { class: 'notice-inline' }, 'A wake submission is uncertain. Inspect the app before retrying; the message is still in its inbox.') : null, el('div', { class: 'actions' }, button('Open conversation', async () => { openConversation(session.id); state.tab = 'messages'; await render(); }))));
       if (session.userId === state.user.id) list.lastChild.append(el('details', {}, el('summary', {}, 'Session details'), el('p', { class: 'help' }, 'This ID identifies the inbox. Terminal sessions can resume it with --id after reconnecting their owning machine.'), el('code', {}, session.id), button('Copy session ID', () => copy(session.id))));
     }
   };
@@ -329,15 +355,18 @@ start().catch(error => { root.replaceChildren(el('main', { id: 'main', class: 'a
 async function messagesView() {
   const generation = state.generation;
   const scopePath = path('');
-  const [sessionsPage, members] = await Promise.all([api(scopePath + '/sessions'), api(scopePath + '/members')]);
-  const sessions = sessionsPage.sessions;
+  const messageKey = draftKey('message');
+  const workspaceId = state.workspace.id;
+  const token = { stale: () => generation !== state.generation || state.workspace?.id !== workspaceId };
+  const [sessions, members] = await Promise.all([fetchSessions(scopePath, token), api(scopePath + '/members')]);
+  const labels = sessionLabels(sessions);
   const names = new Map(sessions.map(s => ['agent:' + s.id, s.displayName]));
   for (const member of members) names.set('human:' + member.userId, member.email);
   const name = (kind, id) => names.get(kind + ':' + id) || id;
   const query = new URLSearchParams();
   if (state.conversationAgent) query.set('agentId', state.conversationAgent);
   if (state.search) query.set('query', state.search);
-  const filter = el('select', { 'aria-label': 'Filter by session', onchange: e => { state.conversationAgent = e.target.value; action(null, render); } }, el('option', { value: '' }, 'All sessions'), sessions.map(s => el('option', { value: s.id, selected: s.id === state.conversationAgent }, s.displayName)));
+  const filter = el('select', { 'aria-label': 'Filter by session', onchange: e => { openConversation(e.target.value); action(null, render); } }, el('option', { value: '' }, 'All sessions'), sessions.map(s => el('option', { value: s.id, selected: s.id === state.conversationAgent }, labels.get(s.id))));
   const search = field('Search messages', { name: 'query', value: state.search, type: 'search', maxlength: 256 });
   const searchForm = form([search.node], 'Search', async data => { state.search = data.get('query').trim(); await render(); });
   const container = el('div', {}, el('div', { class: 'card grid' }, el('label', {}, 'Conversation', filter), searchForm));
@@ -382,14 +411,24 @@ async function messagesView() {
     container.append(more);
   }
   if (sessions.length) {
-    const target = el('select', { name: 'to', required: true }, sessions.map(s => el('option', { value: s.id, selected: s.id === state.conversationAgent }, s.displayName + (s.reachable ? '' : ' · offline'))));
+    const target = el('select', { name: 'to', required: true }, sessions.map(s => el('option', { value: s.id, selected: s.id === state.conversationAgent }, labels.get(s.id) + (s.reachable ? '' : ' · offline'))));
     const body = field('Your message', { name: 'body', multiline: true, required: true, maxlength: 65536, placeholder: 'What would you like this session to help with?' });
-    let idempotencyKey = crypto.randomUUID(), draft = '';
+    const restored = drafts.get(messageKey);
+    if (restored?.body) body.input.value = restored.body;
+    if (restored?.body && !sessions.some(s => s.id === restored.to)) { target.prepend(el('option', { value: '' }, 'Recipient unavailable — choose a session')); target.value = ''; }
+    else if (restored?.to && sessions.some(s => s.id === restored.to)) target.value = restored.to;
+    const saveDraft = () => {
+      const fingerprint = JSON.stringify([target.value, body.input.value]);
+      const previous = drafts.get(messageKey);
+      drafts.set(messageKey, { to: target.value, body: body.input.value, fingerprint, key: previous?.fingerprint === fingerprint ? previous.key : crypto.randomUUID() });
+    };
+    target.addEventListener('change', saveDraft);
+    body.input.addEventListener('input', saveDraft);
     const compose = form([el('label', {}, 'Send to', target), body.node, attachmentPicker(scopePath, body.input), el('p', { class: 'help' }, 'Visible to workspace members. An MCP app may need you to resume it or ask it to check its inbox.')], 'Send request', async data => {
-      const current = JSON.stringify([data.get('to'), data.get('body')]);
-      if (draft && draft !== current) idempotencyKey = crypto.randomUUID();
-      draft = current;
-      await api(scopePath + '/messages', { method: 'POST', body: { to: data.get('to'), body: data.get('body'), mode: 'request', idempotencyKey } });
+      saveDraft();
+      const { key } = drafts.get(messageKey);
+      await api(scopePath + '/messages', { method: 'POST', body: { to: data.get('to'), body: data.get('body'), mode: 'request', idempotencyKey: key } });
+      if (drafts.get(messageKey)?.key === key) drafts.delete(messageKey);
       state.conversationAgent = data.get('to'); state.search = ''; inform('Request saved. Delivery status will update when the app checks its inbox.'); await render();
     });
     container.append(el('section', { class: 'card' }, el('h2', {}, 'Send a message'), compose));
@@ -433,6 +472,7 @@ async function questionsView() {
 async function channelsView() {
   const generation = state.generation;
   const scopePath = path('');
+  const channelKey = draftKey('channel');
   const channels = await api(scopePath + '/channels');
   const channel = channels.find(c => c.id === state.channelId) || channels[0];
   if (channel?.id !== state.channelId) state.threadId = '';
@@ -453,9 +493,11 @@ async function channelsView() {
   const query = new URLSearchParams({ channelId: channel.id });
   if (state.threadId) query.set('threadId', state.threadId);
   if (state.channelSearch) query.set('query', state.channelSearch);
-  const [page, members, directory] = await Promise.all([api(scopePath + '/channel-posts?' + query), api(scopePath + '/members'), api(scopePath + '/sessions')]);
+  const workspaceId = state.workspace.id;
+  const token = { stale: () => generation !== state.generation || state.workspace?.id !== workspaceId };
+  const [page, members, directory] = await Promise.all([api(scopePath + '/channel-posts?' + query), api(scopePath + '/members'), fetchSessions(scopePath, token)]);
   const names = new Map(members.map(m => ['human:' + m.userId, m.email]));
-  for (const session of directory.sessions) names.set('agent:' + session.id, session.displayName);
+  for (const session of directory) names.set('agent:' + session.id, session.displayName);
   const list = el('div', { class: 'conversation-list', 'aria-label': 'Channel posts' });
   const rendered = new Map();
   const append = (page, fresh = false) => {
@@ -475,10 +517,19 @@ async function channelsView() {
   container.append(list);
   if (page.nextCursor) { let cursor = page.nextCursor; const more = button('Earlier posts', async () => { const nextQuery = new URLSearchParams(query); nextQuery.set('before', cursor); const older = await api(scopePath + '/channel-posts?' + nextQuery); append(older); cursor = older.nextCursor; if (!cursor) more.remove(); }); container.append(more); }
   const body = field(state.threadId ? 'Your reply' : 'Your post', { name: 'body', multiline: true, required: true, maxlength: 65536 });
-  let key = crypto.randomUUID(), draft = '';
+  const draftName = channelKey + `\n${channel.id}\n${state.threadId || ''}`;
+  const restored = drafts.get(draftName);
+  if (restored?.body) body.input.value = restored.body;
+  const saveDraft = () => {
+    const previous = drafts.get(draftName);
+    drafts.set(draftName, { body: body.input.value, key: previous?.body === body.input.value && previous.key ? previous.key : crypto.randomUUID() });
+  };
+  body.input.addEventListener('input', saveDraft);
   container.append(el('section', { class: 'card' }, form([body.node, attachmentPicker(scopePath, body.input), el('p', { class: 'help' }, 'Shared with the workspace. Subscribed sessions receive an inbox notification; delivery does not mean a model has acted.')], state.threadId ? 'Reply in thread' : 'Post to channel', async data => {
-    const text = data.get('body'); if (draft && draft !== text) key = crypto.randomUUID(); draft = text;
-    await api(scopePath + '/channel-posts', { method: 'POST', body: { channelId: channel.id, body: text, threadId: state.threadId || undefined, idempotencyKey: key } });
+    saveDraft();
+    const { key } = drafts.get(draftName);
+    await api(scopePath + '/channel-posts', { method: 'POST', body: { channelId: channel.id, body: data.get('body'), threadId: state.threadId || undefined, idempotencyKey: key } });
+    if (drafts.get(draftName)?.key === key) drafts.delete(draftName);
     state.channelSearch = ''; await render();
   })));
   let live = true, polling = false;
