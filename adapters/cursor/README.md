@@ -1,6 +1,6 @@
 # Cursor adapter
 
-Cursor Agent CLI connects to the public Agent Intercom daemon through a project-local MCP stdio server. The adapter is experimental, version 0.2.0, with pull delivery. The CLI and the editor share the configuration format. Each needs its own compatibility run. [Cursor CLI MCP documentation](https://cursor.com/docs/cli/mcp) · [Issue #33](https://github.com/october-dev/agentintercom/issues/33)
+Cursor Agent CLI connects to the public Agent Intercom daemon through a project-local MCP stdio server. The adapter is experimental, version 0.2.0, with pull delivery. The CLI and the editor share the configuration format. Each needs its own compatibility run. [Cursor CLI MCP documentation](https://cursor.com/docs/cli/mcp) · [Issue #33](https://github.com/october-dev/agentintercom/issues/33) Cursor's documentation now names the CLI `agent`; this guide uses its `cursor-agent` alias, which the installer also provides and which does not collide with other tools that install an `agent` command.
 
 ## Connect the CLI to a local peer
 
@@ -22,21 +22,33 @@ Use this path when work must be released as soon as the CLI exits. The public la
 
 1. From the Git project root, add the `agent_intercom` entry from the [launcher configuration](mcp.agent-run.json.example) to `.cursor/mcp.json`. For a new file, use the example verbatim. Review the command and preserve existing servers. The entry runs `agentintercom mcp stdio` and forwards two variables from the launcher. The file contains the variable references only. Make the installed `agentintercom` executable available on PATH or use its absolute path in the entry.
 
-2. In a fresh terminal in that project, start the launcher. This POSIX example opens a shell so you can approve the reviewed server for this execution.
+2. Allow the Agent Intercom tools you trust for print mode. A print-mode turn cannot stop to ask, so Cursor rejects any MCP tool that `permissions.allow` does not list ([headless mode](https://cursor.com/docs/cli/headless)). Add entries to the project's `.cursor/cli.json`, preserving existing permissions. Do not use `--force`.
+
+   ```json
+   {
+     "permissions": {
+       "allow": ["Mcp(agent_intercom:get_node_status)", "Mcp(agent_intercom:list_peers)", "Mcp(agent_intercom:message_peer)", "Mcp(agent_intercom:check_inbox)", "Mcp(agent_intercom:acknowledge_messages)"]
+     }
+   }
+   ```
+
+   Add an entry for each further tool a turn should use, for example `message_receipt`, `add_task`, `list_tasks`, `claim_task`, `complete_task` or `ask_user`. `Mcp(agent_intercom:*)` allows every Agent Intercom tool.
+
+3. In a fresh terminal in that project, start the launcher. This POSIX example opens a shell so you can approve the reviewed server for this execution.
 
    ```sh
    unset OCTOBER_BUS_ADMIN_TOKEN OCTOBER_BUS_SCOPE_TOKEN OCTOBER_BUS_AGENT_TOKEN OCTOBER_BUS_CONNECTION_FILE OCTOBER_BUS_ADDRESS
    agentintercom agent run --scope cursor-demo --id cursor-reviewer --name "Cursor Reviewer" --lease 30s --heartbeat 5s -- sh
    ```
 
-3. In that shell, enable the server and replace the shell with Cursor. A print-mode prompt starts one turn. Supply the coordination prompt for that turn in place of the example.
+4. In that shell, enable the server and replace the shell with Cursor. A print-mode prompt starts one turn. Supply the coordination prompt for that turn in place of the example.
 
    ```sh
    cursor-agent mcp enable agent_intercom
    exec cursor-agent -p 'Call agent_intercom get_node_status and report the agent ID.'
    ```
 
-   `exec` makes Cursor the launcher's child for the rest of the session. On the observed CLI build, the server approval depended on the expanded configuration, including the new execution token. Issue that approval inside each new launch. Tool-level permissions and workspace trust still apply. Keep the scope and administrative credentials in the operator terminal.
+   `exec` makes Cursor the launcher's child for the rest of the session. On the observed CLI build, the server approval depended on the expanded configuration, including the new execution token. Issue that approval inside each new launch. Re-check the `agent_intercom` entry before enabling it. If Cursor has not trusted this project yet, add `--trust` to the print command ([parameters](https://cursor.com/docs/cli/reference/parameters)). Keep the scope and administrative credentials in the operator terminal.
 
 ### Independently launched Cursor
 

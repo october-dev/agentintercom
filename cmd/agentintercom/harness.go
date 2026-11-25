@@ -162,7 +162,7 @@ func probeHarnessVersion(executables []string) (string, string, error) {
 		}
 	}
 	if found {
-		return "", "", fmt.Errorf("Host version probe failed for %s", strings.Join(executables, " or "))
+		return "", "", fmt.Errorf("Host version probe failed for %s; check the installed host manually", strings.Join(executables, " or "))
 	}
 	return "", "", fmt.Errorf("Host executable not found: %s", strings.Join(executables, " or "))
 }
