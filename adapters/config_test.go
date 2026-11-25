@@ -2,9 +2,40 @@ package adapters
 
 import (
 	"encoding/json"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestCursorManagedConfigurationForwardsLauncherIdentity(t *testing.T) {
+	data, err := files.ReadFile("cursor/mcp.agent-run.json.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Servers map[string]struct {
+			Type    string
+			Command string
+			Args    []string
+			Env     map[string]string
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	server := config.Servers["agent_intercom"]
+	if len(config.Servers) != 1 || server.Type != "stdio" || server.Command != "agentintercom" || !slices.Equal(server.Args, []string{"mcp", "stdio"}) {
+		t.Fatal("expected one stdio bridge using the launcher's execution")
+	}
+	want := map[string]string{
+		"OCTOBER_BUS_ADDRESS":     "${env:OCTOBER_BUS_ADDRESS}",
+		"OCTOBER_BUS_AGENT_TOKEN": "${env:OCTOBER_BUS_AGENT_TOKEN}",
+	}
+	if !maps.Equal(server.Env, want) {
+		t.Fatal("expected only references to the execution endpoint and credential")
+	}
+}
 
 func TestEveryConfigurationRendersWithoutCredentials(t *testing.T) {
 	all, err := List()

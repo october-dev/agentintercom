@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -117,6 +118,7 @@ func harness(args []string) error {
 type harnessDiagnostic struct {
 	Harness     string   `json:"harness"`
 	Healthy     bool     `json:"healthy"`
+	Executable  string   `json:"hostExecutable,omitempty"`
 	Version     string   `json:"hostVersion,omitempty"`
 	BridgeTools int      `json:"bridgeTools"`
 	Problems    []string `json:"problems"`
@@ -133,6 +135,38 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+var harnessVersion = regexp.MustCompile(`\bv?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?`)
+
+func probeHarnessVersion(executables []string) (string, string, error) {
+	found := false
+	for _, executable := range executables {
+		path, err := exec.LookPath(executable)
+		if err != nil {
+			continue
+		}
+		found = true
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		command := exec.CommandContext(ctx, path, "--version")
+		// A third-party version probe has no use for daemon or controller settings.
+		command.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
+			key, _, _ := strings.Cut(entry, "=")
+			return strings.HasPrefix(strings.ToUpper(key), "OCTOBER_BUS_")
+		})
+		command.WaitDelay = 200 * time.Millisecond
+		var output boundedOutput
+		command.Stdout = &output
+		err = command.Run()
+		cancel()
+		if version := harnessVersion.FindString(string(output.value)); err == nil && version != "" {
+			return executable, version, nil
+		}
+	}
+	if found {
+		return "", "", fmt.Errorf("Host version probe failed for %s", strings.Join(executables, " or "))
+	}
+	return "", "", fmt.Errorf("Host executable not found: %s", strings.Join(executables, " or "))
+}
+
 func doctorHarness(host, scope string, jsonOutput bool) error {
 	adapter, err := adapters.Lookup(host)
 	if err != nil {
@@ -143,22 +177,14 @@ func doctorHarness(host, scope string, jsonOutput bool) error {
 	}
 	report := harnessDiagnostic{Harness: adapter.HarnessFamily, Problems: []string{}, Note: "Checks local setup and a temporary bridge only; does not certify host authentication, tool approvals, or model behavior."}
 	if executable := adapter.Configuration.Executable; executable != "" {
-		path, err := exec.LookPath(executable)
+		executables := []string{executable}
+		if adapter.Directory == "cursor" {
+			// A CLI-only install can include a cursor shim that rejects --version.
+			executables = append(executables, "cursor-agent")
+		}
+		report.Executable, report.Version, err = probeHarnessVersion(executables)
 		if err != nil {
-			report.Problems = append(report.Problems, "Host executable not found: "+executable)
-		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			command := exec.CommandContext(ctx, path, "--version")
-			command.Env = removeEnvironment(os.Environ(), "OCTOBER_BUS_ADMIN_TOKEN", "OCTOBER_BUS_SCOPE_TOKEN", "OCTOBER_BUS_AGENT_TOKEN")
-			command.WaitDelay = 200 * time.Millisecond
-			var output boundedOutput
-			command.Stdout = &output
-			err := command.Run()
-			cancel()
-			report.Version = regexp.MustCompile(`\bv?\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?`).FindString(string(output.value))
-			if err != nil || report.Version == "" {
-				report.Problems = append(report.Problems, "Host version probe failed; check the installed host manually")
-			}
+			report.Problems = append(report.Problems, err.Error())
 		}
 	} else {
 		report.Note += " Editor extension/version must be checked in its UI."
@@ -186,6 +212,9 @@ func doctorHarness(host, scope string, jsonOutput bool) error {
 		}
 	} else {
 		fmt.Printf("%s: local setup healthy=%t, version=%s, bridge tools=%d\n", report.Harness, report.Healthy, report.Version, report.BridgeTools)
+		if report.Executable != "" {
+			fmt.Println("Version reported by: " + report.Executable)
+		}
 		for _, problem := range report.Problems {
 			fmt.Println("Problem: " + problem)
 		}

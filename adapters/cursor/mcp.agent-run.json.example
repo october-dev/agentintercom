@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agent_intercom": {
+      "type": "stdio",
+      "command": "agentintercom",
+      "args": ["mcp", "stdio"],
+      "env": {
+        "OCTOBER_BUS_ADDRESS": "${env:OCTOBER_BUS_ADDRESS}",
+        "OCTOBER_BUS_AGENT_TOKEN": "${env:OCTOBER_BUS_AGENT_TOKEN}"
+      }
+    }
+  }
+}
