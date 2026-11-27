@@ -682,7 +682,16 @@ export class AgentIntercomClient {
 
   async pullInbox(limit = 50, options?: InboxReservationOptions): Promise<BusMessage[]> {
     const reservation = await this.reserveInbox(limit, options)
-    return reservation ? this.commitInbox(reservation.id, options) : []
+    if (!reservation) return []
+    try {
+      return await this.commitInbox(reservation.id, options)
+    } catch (error) {
+      // Return the messages to the inbox now rather than after the reservation
+      // expires. This is best effort and ignores the caller's signal; a
+      // reservation that did commit is unaffected.
+      await this.releaseInbox(reservation.id, { timeoutMs: 5000 }).catch(() => {})
+      throw error
+    }
   }
 
   async acknowledgeMessages(messageIds: string[], options?: OperationOptions): Promise<number> {

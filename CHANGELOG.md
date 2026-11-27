@@ -20,6 +20,8 @@ before the next release.
 - Report failed `attachment upload` requests instead of printing `null`.
 - Exit `agent run` and `session start` with the managed command's exit status,
   and with a failure status after an interrupt.
+- Go and TypeScript clients: release an inbox reservation when its commit fails
+  or is cancelled, so messages return to the inbox without waiting 30 seconds.
 - npm launcher: let Windows Ctrl+C reach the native process instead of
   terminating it, and report signal exits (including SIGPIPE) as `128 + signal`.
 - Return `NOT_FOUND` when completing or releasing an unknown task, accept
