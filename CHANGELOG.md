@@ -20,6 +20,8 @@ before the next release.
 - Report failed `attachment upload` requests instead of printing `null`.
 - Exit `agent run` and `session start` with the managed command's exit status,
   and with a failure status after an interrupt.
+- npm launcher: let Windows Ctrl+C reach the native process instead of
+  terminating it, and report signal exits (including SIGPIPE) as `128 + signal`.
 - Return `NOT_FOUND` when completing or releasing an unknown task, accept
   escalation answers when the message backlog is full, and expire messages
   before releasing an expired inbox reservation.
