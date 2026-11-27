@@ -78,3 +78,32 @@ func TestHostedIdentityRejectsPrivilegedPublicKeys(t *testing.T) {
 	_, err := NewSupabaseIdentity("https://auth.example.test", anon, nil)
 	requireNoError(t, err)
 }
+
+func TestHostedIdentitySharedLookupSurvivesOneCallerCancelling(t *testing.T) {
+	const id = "0b8f6b52-5f7a-4f4e-9d0c-1f2a3b4c5d6e"
+	arrived, release := make(chan struct{}), make(chan struct{})
+	var once atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if once.CompareAndSwap(false, true) {
+			close(arrived)
+		}
+		<-release
+		writeJSON(w, 200, map[string]any{"id": id, "email": "shared@example.test", "email_confirmed_at": "2026-01-01T00:00:00Z", "is_anonymous": false})
+	}))
+	defer server.Close()
+	verifier, err := NewSupabaseIdentity(server.URL, "sb_publishable_fixture_key_for_tests", nil)
+	requireNoError(t, err)
+	claims, _ := json.Marshal(map[string]any{"sub": id, "iss": server.URL + "/auth/v1", "aud": "authenticated", "exp": time.Now().Add(time.Hour).Unix(), "role": "authenticated"})
+	token := "e30." + base64.RawURLEncoding.EncodeToString(claims) + ".test-signature"
+	first, cancel := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	go func() { _, err := verifier.Authenticate(first, token); firstDone <- err }()
+	<-arrived
+	secondDone := make(chan error, 1)
+	go func() { _, err := verifier.Authenticate(context.Background(), token); secondDone <- err }()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	close(release)
+	<-firstDone
+	requireNoError(t, <-secondDone)
+}
