@@ -120,7 +120,9 @@ hosted OAuth support is claimed by generating configuration.
 ## Answer an agent's question
 
 When an agent calls `ask_user`, the question waits for the workspace owner. On a
-headless machine you can answer it from a terminal:
+headless machine you can answer it from a terminal. The `question` commands are
+newer than `agentintercom-cli@0.2.0`; use a
+[source build](installation.md#build-from-source) until the next release.
 
 ```sh
 agentintercom question list --workspace my-project

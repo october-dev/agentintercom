@@ -97,7 +97,7 @@ Doctor probes a separate temporary bridge. Its `hostExecutable` identifies which
 | Discover and notify | Ask Cursor to call `list_peers` and send `codex-builder` a short `message_peer` with mode `notify`. Ask Codex to call `check_inbox`, then `acknowledge_messages` with the processed IDs. |
 | Request and reply | Ask Codex to send Cursor a `request` with a fresh `idempotencyKey` and one short `text` context item. Ask Cursor to pull, acknowledge, and send a `response` with `responseTo` set to the request ID. Codex can pull and acknowledge the reply, then check the original ID with `message_receipt`. Its `responseMessageId` should match the reply. |
 | Share a task | Ask Cursor to call `add_task`, then ask Codex to find the task with `list_tasks`, claim it, and complete it. Cursor can check the final state. |
-| Ask a human | Ask Cursor to call `ask_user` with a short question. In the operator terminal, run `agentintercom question list --workspace cursor-demo`, then `agentintercom question answer --workspace cursor-demo --id QUESTION_ID --answer yes` with the returned ID. Have Cursor pull and acknowledge the answer. |
+| Ask a human | Ask Cursor to call `ask_user` with a short question. In the operator terminal, run `agentintercom question list --workspace cursor-demo` (newer than `0.2.0`; use a source build), then `agentintercom question answer --workspace cursor-demo --id QUESTION_ID --answer yes` with the returned ID. Have Cursor pull and acknowledge the answer. |
 
 Use `check_inbox` between work steps. For a short check use `waitMs=1000`. Queued work waits until the host pulls. Send only the context the peer needs. An incoming request still goes through the recipient's normal permission controls.
 

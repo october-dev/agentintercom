@@ -47,6 +47,10 @@ refuse redirects. A CLI connection does not itself wake an idle agent.
 
 ## Shared tasks
 
+The `claim`, `release`, `complete` and `progress` commands below are newer than
+`agentintercom-cli@0.2.0`; use a [source build](installation.md#build-from-source)
+until the next release.
+
 The same two shells can split work through shared tasks. In the first shell:
 
 ```sh
