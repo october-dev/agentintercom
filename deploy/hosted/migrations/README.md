@@ -12,8 +12,8 @@ manager. Remote connections require `sslmode=verify-full` and a trusted CA.
 Never pass the URL on the command line or commit it.
 
 ```sh
-october-bus database migrate
-october-bus database check
+agentintercom database migrate
+agentintercom database check
 ```
 
 `migrate` takes a transaction advisory lock, verifies the recorded SHA-256 of each

@@ -52,7 +52,9 @@ backoff. Do not increase database timeouts to conceal a saturated deployment.
 
 Create a dedicated system user with no login shell and no home directory. Put
 each reviewed release into `/opt/october-bus-hosted/releases/<version>/`, owned by
-root and not writable by the service account. Include the executable, `backup.py`,
+root and not writable by the service account. Include the executable (the
+release archives name it `agentintercom`; the units and commands here call it
+`october-bus`, so install it under that name or adjust them), `backup.py`,
 this directory's SQL files and the source commit identifier. Point `current` at
 the selected release using an atomic symlink replacement. Do not overwrite the
 executable used by an older service.
