@@ -48,7 +48,7 @@ func (h *HostedServer) registerOAuthRoutes() {
 	h.routes.HandleFunc("GET /.well-known/oauth-protected-resource", metadata)
 	h.routes.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", metadata)
 	h.routes.HandleFunc("GET /.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"issuer": h.publicURL, "authorization_endpoint": h.publicURL + "/oauth/authorize", "token_endpoint": h.publicURL + "/oauth/token", "registration_endpoint": h.publicURL + "/oauth/register", "revocation_endpoint": h.publicURL + "/oauth/revoke", "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"}, "code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{hostedOAuthScope}})
+		writeJSON(w, 200, map[string]any{"issuer": h.publicURL, "authorization_endpoint": h.publicURL + "/oauth/authorize", "token_endpoint": h.publicURL + "/oauth/token", "registration_endpoint": h.publicURL + "/oauth/register", "revocation_endpoint": h.publicURL + "/oauth/revoke", "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"}, "code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{hostedOAuthScope}, "authorization_response_iss_parameter_supported": true})
 	})
 	h.routes.HandleFunc("POST /oauth/register", h.oauthRegister)
 	h.routes.HandleFunc("GET /oauth/authorize", h.oauthAuthorize)
@@ -295,6 +295,8 @@ func (h *HostedServer) oauthConsent(ctx context.Context, user HostedUser, w http
 	if pending.state != "" {
 		query.Set("state", pending.state)
 	}
+	// RFC 9207 lets clients that use several authorization servers detect mix-up.
+	query.Set("iss", h.publicURL)
 	if input.Approve {
 		if _, err := hostedMember(ctx, tx, input.WorkspaceID, user.ID); err != nil {
 			return nil, err

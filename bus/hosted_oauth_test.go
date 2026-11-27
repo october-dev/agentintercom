@@ -106,7 +106,7 @@ func (f *hostedOAuthFixture) approveReplacement(id, replaceID string) string {
 	requireNoError(f.t, json.Unmarshal(response.Body.Bytes(), &envelope))
 	u, err := url.Parse(envelope.Result.URL)
 	requireNoError(f.t, err)
-	require(f.t, u.Scheme == "http" && u.Host == "127.0.0.1:5555" && u.Query().Get("state") == "state-test", "consent redirected elsewhere")
+	require(f.t, u.Scheme == "http" && u.Host == "127.0.0.1:5555" && u.Query().Get("state") == "state-test" && u.Query().Get("iss") == "https://bus.example.test", "consent redirected elsewhere")
 	return u.Query().Get("code")
 }
 
