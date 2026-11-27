@@ -31,8 +31,15 @@ func harness(args []string) error {
 		}
 		return nil
 	}
+	const usage = "harness list or harness config <host> --scope <id> --agent <id> [--name <display>] [--output <new-file>]"
+	isHelp := func(arg string) bool { return arg == "-h" || arg == "-help" || arg == "--help" }
+	if (len(args) > 0 && isHelp(args[0])) || (len(args) > 1 && args[0] == "config" && isHelp(args[1])) {
+		fmt.Println("Usage:\n  agentintercom harness list\n  agentintercom harness config <host> --scope <id> --agent <id> [--name <display>] [--output <new-file>]")
+		fmt.Println("harness list prints the hosts that config accepts.")
+		return flag.ErrHelp
+	}
 	if len(args) < 2 || args[0] != "config" {
-		return errors.New("use harness list or harness config <host> --scope <id> --agent <id> [--name <display>] [--output <new-file>]")
+		return errors.New("use " + usage)
 	}
 	adapter, err := adapters.Lookup(args[1])
 	if err != nil {
@@ -85,6 +92,11 @@ func harness(args []string) error {
 	data, err := adapters.Render(adapter, map[string]string{"scope": *scope, "agent": *agent, "name": *name, "command": *command, "dataDir": dataDir, "runtimeDir": runtimeDir})
 	if err != nil {
 		return err
+	}
+	// The entry is still useful before the workspace exists, but the host's
+	// server cannot start until it does.
+	if _, err := bus.ReadScopeToken(dataDir, *scope); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v. The generated server fails to start until this is fixed.\n", err)
 	}
 	if *output == "" {
 		_, err = os.Stdout.Write(data)

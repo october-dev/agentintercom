@@ -28,6 +28,8 @@ func TestCLIHelpExitStatus(t *testing.T) {
 		{[]string{"message", "send", "--help"}, true, "Usage of message send:"},
 		{[]string{"channel", "list", "--help"}, true, "Usage of channel list:"},
 		{[]string{"attachment", "list", "--help"}, true, "Usage of attachment list:"},
+		{[]string{"harness", "--help"}, true, "agentintercom harness config <host>"},
+		{[]string{"harness", "config", "--help"}, true, "agentintercom harness list"},
 		{[]string{"channel", "bogus", "--help"}, false, "use channel list/create/join/leave/post/read"},
 		{[]string{"attachment", "bogus", "--help"}, false, "use attachment list/upload/download/delete"},
 		{[]string{"unknown-command"}, false, "unknown command"},
