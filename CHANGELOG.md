@@ -18,6 +18,11 @@ before the next release.
 - Exit with status 0 for subcommand `--help` (#191).
 - Preserve the HTTP status when a Go client error body is not valid JSON (#190).
 - Report failed `attachment upload` requests instead of printing `null`.
+- Exit `agent run` and `session start` with the managed command's exit status,
+  and with a failure status after an interrupt.
+- Return `NOT_FOUND` when completing or releasing an unknown task, accept
+  escalation answers when the message backlog is full, and expire messages
+  before releasing an expired inbox reservation.
 - Refuse a runtime directory or discovery file owned by another local user.
 - Hosted: recover OAuth client registration capacity from abandoned clients,
   send the RFC 9207 `iss` authorization response parameter, and limit admins

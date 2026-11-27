@@ -1066,8 +1066,11 @@ func runAgent(args []string) error {
 		return closeSession()
 	case <-signalCtx.Done():
 		stopChild()
-		<-childDone
-		return closeSession()
+		childErr := <-childDone
+		if closeErr := closeSession(); closeErr != nil {
+			return closeErr
+		}
+		return childErr
 	}
 }
 
@@ -1225,6 +1228,16 @@ func stdinIsTerminal() bool {
 func main() {
 	if err := run(); err != nil && !errors.Is(err, flag.ErrHelp) {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(exitCode(err))
 	}
+}
+
+// exitCode passes a managed child's exit status through, so scripts that wrap
+// a command with agent run or session start can see whether it failed.
+func exitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() > 0 {
+		return exitErr.ExitCode()
+	}
+	return 1
 }
