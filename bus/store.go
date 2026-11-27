@@ -1141,6 +1141,11 @@ func (s *Store) CommitInbox(ctx context.Context, principal Principal, reservatio
 	if err != nil {
 		return nil, err
 	}
+	// Materialize message expiry first, so an expired reservation never
+	// releases a message that has itself expired.
+	if err := expireMessages(ctx, tx, principal.ScopeID, nowMillis()); err != nil {
+		return nil, err
+	}
 	if expiresAt <= nowMillis() {
 		if err := releaseReservation(ctx, tx, principal.ScopeID, principal.AgentID, reservationID); err != nil {
 			return nil, err
@@ -1149,9 +1154,6 @@ func (s *Store) CommitInbox(ctx context.Context, principal Principal, reservatio
 			return nil, err
 		}
 		return nil, Errorf(CodeConflict, "Inbox reservation expired")
-	}
-	if err := expireMessages(ctx, tx, principal.ScopeID, nowMillis()); err != nil {
-		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE reservation_id=? AND scope_id=? AND to_kind='agent' AND to_id=? AND state='reserved' ORDER BY created_at`, reservationID, principal.ScopeID, principal.AgentID)
 	if err != nil {

@@ -236,6 +236,31 @@ func TestMessageIdempotencyRejectsPayloadChanges(t *testing.T) {
 	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1, "idempotent retry created duplicate work: %#v, %v", reservation, err)
 }
 
+func TestExpiredReservationCommitDoesNotReleaseExpiredMessages(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+	sent, err := agents.runtime.SendMessage(ctx, agents.plannerToken, SendMessageInput{To: "reviewer", Mode: MessageNotify, Body: "Short lived", ExpiresInMS: 60_000})
+	requireNoError(t, err)
+	reservation, err := agents.runtime.ReserveInbox(ctx, agents.reviewerToken, 10, 0)
+	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1, "reservation failed: %#v, %v", reservation, err)
+	db := sqliteStore(t, agents.runtime).db
+	_, err = db.ExecContext(ctx, `UPDATE messages SET expires_at=1 WHERE message_id=?`, sent.MessageID)
+	requireNoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE reservations SET expires_at=1 WHERE reservation_id=?`, reservation.ID)
+	requireNoError(t, err)
+	_, err = agents.runtime.CommitInbox(ctx, agents.reviewerToken, reservation.ID)
+	requireCode(t, err, CodeConflict)
+	receipt, err := agents.runtime.Receipt(ctx, agents.plannerToken, sent.MessageID)
+	requireNoError(t, err)
+	require(t, receipt.State == DeliveryExpired, "expired message was released as %q", receipt.State)
+	batch, err := agents.runtime.Events(ctx, agents.scope.ScopeToken, 0, 100, 0)
+	requireNoError(t, err)
+	for _, event := range batch.Events {
+		require(t, !(event.Type == "message.released" && event.SubjectID == sent.MessageID), "an expired message was reported as released")
+	}
+}
+
 func TestResponsesRequireDeliveryButMayFinishAfterExpiry(t *testing.T) {
 	agents := setupAgents(t, ":memory:")
 	defer agents.runtime.Close()
