@@ -367,3 +367,88 @@ func TestAttachmentBackupLockPreservesBytesAndAllowsCoordination(t *testing.T) {
 	_, err = a.runtime.UploadAttachment(ctx, a.plannerToken, UploadAttachmentInput{Name: "resumed"}, []byte("new bytes"))
 	requireNoError(t, err)
 }
+
+// One workspace's long export or file read must not stall another workspace's
+// file access, even while the first deletes a file.
+func TestAttachmentDeletionDoesNotStallOtherWorkspaces(t *testing.T) {
+	a := setupAgents(t, ":memory:")
+	defer a.runtime.Close()
+	ctx := context.Background()
+	store := a.runtime.store.(*Store)
+	mine, err := a.runtime.UploadAttachment(ctx, a.plannerToken, UploadAttachmentInput{Name: "mine"}, []byte("tenant a"))
+	requireNoError(t, err)
+	other, err := a.runtime.CreateScope(ctx, CreateScopeInput{})
+	requireNoError(t, err)
+	agent, err := a.runtime.RegisterAgent(ctx, other.ScopeToken, RegisterAgentInput{ID: "neighbour", DisplayName: "Neighbour"})
+	requireNoError(t, err)
+	theirs, err := a.runtime.UploadAttachment(ctx, agent.AgentToken, UploadAttachmentInput{Name: "theirs"}, []byte("tenant b"))
+	requireNoError(t, err)
+
+	within := func(name string, work func() error) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- work() }()
+		select {
+		case err := <-done:
+			requireNoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s was blocked by another workspace", name)
+		}
+	}
+	// Workspace A's export is in progress (exports hold this shared lock).
+	store.files.maintenance.RLock()
+	var release sync.Once
+	defer release.Do(store.files.maintenance.RUnlock)
+	within("deletion during an export", func() error { return a.runtime.DeleteAttachment(ctx, a.plannerToken, mine.ID) })
+	within("another workspace's read", func() error {
+		content, err := a.runtime.ReadAttachment(ctx, agent.AgentToken, theirs.ID, 0, 100)
+		if err == nil && string(content.Data) != "tenant b" {
+			t.Errorf("read returned %q", content.Data)
+		}
+		return err
+	})
+	within("another workspace's upload", func() error {
+		_, err := a.runtime.UploadAttachment(ctx, agent.AgentToken, UploadAttachmentInput{Name: "more"}, []byte("more"))
+		return err
+	})
+	// Export requires no active executions; pause the neighbour's briefly.
+	var lifecycle string
+	requireNoError(t, store.db.QueryRowContext(ctx, "SELECT lifecycle FROM agents WHERE scope_id=?", other.ScopeID).Scan(&lifecycle))
+	_, err = store.db.ExecContext(ctx, "UPDATE agents SET lifecycle='offline' WHERE scope_id=?", other.ScopeID)
+	requireNoError(t, err)
+	within("another workspace's export", func() error {
+		archive, err := a.runtime.ExportScope(ctx, other.ScopeID)
+		if err == nil && len(archive.Attachments) != 2 {
+			t.Errorf("export contained %d attachments", len(archive.Attachments))
+		}
+		return err
+	})
+	_, err = store.db.ExecContext(ctx, "UPDATE agents SET lifecycle=? WHERE scope_id=?", lifecycle, other.ScopeID)
+	requireNoError(t, err)
+	// The export may still read the deleted file's bytes, so they stay until
+	// garbage collection runs with no reader present.
+	_, err = os.Stat(filepath.Join(store.files.directory, mine.ID))
+	requireNoError(t, err)
+	_, err = a.runtime.ReadAttachment(ctx, a.plannerToken, mine.ID, 0, 100)
+	requireCode(t, err, CodeNotFound)
+	release.Do(store.files.maintenance.RUnlock)
+	_, err = store.CollectAttachmentGarbage(ctx)
+	requireNoError(t, err)
+	_, err = os.Stat(filepath.Join(store.files.directory, mine.ID))
+	require(t, os.IsNotExist(err), "deferred deletion was not collected")
+
+	// A slow write elsewhere (holding the file mutex) does not block reads.
+	store.files.mu.Lock()
+	var unlock sync.Once
+	defer unlock.Do(store.files.mu.Unlock)
+	within("a read during another write", func() error {
+		_, err := a.runtime.ReadAttachment(ctx, agent.AgentToken, theirs.ID, 0, 100)
+		return err
+	})
+	unlock.Do(store.files.mu.Unlock)
+
+	// With no reader present, deletion unlinks the file immediately.
+	requireNoError(t, a.runtime.DeleteAttachment(ctx, agent.AgentToken, theirs.ID))
+	_, err = os.Stat(filepath.Join(store.files.directory, theirs.ID))
+	require(t, os.IsNotExist(err), "idle deletion did not unlink the file")
+}
