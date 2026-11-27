@@ -1471,6 +1471,16 @@ func (s *Store) ClaimTask(ctx context.Context, principal Principal, taskID strin
 	return task, nil
 }
 
+// requireTaskExists distinguishes an unknown task from one in the wrong state.
+func requireTaskExists(ctx context.Context, q sqlExecutor, scopeID, taskID string) error {
+	var exists int
+	err := q.QueryRowContext(ctx, `SELECT 1 FROM tasks WHERE scope_id=? AND task_id=?`, scopeID, taskID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Errorf(CodeNotFound, "Task "+taskID+" was not found")
+	}
+	return err
+}
+
 func (s *Store) CompleteTask(ctx context.Context, principal Principal, taskID, note string) (Task, error) {
 	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
@@ -1488,6 +1498,9 @@ func (s *Store) CompleteTask(ctx context.Context, principal Principal, taskID, n
 	}
 	changed, _ := result.RowsAffected()
 	if changed != 1 {
+		if err := requireTaskExists(ctx, tx, principal.ScopeID, taskID); err != nil {
+			return Task{}, err
+		}
 		return Task{}, Errorf(CodeConflict, "Task "+taskID+" is not claimed by this agent")
 	}
 	if err := appendEvent(ctx, tx, principal.ScopeID, "task.completed", taskID, eventAttributes(
@@ -1522,6 +1535,9 @@ func (s *Store) ReleaseTask(ctx context.Context, principal Principal, taskID str
 	}
 	changed, _ := result.RowsAffected()
 	if changed != 1 {
+		if err := requireTaskExists(ctx, tx, principal.ScopeID, taskID); err != nil {
+			return Task{}, err
+		}
 		return Task{}, Errorf(CodeConflict, "Task "+taskID+" is not claimed by this execution")
 	}
 	if err := appendEvent(ctx, tx, principal.ScopeID, "task.released", taskID, eventAttributes(

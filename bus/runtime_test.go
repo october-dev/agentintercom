@@ -330,6 +330,12 @@ func TestTaskClaimsRespectDependenciesAndOwnership(t *testing.T) {
 	}
 	claimed, err := agents.runtime.ClaimTask(ctx, agents.reviewerToken, second.ID)
 	require(t, err == nil && claimed.ClaimedBy == "reviewer", "unexpected claim: %#v, %v", claimed, err)
+	_, err = agents.runtime.ReleaseTask(ctx, agents.plannerToken, second.ID)
+	requireCode(t, err, CodeConflict)
+	_, err = agents.runtime.CompleteTask(ctx, agents.plannerToken, "task_unknown", "done")
+	requireCode(t, err, CodeNotFound)
+	_, err = agents.runtime.ReleaseTask(ctx, agents.plannerToken, "task_unknown")
+	requireCode(t, err, CodeNotFound)
 }
 
 func TestScopeTaskBoardListsOnlyReadyWork(t *testing.T) {
