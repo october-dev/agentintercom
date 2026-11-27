@@ -226,6 +226,9 @@ func doctorHarness(host, scope string, jsonOutput bool) error {
 	return nil
 }
 
+// doctorProbeAgent is the agent ID used by doctor --harness for its temporary bridge.
+const doctorProbeAgent = "agentintercom-doctor"
+
 func probeLocalBridge(ctx context.Context, scope string) (count int, resultErr error) {
 	executable, err := os.Executable()
 	if err != nil {
@@ -235,8 +238,9 @@ func probeLocalBridge(ctx context.Context, scope string) (count int, resultErr e
 	if err != nil {
 		return 0, err
 	}
-	id := fmt.Sprintf("doctor-%d-%d", os.Getpid(), time.Now().UnixNano())
-	command := exec.CommandContext(ctx, executable, "mcp", "stdio", "--scope", scope, "--agent", id, "--data-dir", paths.DataDir, "--runtime-dir", paths.RuntimeDir)
+	// Agents cannot be deleted, so the probe reuses one ID: each run replaces the
+	// previous probe instead of leaving another offline session in the workspace.
+	command := exec.CommandContext(ctx, executable, "mcp", "stdio", "--scope", scope, "--agent", doctorProbeAgent, "--name", "Agent Intercom doctor", "--data-dir", paths.DataDir, "--runtime-dir", paths.RuntimeDir)
 	command.Env = removeEnvironment(os.Environ(), "OCTOBER_BUS_ADDRESS", "OCTOBER_BUS_ADMIN_TOKEN", "OCTOBER_BUS_SCOPE_TOKEN", "OCTOBER_BUS_AGENT_TOKEN")
 	command.Stderr = io.Discard
 	client := mcp.NewClient(&mcp.Implementation{Name: "agentintercom-doctor", Version: bus.Version}, nil)
