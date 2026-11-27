@@ -140,3 +140,12 @@ test('stops requesting chunks after cancellation', async () => {
     assert.equal(busy.requests.length, 1)
   } finally { busy.close() }
 })
+
+test('uploadAttachment rejects an oversized attachment instead of throwing synchronously', async () => {
+  const client = new AgentIntercomClient('http://127.0.0.1:9', 'token')
+  let pending
+  assert.doesNotThrow(() => {
+    pending = client.uploadAttachment({ name: 'big.bin' }, new Uint8Array(16 * 1024 * 1024 + 1))
+  })
+  await assert.rejects(pending, (error) => error instanceof BusError && error.code === 'INVALID_ARGUMENT')
+})

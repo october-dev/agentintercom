@@ -579,7 +579,7 @@ export class AgentIntercomClient {
   listAttachments(after = '', limit = 50, options?: OperationOptions): Promise<AttachmentPage> {
     return request(this.address, this.agentToken, 'GET', `/v1/attachments?after=${encodeURIComponent(after)}&limit=${limit}`, undefined, options)
   }
-  uploadAttachment(input: UploadAttachmentInput, data: Uint8Array, options?: OperationOptions): Promise<Attachment> {
+  async uploadAttachment(input: UploadAttachmentInput, data: Uint8Array, options?: OperationOptions): Promise<Attachment> {
     if (data.byteLength > MAX_ATTACHMENT_BYTES) throw new BusError('INVALID_ARGUMENT', 'Attachment exceeds 16 MiB')
     const query = new URLSearchParams({ name: input.name, mediaType: input.mediaType ?? '', idempotencyKey: input.idempotencyKey ?? '' })
     return request(this.address, this.agentToken, 'POST', `/v1/attachments?${query}`, new Blob([new Uint8Array(data)]), options)
