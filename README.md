@@ -128,7 +128,7 @@ npx agentintercom-cli@0.2.0 demo
 
 **Release note:** Version `0.2.0` is currently a release candidate. Use the version shown above when installing, since npm's `latest` tag still points to a placeholder.
 
-On Windows or using a different agent? Check out the [connection options](https://github.com/october-dev/agentintercom#ways-to-connect).
+On Windows or using a different agent? Check out the [connection options](https://github.com/october-dev/agentintercom/blob/main/docs/connect-sessions.md).
 
 Need help? See the [installation guide](https://github.com/october-dev/agentintercom/blob/main/docs/installation.md).
 
