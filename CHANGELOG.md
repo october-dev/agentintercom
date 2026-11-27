@@ -31,6 +31,8 @@ before the next release.
 - Hosted: recover OAuth client registration capacity from abandoned clients,
   send the RFC 9207 `iss` authorization response parameter, and limit admins
   to revoking member invitations.
+- Hosted: replaying a redeemed OAuth authorization code with its PKCE verifier
+  revokes the tokens issued from that code.
 
 ## 0.2.0 (release candidate)
 

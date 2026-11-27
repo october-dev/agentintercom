@@ -61,6 +61,9 @@ another member's connector, even for a workspace owner.
   access tokens after one hour and connection grants after thirty days. Refresh
   rotates both tokens without extending the original connection lifetime.
 - Refresh replay revokes the entire connection, including its replacement token.
+  Replaying a redeemed authorization code with its PKCE verifier likewise revokes
+  the connection and every token issued from that code. Reconnect after a lost
+  code-exchange response instead of redeeming the code again.
   This applies within the same grant; a newly approved reconnection invalidates
   the previous family. Reconnect after a lost refresh response or expiration. Clients must
   serialize refresh rather than redeem the same refresh token concurrently.

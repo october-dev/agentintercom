@@ -174,7 +174,6 @@ func TestHostedOAuthPKCERotationAndReplay(t *testing.T) {
 	var issued issuedOAuthTokens
 	requireNoError(t, json.Unmarshal(result.Body.Bytes(), &issued))
 	require(t, strings.HasPrefix(issued.Access, "oba_") && strings.HasPrefix(issued.Refresh, "obr_"), "missing scoped opaque tokens")
-	require(t, f.exchange(code, f.verifier).Code == 400, "authorization code replay succeeded")
 	_, err := f.h.oauthExecution(f.ctx, issued.Access)
 	requireNoError(t, err)
 	params := url.Values{"grant_type": {"refresh_token"}, "client_id": {f.clientID}, "refresh_token": {issued.Refresh}, "resource": {"https://other.example/mcp"}}
@@ -196,6 +195,31 @@ func TestHostedOAuthPKCERotationAndReplay(t *testing.T) {
 	require(t, f.call("POST", "/oauth/token", "", params.Encode()).Code == 400, "refresh replay succeeded")
 	_, err = f.h.oauthExecution(f.ctx, next.Access)
 	requireCode(t, err, CodeUnauthenticated)
+}
+
+func TestHostedOAuthCodeReplayRevokesIssuedTokens(t *testing.T) {
+	f := newHostedOAuthFixture(t)
+	code := f.approve(f.authorization())
+	result := f.exchange(code, f.verifier)
+	require(t, result.Code == 200, "exchange: %s", result.Body.String())
+	var issued issuedOAuthTokens
+	requireNoError(t, json.Unmarshal(result.Body.Bytes(), &issued))
+	_, err := f.h.oauthExecution(f.ctx, issued.Access)
+	requireNoError(t, err)
+
+	// Someone who observed the code but lacks its PKCE verifier cannot use a
+	// replay to revoke the legitimate connection.
+	require(t, f.exchange(code, strings.Repeat("x", 64)).Code == 400, "code replay with the wrong verifier succeeded")
+	_, err = f.h.oauthExecution(f.ctx, issued.Access)
+	requireNoError(t, err)
+
+	// A replay with the verifier revokes every token issued from the code.
+	replayed := f.exchange(code, f.verifier)
+	require(t, replayed.Code == 400 && strings.Contains(replayed.Body.String(), "invalid_grant"), "authorization code replay succeeded: %s", replayed.Body.String())
+	_, err = f.h.oauthExecution(f.ctx, issued.Access)
+	requireCode(t, err, CodeUnauthenticated)
+	params := url.Values{"grant_type": {"refresh_token"}, "client_id": {f.clientID}, "refresh_token": {issued.Refresh}}
+	require(t, f.call("POST", "/oauth/token", "", params.Encode()).Code == 400, "refresh token issued from a replayed code still works")
 }
 
 func TestHostedOAuthConcurrentCodeRedemption(t *testing.T) {
