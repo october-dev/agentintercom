@@ -3,8 +3,11 @@
 package bus
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -61,6 +64,15 @@ func TestReadRunFileRefusesFilesOtherUsersCanPlant(t *testing.T) {
 		}
 		if err := secureDirectory(filepath.Dir(planted)); err == nil {
 			t.Fatal("runtime directory owned by another user was accepted")
+		}
+	}
+}
+
+func TestReadRunFileReportsStoppedDaemon(t *testing.T) {
+	for _, directory := range []string{filepath.Join(t.TempDir(), "missing"), t.TempDir()} {
+		_, err := ReadRunFile(filepath.Join(directory, "bus.json"))
+		if !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), "Agent Intercom is not running") || !strings.Contains(err.Error(), directory) {
+			t.Fatalf("missing run file in %s: %v", directory, err)
 		}
 	}
 }
