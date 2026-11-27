@@ -1,4 +1,4 @@
-import { BusError } from './errors.js'
+import { BusAbortError, BusError, BusNetworkError, BusTimeoutError } from './errors.js'
 import type { BusErrorCode } from './errors.js'
 import type {
   Attachment, AttachmentPage, AttachmentContent, UploadAttachmentInput,
@@ -122,13 +122,17 @@ async function request<T>(
     throw new BusError('INVALID_ARGUMENT', 'timeoutMs must be a positive finite number')
   }
   const controller = new AbortController()
-  const onAbort = () => controller.abort(options.signal?.reason ?? new Error('Operation aborted'))
+  let failure: 'timeout' | 'aborted' | undefined
+  const onAbort = () => {
+    failure ??= 'aborted'
+    controller.abort(options.signal?.reason ?? new Error('Operation aborted'))
+  }
   if (options.signal?.aborted) onAbort()
   else options.signal?.addEventListener('abort', onAbort, { once: true })
-  const timeout = setTimeout(
-    () => controller.abort(new Error(`Agent Intercom request timed out after ${timeoutMs}ms`)),
-    timeoutMs
-  )
+  const timeout = setTimeout(() => {
+    failure ??= 'timeout'
+    controller.abort(new Error(`Agent Intercom request timed out after ${timeoutMs}ms`))
+  }, timeoutMs)
   let response: Response
   let text: string
   try {
@@ -146,8 +150,10 @@ async function request<T>(
     text = await response.text()
   } catch (error) {
     const cause = controller.signal.aborted ? controller.signal.reason : error
-    const message = cause instanceof Error ? cause.message : 'Network request failed'
-    throw new BusError('INTERNAL', `Agent Intercom request failed: ${message}`)
+    const message = `Agent Intercom request failed: ${cause instanceof Error ? cause.message : 'Network request failed'}`
+    if (failure === 'timeout') throw new BusTimeoutError(timeoutMs, message, { cause })
+    if (failure === 'aborted') throw new BusAbortError(message, { cause })
+    throw new BusNetworkError(message, { cause })
   } finally {
     clearTimeout(timeout)
     options.signal?.removeEventListener('abort', onAbort)
@@ -573,7 +579,7 @@ export class AgentIntercomClient {
   listAttachments(after = '', limit = 50, options?: OperationOptions): Promise<AttachmentPage> {
     return request(this.address, this.agentToken, 'GET', `/v1/attachments?after=${encodeURIComponent(after)}&limit=${limit}`, undefined, options)
   }
-  uploadAttachment(input: UploadAttachmentInput, data: Uint8Array, options?: OperationOptions): Promise<Attachment> {
+  async uploadAttachment(input: UploadAttachmentInput, data: Uint8Array, options?: OperationOptions): Promise<Attachment> {
     if (data.byteLength > MAX_ATTACHMENT_BYTES) throw new BusError('INVALID_ARGUMENT', 'Attachment exceeds 16 MiB')
     const query = new URLSearchParams({ name: input.name, mediaType: input.mediaType ?? '', idempotencyKey: input.idempotencyKey ?? '' })
     return request(this.address, this.agentToken, 'POST', `/v1/attachments?${query}`, new Blob([new Uint8Array(data)]), options)
@@ -682,7 +688,16 @@ export class AgentIntercomClient {
 
   async pullInbox(limit = 50, options?: InboxReservationOptions): Promise<BusMessage[]> {
     const reservation = await this.reserveInbox(limit, options)
-    return reservation ? this.commitInbox(reservation.id, options) : []
+    if (!reservation) return []
+    try {
+      return await this.commitInbox(reservation.id, options)
+    } catch (error) {
+      // Return the messages to the inbox now rather than after the reservation
+      // expires. This is best effort and ignores the caller's signal; a
+      // reservation that did commit is unaffected.
+      await this.releaseInbox(reservation.id, { timeoutMs: 5000 }).catch(() => {})
+      throw error
+    }
   }
 
   async acknowledgeMessages(messageIds: string[], options?: OperationOptions): Promise<number> {

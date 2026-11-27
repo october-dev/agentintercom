@@ -1,10 +1,10 @@
 # Portable contract verification (September 2026)
 
-Provisional evidence report for [issue #142](https://github.com/october-dev/october-bus/issues/142) (related: [#126](https://github.com/october-dev/october-bus/issues/126)). It records which portable protocol, helper and client behavior October's cloud v1 plan relies on, what was proven and against which artifact, and what is still pending.
+Provisional evidence report for [issue #142](https://github.com/october-dev/october-bus/issues/142) (related: [#126](https://github.com/october-dev/october-bus/issues/126)). It records which portable protocol, helper and client behavior the October hosted service relies on, what was proven and against which artifact, and what is still pending.
 
 **Status:** No portable gap demonstrated so far. B02 and B03 are not filed. Whether they are needed stays pending the hosted-fixture comparison, which blocks closing #142.
 
-This report changes no protocol, runtime, helper, SDK, schema, migration or release. It unlocks no product or launch flag and does not qualify laptop-off (v2) autonomy.
+This report changes no protocol, runtime, helper, SDK, schema, migration or release. It unlocks no product or launch flag and does not qualify laptop-off autonomy.
 
 ## Scope
 
@@ -12,7 +12,7 @@ Fixed by #142 and not revisited here:
 
 - Local communication and task work stays available offline. Remote messages queue durably, and disconnected task attempts may run independently.
 - October Desktop owns its local router and UI. October's hosted service owns tenancy, the cloud inbox, compute and authorization. This repository owns portable protocol, client and helper behavior.
-- Autonomous SSH collaboration while the laptop is closed is v2. Disconnection does not prove the laptop is asleep.
+- Autonomous SSH collaboration while the laptop is closed is out of scope. Disconnection does not prove the laptop is asleep.
 - A helper release follows only a demonstrated portable gap, and never enables a product flag by itself.
 
 Out of scope: hosted tenancy, accounts, the managed cloud service, provider selection, a laptop-independent SSH relay, NATS, and any daemon redesign.
@@ -29,7 +29,7 @@ Out of scope: hosted tenancy, accounts, the managed cloud service, provider sele
 | Protocol | `spec/0.1` at `83f7a63` | Reference for field mapping |
 | npm `@october-dev/october-bus@0.1.0-next.15` | Not downloaded | **Unqualified by this report.** Registry integrity, provenance and a matching qualification run are not recorded here. |
 | Other rc.5 platforms (darwin, windows, linux/arm64) | Not downloaded | Not evaluated |
-| Prior cross-repo evidence | Desktop `d5f7a0e2dbeb72cdd69b503e0f50367b79bfde88` native bridge test; Saturday PR #63 `6c867ee3eae760f7616b7b6b8d507b5e509ef46b` connection writer ([integration follow-up](desktop-remote-integration.md#integration-follow-up-2026-09-24)) | Prior; not rerun |
+| Prior cross-repo evidence | October Desktop native bridge test; hosted-service connection-file writer ([integration follow-up](desktop-remote-integration.md#integration-follow-up-2026-09-24)) | Prior; not rerun |
 | Hosted versioned contract fixtures | None attached to #142 (no comments as of 2026-09-28) | **Pending** |
 
 ### Source equivalence between rc.5 and `83f7a63`
@@ -119,7 +119,7 @@ No product or launch flag follows from these decisions.
 
 ## Hosted fixture request
 
-Prepared for #142; posting it is a separate, explicitly authorized action.
+The fixtures requested for #142:
 
 > To finish #142 we need the hosted service's concrete, versioned contract fixtures. For each fixture, please give the contract name, semantic version, source commit or build, file names and SHA-256. The bundle should include success and failure cases for:
 >

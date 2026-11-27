@@ -36,7 +36,7 @@ func executionClient(address string) (bus.Client, error) {
 	}
 	ip := net.ParseIP(u.Hostname())
 	if u.Scheme != "https" && !(u.Scheme == "http" && ip != nil && ip.IsLoopback()) {
-		return bus.Client{}, errors.New("remote Bus connections require HTTPS")
+		return bus.Client{}, errors.New("remote Bus connections require HTTPS; for a local daemon use a literal loopback address such as http://127.0.0.1:PORT")
 	}
 	return bus.Client{Address: strings.TrimRight(address, "/"), Token: token,
 		HTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: refuseMCPRedirect}}, nil

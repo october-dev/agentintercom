@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/user"
@@ -71,7 +72,7 @@ func DefaultDaemonPaths() (DaemonPaths, error) {
 }
 
 func ReadRunFile(path string) (RunFile, error) {
-	data, err := os.ReadFile(path)
+	data, err := readPrivateRunFile(path)
 	if err != nil {
 		return RunFile{}, err
 	}
@@ -84,6 +85,41 @@ func ReadRunFile(path string) (RunFile, error) {
 		return RunFile{}, errors.New("Agent Intercom run file is invalid")
 	}
 	return run, nil
+}
+
+// readPrivateRunFile reads the discovery file only when it and its directory
+// belong to the current user. Without this check another local account could
+// plant a run file in a shared temporary directory and receive the scope
+// tokens that clients send to the advertised address.
+func readPrivateRunFile(path string) ([]byte, error) {
+	invalid := errors.New("Agent Intercom run file is not private to the current user")
+	directory, err := os.Lstat(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	if directory.Mode()&os.ModeSymlink != 0 || !directory.IsDir() || !ownedByCurrentUser(directory) || (runtime.GOOS != "windows" && directory.Mode().Perm()&0o022 != 0) {
+		return nil, invalid
+	}
+	before, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !before.Mode().IsRegular() || !ownedByCurrentUser(before) || (runtime.GOOS != "windows" && before.Mode().Perm()&0o077 != 0) {
+		return nil, invalid
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	after, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(before, after) {
+		return nil, invalid
+	}
+	return io.ReadAll(io.LimitReader(file, 1<<16))
 }
 
 func writeRunFile(path string, run RunFile) error {
@@ -136,6 +172,9 @@ func secureDirectory(path string) error {
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return fmt.Errorf("%s must be a real directory", path)
+	}
+	if !ownedByCurrentUser(info) {
+		return fmt.Errorf("%s is owned by another user; set OCTOBER_BUS_RUNTIME_DIR or XDG_RUNTIME_DIR to a private directory", path)
 	}
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(path, 0o700); err != nil {

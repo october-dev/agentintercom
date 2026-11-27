@@ -1,0 +1,43 @@
+name: Bug report
+description: Report incorrect behavior in the agentintercom CLI, daemon, SDKs or workspace UI.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report security vulnerabilities privately through the security policy, not here.
+        Never post tokens, connection files, private messages or account links.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands or steps, with credentials replaced by placeholders.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agentintercom version`, or the commit you built from.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Operating system and architecture, plus the agent app and its version if one is involved.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Error messages or `agentintercom doctor --json` output, with secrets removed.
+      render: text

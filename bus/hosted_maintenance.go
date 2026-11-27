@@ -2,6 +2,8 @@ package bus
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"log"
 	"time"
 )
@@ -78,7 +80,10 @@ AND NOT EXISTS(SELECT 1 FROM hosted_checkout_attempts c WHERE c.scope_id=w.scope
 			return err
 		}
 		if _, err := a.store.PruneScope(ctx, id, now-int64(90*24*time.Hour/time.Millisecond), true); err != nil {
-			lastError = err
+			// A workspace deleted after it was selected has nothing left to prune.
+			if !errors.Is(err, sql.ErrNoRows) {
+				lastError = err
+			}
 			continue
 		}
 		if _, err := a.store.db.ExecContext(ctx, "UPDATE hosted_workspaces SET maintenance_completed_at=? WHERE scope_id=?", nowMillis(), id); err != nil {

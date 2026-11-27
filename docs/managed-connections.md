@@ -43,7 +43,7 @@ the connection. The file has this shape (placeholders are not usable credentials
 | --- | --- | --- |
 | `version` | yes | Always `1`. Unknown fields refuse the file. |
 | `endpoint` | yes | The authority's `/mcp` URL: HTTPS, or HTTP on a literal loopback IP. No userinfo, query or fragment. Redirects are refused. |
-| `gateway` | no; present for Saturday cloud workers | The HTTPS origin bound to this connection, with no userinfo, query, fragment or path other than `/`. Its scheme and host (including any explicit port) must match `endpoint`. It never overrides the endpoint or selects a transport. |
+| `gateway` | no; present for hosted-service cloud workers | The HTTPS origin bound to this connection, with no userinfo, query, fragment or path other than `/`. Its scheme and host (including any explicit port) must match `endpoint`. It never overrides the endpoint or selects a transport. |
 | `httpHost` | no | Loopback-only HTTP `Host` override: same literal IP as `endpoint`, different port. A TCP/SSH forward does not rewrite `Host`, so this carries the authority's real port across a tunnel port. Never for HTTPS, never another name. |
 | `scopeId`, `agentId`, `executionId` | yes | Pin the execution this file belongs to. For Desktop Core they are the canvas, node and terminal epoch (`launch`). They fence renewal; the authority still authenticates every request. |
 | `agentToken` | yes | The execution's MCP credential: 32 random bytes, unpadded base64url (43 characters). Sent as `Authorization: Bearer`. |
@@ -57,7 +57,7 @@ a boundary against the same OS user. Windows file ACL qualification is not
 implemented for this mode; existing local discovery and managed-environment modes
 are unchanged.
 
-Saturday's controller writes the same record with `gateway` set to its HTTPS
+The October hosted service's controller writes the same record with `gateway` set to its HTTPS
 origin, `endpoint` set to
 `https://<gateway>/api/compute/workers/<environment-id>/mcp`, and `executionId`
 set to `managed:<environment-id>:<generation>`. Both execution tokens are present;
@@ -152,7 +152,7 @@ Other flavors and events are refused on stderr without contacting any authority.
 A hook never fails the harness: it exits 0, finishes within four seconds, and
 acknowledges a pulled receipt only after stdout accepted it. That proves native
 handoff, not model comprehension. Hook traffic runs on the endpoint's origin
-with `/mcp` replaced by `/hook/...`. Desktop Core and Saturday's compute gateway
+with `/mcp` replaced by `/hook/...`. Desktop Core and the hosted service's compute gateway
 serve these execution routes; the standalone hosted Bus gateway does not.
 
 ## Authority behavior

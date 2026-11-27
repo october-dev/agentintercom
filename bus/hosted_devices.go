@@ -224,14 +224,19 @@ func (a *HostedAccounts) replaceConnectionTx(ctx context.Context, tx sqlExecutor
 	if err := workspaceOpen(ctx, tx, scopeID); err != nil {
 		return WorkspaceDevice{}, err
 	}
-	var ownerID, kind string
+	var ownerID, kind, revokedBy string
 	var created int64
-	err := tx.QueryRowContext(ctx, "SELECT user_id,kind,created_at FROM hosted_devices WHERE scope_id=? AND device_id=?", scopeID, deviceID).Scan(&ownerID, &kind, &created)
+	err := tx.QueryRowContext(ctx, "SELECT user_id,kind,created_at,revoked_by FROM hosted_devices WHERE scope_id=? AND device_id=?", scopeID, deviceID).Scan(&ownerID, &kind, &created, &revokedBy)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (ownerID != user.ID || kind != expectedKind)) {
 		return WorkspaceDevice{}, Errorf(CodePermissionDenied, "Only your own connections of the same kind can be replaced here")
 	}
 	if err != nil {
 		return WorkspaceDevice{}, err
+	}
+	// Replacement would otherwise undo a workspace owner's or admin's revocation
+	// and restore the connection's inbox.
+	if revokedBy != "" {
+		return WorkspaceDevice{}, Errorf(CodePermissionDenied, "A workspace admin revoked this connection; create a new connection instead")
 	}
 	if err := checkHostedConnectionLimit(ctx, tx, scopeID, user.ID, deviceID); err != nil {
 		return WorkspaceDevice{}, err
@@ -318,7 +323,13 @@ func (a *HostedAccounts) RevokeDevice(ctx context.Context, user HostedUser, scop
 	if err := retireHostedSessions(ctx, tx, scopeID, "", deviceID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE hosted_devices SET revoked_at=? WHERE device_id=? AND revoked_at=0", nowMillis(), deviceID); err != nil {
+	revokedBy := ""
+	if ownerID != user.ID {
+		revokedBy = user.ID
+	}
+	// Record another member's revocation even on an already revoked connection,
+	// so its owner cannot restore it by replacement.
+	if _, err := tx.ExecContext(ctx, "UPDATE hosted_devices SET revoked_at=CASE WHEN revoked_at=0 THEN ? ELSE revoked_at END,revoked_by=CASE WHEN ?<>'' THEN ? ELSE revoked_by END WHERE device_id=?", nowMillis(), revokedBy, revokedBy, deviceID); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

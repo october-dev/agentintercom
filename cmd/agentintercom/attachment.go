@@ -80,6 +80,9 @@ func attachmentCommand(args []string, in io.Reader, out io.Writer) error {
 			return errors.New("attachment exceeds 16 MiB")
 		}
 		result, err = client.UploadAttachment(ctx, bus.UploadAttachmentInput{Name: *name, MediaType: *media, IdempotencyKey: *key}, data)
+		if err != nil {
+			return err
+		}
 	case "download":
 		if *file == "" || *file == "-" {
 			return errors.New("download requires --file <new-path>; bytes are never printed to the terminal")

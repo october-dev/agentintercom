@@ -197,7 +197,16 @@ func (c Client) PullInbox(ctx context.Context, limit int, wait time.Duration) ([
 	if err != nil || reservation == nil {
 		return nil, err
 	}
-	return c.CommitInbox(ctx, reservation.ID)
+	messages, err := c.CommitInbox(ctx, reservation.ID)
+	if err != nil {
+		// Return the messages to the inbox now rather than after the
+		// reservation expires. This is best effort and ignores the caller's
+		// cancellation; a reservation that did commit is unaffected.
+		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		_ = c.ReleaseInbox(release, reservation.ID)
+		cancel()
+	}
+	return messages, err
 }
 
 func (c Client) AcknowledgeMessages(ctx context.Context, messageIDs []string) (int64, error) {

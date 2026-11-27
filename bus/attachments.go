@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -71,6 +72,7 @@ type attachmentFiles struct {
 	mu               sync.Mutex
 	directory        string
 	root             *os.Root
+	readRoot         atomic.Pointer[os.Root]
 	lock             *os.File
 	temporary        bool
 }
@@ -142,11 +144,30 @@ func (f *attachmentFiles) open(source string) error {
 		return err
 	}
 	f.root, f.lock = root, lock
+	f.readRoot.Store(root)
 	return nil
 }
-func (f *attachmentFiles) close() {
+
+// readable opens the directory if needed and returns its root for reading.
+// Reads do not hold f.mu, so one workspace's large reads or exports never
+// serialize another's; callers hold maintenance.RLock, which close waits for.
+func (f *attachmentFiles) readable(source string) (*os.Root, error) {
+	if root := f.readRoot.Load(); root != nil {
+		return root, nil
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.open(source); err != nil {
+		return nil, err
+	}
+	return f.root, nil
+}
+func (f *attachmentFiles) close() {
+	f.maintenance.Lock()
+	defer f.maintenance.Unlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.readRoot.Store(nil)
 	if f.root != nil {
 		_ = f.root.Close()
 	}
@@ -476,12 +497,11 @@ func (s *Store) ReadAttachment(ctx context.Context, scopeID, id string, offset i
 	if err := consumeAttachmentTransfer(ctx, tx, scopeID, size, false); err != nil {
 		return result, err
 	}
-	s.files.mu.Lock()
-	defer s.files.mu.Unlock()
-	if err := s.files.open(s.source); err != nil {
+	root, err := s.files.readable(s.source)
+	if err != nil {
 		return result, err
 	}
-	data, err := s.readAttachmentFile(a, offset, size)
+	data, err := readAttachmentFile(root, a, offset, size)
 	if err != nil {
 		return result, err
 	}
@@ -491,12 +511,12 @@ func (s *Store) ReadAttachment(ctx context.Context, scopeID, id string, offset i
 	}
 	return result, tx.Commit()
 }
-func (s *Store) readAttachmentFile(a Attachment, offset, size int64) ([]byte, error) {
-	info, err := s.files.root.Lstat(a.ID)
+func readAttachmentFile(root *os.Root, a Attachment, offset, size int64) ([]byte, error) {
+	info, err := root.Lstat(a.ID)
 	if err != nil || !info.Mode().IsRegular() || info.Size() != a.Size || (runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0) {
 		return nil, Errorf(CodeInternal, "Attachment file is unavailable; restore it from backup")
 	}
-	file, err := s.files.root.Open(a.ID)
+	file, err := root.Open(a.ID)
 	if err != nil {
 		return nil, Errorf(CodeInternal, "Attachment file is unavailable")
 	}
@@ -518,8 +538,6 @@ func (s *Store) readAttachmentFile(a Attachment, offset, size int64) ([]byte, er
 	return data, nil
 }
 func (s *Store) DeleteAttachment(ctx context.Context, scopeID, id string) error {
-	s.files.maintenance.Lock()
-	defer s.files.maintenance.Unlock()
 	kind, actor, err := channelAuthor(ctx, scopeID)
 	if err != nil {
 		return err
@@ -557,8 +575,15 @@ func (s *Store) DeleteAttachment(ctx context.Context, scopeID, id string) error 
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	// The exclusive maintenance lock lets an in-progress backup finish first.
-	// If unlinking fails, metadata still blocks reads and maintenance retries it.
+	// The committed tombstone already hides the file. Unlink it now only if no
+	// read, export or backup that may have seen the old metadata is running;
+	// waiting for them would let one workspace's long export stall every
+	// workspace's file access behind this deletion. Otherwise, or if unlinking
+	// fails, garbage collection removes the file later.
+	if !s.files.maintenance.TryLock() {
+		return nil
+	}
+	defer s.files.maintenance.Unlock()
 	s.files.mu.Lock()
 	defer s.files.mu.Unlock()
 	if err := s.files.open(s.source); err == nil {

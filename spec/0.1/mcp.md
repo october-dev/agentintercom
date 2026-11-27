@@ -52,7 +52,7 @@ The three identities are mutually exclusive; mixing any two fails.
 
 `check_inbox` accepts an optional `waitMs` value from 0 through 25000. It commits a short reservation and returns delivered messages. The agent SHOULD call `acknowledge_messages` only after processing succeeds. A host that cannot wake an idle agent MUST document that it is pull-only.
 
-Start with `waitMs: 10000` unless an adapter documents otherwise. A host's tool-call timeout must exceed the wait plus transport overhead. Discovery/startup timeout settings do not necessarily control execution timeouts. `message_receipt` accepts `messageId` and uses the same sender/recipient or scope-owner authorization as the HTTP receipt route; an unrelated agent cannot inspect it.
+Start with `waitMs: 10000` unless an adapter documents otherwise. A host's tool-call timeout must exceed the wait plus transport overhead. Discovery/startup timeout settings do not necessarily control execution timeouts. `message_receipt` accepts `messageId` and uses the same sender-or-recipient authorization as the HTTP receipt route; an unrelated agent cannot inspect it.
 
 Every tool returns an object as structured content. Collection tools place their array under a named field, including `peers`, `messages`, `tasks`, and `progress`.
 

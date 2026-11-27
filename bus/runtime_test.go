@@ -236,6 +236,31 @@ func TestMessageIdempotencyRejectsPayloadChanges(t *testing.T) {
 	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1, "idempotent retry created duplicate work: %#v, %v", reservation, err)
 }
 
+func TestExpiredReservationCommitDoesNotReleaseExpiredMessages(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+	sent, err := agents.runtime.SendMessage(ctx, agents.plannerToken, SendMessageInput{To: "reviewer", Mode: MessageNotify, Body: "Short lived", ExpiresInMS: 60_000})
+	requireNoError(t, err)
+	reservation, err := agents.runtime.ReserveInbox(ctx, agents.reviewerToken, 10, 0)
+	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1, "reservation failed: %#v, %v", reservation, err)
+	db := sqliteStore(t, agents.runtime).db
+	_, err = db.ExecContext(ctx, `UPDATE messages SET expires_at=1 WHERE message_id=?`, sent.MessageID)
+	requireNoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE reservations SET expires_at=1 WHERE reservation_id=?`, reservation.ID)
+	requireNoError(t, err)
+	_, err = agents.runtime.CommitInbox(ctx, agents.reviewerToken, reservation.ID)
+	requireCode(t, err, CodeConflict)
+	receipt, err := agents.runtime.Receipt(ctx, agents.plannerToken, sent.MessageID)
+	requireNoError(t, err)
+	require(t, receipt.State == DeliveryExpired, "expired message was released as %q", receipt.State)
+	batch, err := agents.runtime.Events(ctx, agents.scope.ScopeToken, 0, 100, 0)
+	requireNoError(t, err)
+	for _, event := range batch.Events {
+		require(t, !(event.Type == "message.released" && event.SubjectID == sent.MessageID), "an expired message was reported as released")
+	}
+}
+
 func TestResponsesRequireDeliveryButMayFinishAfterExpiry(t *testing.T) {
 	agents := setupAgents(t, ":memory:")
 	defer agents.runtime.Close()
@@ -330,6 +355,12 @@ func TestTaskClaimsRespectDependenciesAndOwnership(t *testing.T) {
 	}
 	claimed, err := agents.runtime.ClaimTask(ctx, agents.reviewerToken, second.ID)
 	require(t, err == nil && claimed.ClaimedBy == "reviewer", "unexpected claim: %#v, %v", claimed, err)
+	_, err = agents.runtime.ReleaseTask(ctx, agents.plannerToken, second.ID)
+	requireCode(t, err, CodeConflict)
+	_, err = agents.runtime.CompleteTask(ctx, agents.plannerToken, "task_unknown", "done")
+	requireCode(t, err, CodeNotFound)
+	_, err = agents.runtime.ReleaseTask(ctx, agents.plannerToken, "task_unknown")
+	requireCode(t, err, CodeNotFound)
 }
 
 func TestScopeTaskBoardListsOnlyReadyWork(t *testing.T) {
@@ -510,6 +541,23 @@ func TestPendingEscalationsApplyPerAgentBackpressure(t *testing.T) {
 	if _, err := agents.runtime.AskHuman(ctx, agents.plannerToken, AskHumanInput{Question: "Replacement"}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestEscalationAnswersAreAcceptedWhenTheBacklogIsFull(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+	escalation, err := agents.runtime.AskHuman(ctx, agents.plannerToken, AskHumanInput{Question: "Deploy?"})
+	requireNoError(t, err)
+	_, err = sqliteStore(t, agents.runtime).db.ExecContext(ctx, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
+INSERT INTO messages(message_id,scope_id,from_kind,from_id,to_kind,to_id,mode,body,context_json,request_hash,state,created_at)
+SELECT 'msg_fill'||i,'test','agent','planner','agent','reviewer','notify','x','[]','h','queued',1 FROM n`, messageBacklogCap)
+	requireNoError(t, err)
+	_, err = agents.runtime.SendMessage(ctx, agents.plannerToken, SendMessageInput{To: "reviewer", Mode: MessageNotify, Body: "Over the cap"})
+	requireCode(t, err, CodeBackpressure)
+	resolved, err := agents.runtime.ResolveEscalation(ctx, agents.scope.ScopeToken, escalation.ID, "yes")
+	requireNoError(t, err)
+	require(t, resolved.Status == "resolved" && resolved.Answer == "yes", "escalation was not answered: %#v", resolved)
 }
 
 func TestSQLitePreservesAcceptedWorkAcrossRestart(t *testing.T) {

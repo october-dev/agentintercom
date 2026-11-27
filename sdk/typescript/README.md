@@ -129,7 +129,7 @@ Generate a new idempotency key for each logical send. Keys remain bound to their
 
 `AgentIntercomAgentSession` manages registration, conservative lifecycle state, heartbeat, execution replacement, and shutdown cleanup for adapters that use the TypeScript client.
 
-To use a shared file, download it whole instead of reading chunks yourself:
+To use a shared file, download it whole instead of reading chunks yourself (`downloadAttachment` is newer than `0.2.0` and ships in the next release):
 
 ```ts
 const { attachment, data } = await reviewer.downloadAttachment(attachmentId)

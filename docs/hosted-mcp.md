@@ -30,6 +30,8 @@ quotas as OAuth. Revoke it in **Members & devices**. **Replace key** immediately
 invalidates its old key and execution while preserving its inbox; update the
 app's saved secret afterward. Lost creation/rotation responses require another
 explicit replacement. Connection lists never return a saved key.
+A connection that a workspace owner or admin revoked cannot be restored by
+replacing it; its owner must create a new connection.
 
 For an OAuth reconnect, the consent screen lets you choose **Reconnect** for an
 existing app owned by your account. This retains its inbox and replaces its
@@ -61,6 +63,9 @@ another member's connector, even for a workspace owner.
   access tokens after one hour and connection grants after thirty days. Refresh
   rotates both tokens without extending the original connection lifetime.
 - Refresh replay revokes the entire connection, including its replacement token.
+  Replaying a redeemed authorization code with its PKCE verifier likewise revokes
+  the connection and every token issued from that code. Reconnect after a lost
+  code-exchange response instead of redeeming the code again.
   This applies within the same grant; a newly approved reconnection invalidates
   the previous family. Reconnect after a lost refresh response or expiration. Clients must
   serialize refresh rather than redeem the same refresh token concurrently.

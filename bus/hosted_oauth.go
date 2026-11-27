@@ -48,7 +48,7 @@ func (h *HostedServer) registerOAuthRoutes() {
 	h.routes.HandleFunc("GET /.well-known/oauth-protected-resource", metadata)
 	h.routes.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", metadata)
 	h.routes.HandleFunc("GET /.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"issuer": h.publicURL, "authorization_endpoint": h.publicURL + "/oauth/authorize", "token_endpoint": h.publicURL + "/oauth/token", "registration_endpoint": h.publicURL + "/oauth/register", "revocation_endpoint": h.publicURL + "/oauth/revoke", "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"}, "code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{hostedOAuthScope}})
+		writeJSON(w, 200, map[string]any{"issuer": h.publicURL, "authorization_endpoint": h.publicURL + "/oauth/authorize", "token_endpoint": h.publicURL + "/oauth/token", "registration_endpoint": h.publicURL + "/oauth/register", "revocation_endpoint": h.publicURL + "/oauth/revoke", "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"}, "code_challenge_methods_supported": []string{"S256"}, "scopes_supported": []string{hostedOAuthScope}, "authorization_response_iss_parameter_supported": true})
 	})
 	h.routes.HandleFunc("POST /oauth/register", h.oauthRegister)
 	h.routes.HandleFunc("GET /oauth/authorize", h.oauthAuthorize)
@@ -59,7 +59,7 @@ func (h *HostedServer) registerOAuthRoutes() {
 }
 
 func (h *HostedServer) oauthRegister(w http.ResponseWriter, r *http.Request) {
-	if !h.oauthRegistration.Allow() {
+	if !h.oauthRegistration.allow(r) {
 		oauthFailure(w, 429, "temporarily_unavailable", "Client registration is busy; retry shortly")
 		return
 	}
@@ -118,8 +118,7 @@ func (h *HostedServer) oauthRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	var count int
-	if err := tx.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM oauth_clients").Scan(&count); err != nil || count >= 50000 {
+	if !reserveOAuthClientCapacity(r.Context(), tx) {
 		oauthFailure(w, 503, "temporarily_unavailable", "Registration capacity is unavailable")
 		return
 	}
@@ -149,7 +148,7 @@ func (h *HostedServer) oauthRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HostedServer) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
-	if !h.oauthAuthorization.Allow() {
+	if !h.oauthAuthorization.allow(r) {
 		oauthFailure(w, 429, "temporarily_unavailable", "Authorization is busy; retry shortly")
 		return
 	}
@@ -296,6 +295,8 @@ func (h *HostedServer) oauthConsent(ctx context.Context, user HostedUser, w http
 	if pending.state != "" {
 		query.Set("state", pending.state)
 	}
+	// RFC 9207 lets clients that use several authorization servers detect mix-up.
+	query.Set("iss", h.publicURL)
 	if input.Approve {
 		if _, err := hostedMember(ctx, tx, input.WorkspaceID, user.ID); err != nil {
 			return nil, err
@@ -331,4 +332,33 @@ func (h *HostedServer) oauthConsent(ctx context.Context, user HostedUser, w http
 	}
 	redirect.RawQuery = query.Encode()
 	return map[string]string{"redirectUrl": redirect.String()}, nil
+}
+
+// hostedOAuthClientLimit bounds anonymous dynamic client registration.
+var hostedOAuthClientLimit = 50000
+
+// reserveOAuthClientCapacity reports whether another client may register.
+// Registration is unauthenticated, so at capacity it first evicts the oldest
+// clients that are more than a day old and hold no pending request or token.
+// Such a client can no longer authorize anything without a new flow, and
+// MCP clients register again when their client ID is unknown.
+func reserveOAuthClientCapacity(ctx context.Context, tx sqlExecutor) bool {
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM oauth_clients").Scan(&count); err != nil {
+		return false
+	}
+	if count < hostedOAuthClientLimit {
+		return true
+	}
+	cutoff := nowMillis() - int64(24*time.Hour/time.Millisecond)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM oauth_clients WHERE client_id IN (SELECT c.client_id FROM oauth_clients c WHERE c.created_at<?
+AND NOT EXISTS(SELECT 1 FROM oauth_requests q WHERE q.client_id=c.client_id)
+AND NOT EXISTS(SELECT 1 FROM oauth_tokens t WHERE t.client_id=c.client_id)
+ORDER BY c.created_at LIMIT 100)`, cutoff); err != nil {
+		return false
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM oauth_clients").Scan(&count); err != nil {
+		return false
+	}
+	return count < hostedOAuthClientLimit
 }

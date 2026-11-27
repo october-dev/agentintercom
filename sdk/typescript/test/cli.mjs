@@ -58,9 +58,34 @@ test('launcher forwards literal arguments, stdio, signals, and exit status witho
     host.emit('SIGTERM')
     assert.deepEqual(forwarded, ['SIGINT', 'SIGTERM'])
     child.emit('exit', typeof outcome === 'number' ? outcome : null, typeof outcome === 'string' ? outcome : null)
-    if (typeof outcome === 'number') assert.equal(host.exitCode, outcome)
+    assert.equal(host.exitCode, typeof outcome === 'number' ? outcome : 143)
     assert.equal(host.listenerCount('SIGINT') + host.listenerCount('SIGTERM'), 0)
   }
+})
+
+test('launcher keeps an ignored signal from becoming a successful exit', () => {
+  const child = new EventEmitter()
+  const host = new EventEmitter()
+  host.pid = 42
+  host.kill = () => assert.fail('SIGPIPE must not be raised in the launcher')
+  run([], '/fixture/native', () => child, host)
+  child.emit('exit', null, 'SIGPIPE')
+  assert.equal(host.exitCode, 141)
+})
+
+test('launcher leaves Windows console interrupts to the native child', () => {
+  const child = new EventEmitter()
+  const host = new EventEmitter()
+  host.platform = 'win32'
+  const forwarded = []
+  child.kill = signal => forwarded.push(signal)
+  run([], 'C:\\fixture\\agentintercom.exe', () => child, host)
+  assert.equal(host.listenerCount('SIGINT'), 1)
+  host.emit('SIGINT')
+  assert.deepEqual(forwarded, [])
+  child.emit('exit', 0, null)
+  assert.equal(host.exitCode, 0)
+  assert.equal(host.listenerCount('SIGINT'), 0)
 })
 
 test('spawn failure reports failure and removes signal handlers', t => {

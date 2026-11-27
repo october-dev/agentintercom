@@ -28,6 +28,8 @@ const (
 	activeTaskCap                = 5000
 	pendingEscalationCapPerAgent = 100
 	pendingEscalationCapPerScope = 1000
+	// maxActiveMessages bounds a backlog that includes escalation answers.
+	maxActiveMessages = messageBacklogCap + pendingEscalationCapPerScope
 )
 
 type Principal struct {
@@ -846,7 +848,14 @@ func sendMessageTx(ctx context.Context, tx sqlExecutor, scopeID string, senderKi
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE scope_id=? AND state NOT IN ('acknowledged','expired')`, scopeID).Scan(&backlog); err != nil {
 		return Message{}, err
 	}
-	if backlog >= messageBacklogCap {
+	// An answer to a pending escalation completes accepted work, so a full
+	// backlog must not leave the human unable to answer. Answers get bounded
+	// headroom of their own.
+	limit := messageBacklogCap
+	if ctx.Value(completionDeliveryKey{}) == true {
+		limit = maxActiveMessages
+	}
+	if backlog >= limit {
 		return Message{}, Errorf(CodeBackpressure, "Scope message backlog is full")
 	}
 	if err := consumeHostedDelivery(ctx, tx, scopeID, mode, now); err != nil {
@@ -1132,6 +1141,11 @@ func (s *Store) CommitInbox(ctx context.Context, principal Principal, reservatio
 	if err != nil {
 		return nil, err
 	}
+	// Materialize message expiry first, so an expired reservation never
+	// releases a message that has itself expired.
+	if err := expireMessages(ctx, tx, principal.ScopeID, nowMillis()); err != nil {
+		return nil, err
+	}
 	if expiresAt <= nowMillis() {
 		if err := releaseReservation(ctx, tx, principal.ScopeID, principal.AgentID, reservationID); err != nil {
 			return nil, err
@@ -1140,9 +1154,6 @@ func (s *Store) CommitInbox(ctx context.Context, principal Principal, reservatio
 			return nil, err
 		}
 		return nil, Errorf(CodeConflict, "Inbox reservation expired")
-	}
-	if err := expireMessages(ctx, tx, principal.ScopeID, nowMillis()); err != nil {
-		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE reservation_id=? AND scope_id=? AND to_kind='agent' AND to_id=? AND state='reserved' ORDER BY created_at`, reservationID, principal.ScopeID, principal.AgentID)
 	if err != nil {
@@ -1471,6 +1482,16 @@ func (s *Store) ClaimTask(ctx context.Context, principal Principal, taskID strin
 	return task, nil
 }
 
+// requireTaskExists distinguishes an unknown task from one in the wrong state.
+func requireTaskExists(ctx context.Context, q sqlExecutor, scopeID, taskID string) error {
+	var exists int
+	err := q.QueryRowContext(ctx, `SELECT 1 FROM tasks WHERE scope_id=? AND task_id=?`, scopeID, taskID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Errorf(CodeNotFound, "Task "+taskID+" was not found")
+	}
+	return err
+}
+
 func (s *Store) CompleteTask(ctx context.Context, principal Principal, taskID, note string) (Task, error) {
 	tx, err := s.beginTx(ctx, principal.ScopeID)
 	if err != nil {
@@ -1488,6 +1509,9 @@ func (s *Store) CompleteTask(ctx context.Context, principal Principal, taskID, n
 	}
 	changed, _ := result.RowsAffected()
 	if changed != 1 {
+		if err := requireTaskExists(ctx, tx, principal.ScopeID, taskID); err != nil {
+			return Task{}, err
+		}
 		return Task{}, Errorf(CodeConflict, "Task "+taskID+" is not claimed by this agent")
 	}
 	if err := appendEvent(ctx, tx, principal.ScopeID, "task.completed", taskID, eventAttributes(
@@ -1522,6 +1546,9 @@ func (s *Store) ReleaseTask(ctx context.Context, principal Principal, taskID str
 	}
 	changed, _ := result.RowsAffected()
 	if changed != 1 {
+		if err := requireTaskExists(ctx, tx, principal.ScopeID, taskID); err != nil {
+			return Task{}, err
+		}
 		return Task{}, Errorf(CodeConflict, "Task "+taskID+" is not claimed by this execution")
 	}
 	if err := appendEvent(ctx, tx, principal.ScopeID, "task.released", taskID, eventAttributes(

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strings"
@@ -37,6 +38,9 @@ func hostedCommand(args []string) error {
 	}
 	flags.Var(&origins, "allow-origin", "additional exact HTTPS browser origin; repeatable")
 	flags.Var(&issuers, "auth-issuer", "additional exact trusted Auth issuer; repeatable")
+	clientHeader := flags.String("client-ip-header", "", "forwarding header (for example X-Forwarded-For) that the TLS proxy sets to the client address; enables per-client limits on OAuth and device pairing")
+	var proxies stringList
+	flags.Var(&proxies, "trusted-proxy", "proxy IP or CIDR whose forwarding-header entries are skipped; repeatable; default loopback")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -45,6 +49,10 @@ func hostedCommand(args []string) error {
 	}
 	if *attachments == "" {
 		return errors.New("--attachments-dir or OCTOBER_BUS_ATTACHMENTS_DIR is required for hosted file storage")
+	}
+	clientAddress, err := hostedClientAddress(*clientHeader, proxies)
+	if err != nil {
+		return err
 	}
 	host, _, err := net.SplitHostPort(*listen)
 	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
@@ -84,7 +92,7 @@ func hostedCommand(args []string) error {
 		stopBilling := billing.StartMaintenance()
 		defer stopBilling()
 	}
-	handler, err := bus.NewHostedServer(accounts, bus.HostedServerOptions{PublicURL: *public, AllowedOrigins: origins, Identity: identity, Billing: billing})
+	handler, err := bus.NewHostedServer(accounts, bus.HostedServerOptions{PublicURL: *public, AllowedOrigins: origins, Identity: identity, Billing: billing, ClientAddress: clientAddress})
 	if err != nil {
 		return err
 	}
@@ -115,4 +123,26 @@ func hostedCommand(args []string) error {
 		return shutdownErr
 	}
 	return closeErr
+}
+
+func hostedClientAddress(header string, proxies []string) (*bus.HostedClientAddress, error) {
+	if header == "" {
+		if len(proxies) != 0 {
+			return nil, errors.New("--trusted-proxy requires --client-ip-header")
+		}
+		return nil, nil
+	}
+	address := &bus.HostedClientAddress{Header: header}
+	for _, value := range proxies {
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			addr, addrErr := netip.ParseAddr(value)
+			if addrErr != nil {
+				return nil, fmt.Errorf("--trusted-proxy %q is not an IP address or CIDR prefix", value)
+			}
+			prefix = netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen())
+		}
+		address.TrustedProxies = append(address.TrustedProxies, prefix.Masked())
+	}
+	return address, nil
 }

@@ -106,7 +106,7 @@ func (f *hostedOAuthFixture) approveReplacement(id, replaceID string) string {
 	requireNoError(f.t, json.Unmarshal(response.Body.Bytes(), &envelope))
 	u, err := url.Parse(envelope.Result.URL)
 	requireNoError(f.t, err)
-	require(f.t, u.Scheme == "http" && u.Host == "127.0.0.1:5555" && u.Query().Get("state") == "state-test", "consent redirected elsewhere")
+	require(f.t, u.Scheme == "http" && u.Host == "127.0.0.1:5555" && u.Query().Get("state") == "state-test" && u.Query().Get("iss") == "https://bus.example.test", "consent redirected elsewhere")
 	return u.Query().Get("code")
 }
 
@@ -174,7 +174,6 @@ func TestHostedOAuthPKCERotationAndReplay(t *testing.T) {
 	var issued issuedOAuthTokens
 	requireNoError(t, json.Unmarshal(result.Body.Bytes(), &issued))
 	require(t, strings.HasPrefix(issued.Access, "oba_") && strings.HasPrefix(issued.Refresh, "obr_"), "missing scoped opaque tokens")
-	require(t, f.exchange(code, f.verifier).Code == 400, "authorization code replay succeeded")
 	_, err := f.h.oauthExecution(f.ctx, issued.Access)
 	requireNoError(t, err)
 	params := url.Values{"grant_type": {"refresh_token"}, "client_id": {f.clientID}, "refresh_token": {issued.Refresh}, "resource": {"https://other.example/mcp"}}
@@ -196,6 +195,31 @@ func TestHostedOAuthPKCERotationAndReplay(t *testing.T) {
 	require(t, f.call("POST", "/oauth/token", "", params.Encode()).Code == 400, "refresh replay succeeded")
 	_, err = f.h.oauthExecution(f.ctx, next.Access)
 	requireCode(t, err, CodeUnauthenticated)
+}
+
+func TestHostedOAuthCodeReplayRevokesIssuedTokens(t *testing.T) {
+	f := newHostedOAuthFixture(t)
+	code := f.approve(f.authorization())
+	result := f.exchange(code, f.verifier)
+	require(t, result.Code == 200, "exchange: %s", result.Body.String())
+	var issued issuedOAuthTokens
+	requireNoError(t, json.Unmarshal(result.Body.Bytes(), &issued))
+	_, err := f.h.oauthExecution(f.ctx, issued.Access)
+	requireNoError(t, err)
+
+	// Someone who observed the code but lacks its PKCE verifier cannot use a
+	// replay to revoke the legitimate connection.
+	require(t, f.exchange(code, strings.Repeat("x", 64)).Code == 400, "code replay with the wrong verifier succeeded")
+	_, err = f.h.oauthExecution(f.ctx, issued.Access)
+	requireNoError(t, err)
+
+	// A replay with the verifier revokes every token issued from the code.
+	replayed := f.exchange(code, f.verifier)
+	require(t, replayed.Code == 400 && strings.Contains(replayed.Body.String(), "invalid_grant"), "authorization code replay succeeded: %s", replayed.Body.String())
+	_, err = f.h.oauthExecution(f.ctx, issued.Access)
+	requireCode(t, err, CodeUnauthenticated)
+	params := url.Values{"grant_type": {"refresh_token"}, "client_id": {f.clientID}, "refresh_token": {issued.Refresh}}
+	require(t, f.call("POST", "/oauth/token", "", params.Encode()).Code == 400, "refresh token issued from a replayed code still works")
 }
 
 func TestHostedOAuthConcurrentCodeRedemption(t *testing.T) {
@@ -329,4 +353,29 @@ func TestHostedOAuthConsentAndRedirectBoundaries(t *testing.T) {
 	requireNoError(t, err)
 	_, err = f.h.oauthExecution(f.ctx, issued.Access)
 	requireCode(t, err, CodeUnauthenticated)
+}
+
+func TestHostedOAuthRegistrationRecoversCapacityFromAbandonedClients(t *testing.T) {
+	f := newHostedOAuthFixture(t)
+	register := func() *httptest.ResponseRecorder {
+		return f.call("POST", "/oauth/register", "", `{"client_name":"Capacity","redirect_uris":["http://127.0.0.1:5555/callback"],"token_endpoint_auth_method":"none"}`)
+	}
+	_, err := f.h.accounts.store.db.ExecContext(f.ctx, "INSERT INTO oauth_clients(client_id,name,redirects_json,created_at,auth_method,secret_hash) VALUES(?,?,?,?,?,?)", "abandoned-capacity-client", "Abandoned", `["http://127.0.0.1:5555/callback"]`, 1, "none", oauthHash(""))
+	requireNoError(t, err)
+	var count int
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients").Scan(&count))
+	previous := hostedOAuthClientLimit
+	hostedOAuthClientLimit = count
+	t.Cleanup(func() { hostedOAuthClientLimit = previous })
+	response := register()
+	require(t, response.Code == 201, "registration at capacity did not evict an abandoned client: %d %s", response.Code, response.Body.String())
+	var remaining int
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients WHERE client_id=?", "abandoned-capacity-client").Scan(&remaining))
+	require(t, remaining == 0, "abandoned client was kept")
+	var active int
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients WHERE client_id=?", f.clientID).Scan(&active))
+	require(t, active == 1, "a recently registered client was evicted")
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients").Scan(&count))
+	hostedOAuthClientLimit = count
+	require(t, register().Code == 503, "registration exceeded capacity without an evictable client")
 }

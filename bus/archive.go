@@ -681,7 +681,7 @@ func validateArchive(archive *ScopeArchive) error {
 			}
 		}
 	}
-	if activeMessages > messageBacklogCap {
+	if activeMessages > maxActiveMessages {
 		return Errorf(CodeInvalidArgument, "Archive message backlog exceeds the scope limit")
 	}
 	for _, message := range archive.Messages {

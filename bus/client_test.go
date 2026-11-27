@@ -1,10 +1,12 @@
 package bus
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 )
 
@@ -95,5 +97,31 @@ func TestClientUploadAttachmentResponses(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPullInboxReleasesReservationWhenCommitFails(t *testing.T) {
+	var released atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/inbox/reserve":
+			w.Write([]byte(`{"ok":true,"result":{"id":"res_1","messages":[]}}`))
+		case "/v1/inbox/res_1/commit":
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"ok":false,"error":{"code":"UNAVAILABLE","message":"try again"}}`))
+		case "/v1/inbox/res_1/release":
+			released.Store(true)
+			w.Write([]byte(`{"ok":true,"result":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	_, err := (Client{Address: server.URL, Token: "agent"}).PullInbox(context.Background(), 10, 0)
+	if err == nil {
+		t.Fatal("failed commit was reported as success")
+	}
+	if !released.Load() {
+		t.Fatal("reservation was not released after a failed commit")
 	}
 }

@@ -2,6 +2,8 @@ package bus
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 )
 
@@ -136,6 +138,17 @@ func (a *HostedAccounts) RevokeInvite(ctx context.Context, user HostedUser, scop
 	}
 	if role == "member" {
 		return Errorf(CodePermissionDenied, "An admin or owner must manage invitations")
+	}
+	var inviteRole string
+	switch err := tx.QueryRowContext(ctx, "SELECT role FROM hosted_invites WHERE scope_id=? AND invite_id=?", scopeID, id).Scan(&inviteRole); {
+	case errors.Is(err, sql.ErrNoRows):
+		return tx.Commit()
+	case err != nil:
+		return err
+	}
+	// Admins may revoke only the invitations their role can issue.
+	if role != "owner" && inviteRole != "member" {
+		return Errorf(CodePermissionDenied, "Your workspace role cannot revoke this invitation")
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE hosted_invites SET revoked_at=? WHERE scope_id=? AND invite_id=? AND revoked_at=0", nowMillis(), scopeID, id)
 	if err != nil {

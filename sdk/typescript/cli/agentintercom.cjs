@@ -3,6 +3,7 @@
 
 const { spawn } = require('node:child_process')
 const { accessSync, constants, readFileSync, statSync } = require('node:fs')
+const { constants: { signals } } = require('node:os')
 const { dirname, join } = require('node:path')
 const manifest = require('../package.json')
 
@@ -40,7 +41,12 @@ function resolveBinary(platform = process.platform, arch = process.arch, resolve
 
 function run(args = process.argv.slice(2), binary = resolveBinary(), spawnChild = spawn, host = process) {
   const child = spawnChild(binary, args, { stdio: 'inherit', shell: false })
-  const forwarders = new Map(['SIGINT', 'SIGTERM'].map(signal => [signal, () => child.kill(signal)]))
+  // The Windows console already delivers Ctrl+C to the native child, and
+  // child.kill() there terminates it without letting the daemon shut down.
+  // Only keep the launcher alive until the child exits.
+  const forwarders = host.platform === 'win32'
+    ? new Map([['SIGINT', () => {}]])
+    : new Map(['SIGINT', 'SIGTERM'].map(signal => [signal, () => child.kill(signal)]))
   for (const [signal, forward] of forwarders) host.on(signal, forward)
   const cleanup = () => {
     for (const [signal, forward] of forwarders) host.removeListener(signal, forward)
@@ -52,8 +58,12 @@ function run(args = process.argv.slice(2), binary = resolveBinary(), spawnChild 
   })
   child.once('exit', (code, signal) => {
     cleanup()
-    if (signal) host.kill(host.pid, signal)
-    else host.exitCode = code ?? 1
+    if (signal) {
+      // Node ignores SIGPIPE and starts its inspector on SIGUSR1, so those are
+      // reported through the exit status instead of being raised again.
+      host.exitCode = 128 + (signals[signal] ?? 0)
+      if (signal !== 'SIGPIPE' && signal !== 'SIGUSR1') host.kill(host.pid, signal)
+    } else host.exitCode = code ?? 1
   })
   return child
 }

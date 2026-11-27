@@ -164,7 +164,7 @@ func (s *Store) BackupBundle(ctx context.Context, output io.Writer) error {
 		if err := s.files.open(s.source); err != nil {
 			return err
 		}
-		data, err := s.readAttachmentFile(a, 0, a.Size)
+		data, err := readAttachmentFile(s.files.root, a, 0, a.Size)
 		if err != nil {
 			return err
 		}

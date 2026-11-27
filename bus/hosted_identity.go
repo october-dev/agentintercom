@@ -124,7 +124,9 @@ func (v *SupabaseIdentity) Authenticate(ctx context.Context, token string) (Host
 		return cached.user, nil
 	}
 	result, err, _ := v.pending.Do(digest, func() (any, error) {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, v.origin+"/auth/v1/user", nil)
+		// Concurrent callers share this lookup, so one caller's cancellation
+		// must not fail the others. The client timeout still bounds it.
+		request, err := http.NewRequestWithContext(context.WithoutCancel(ctx), http.MethodGet, v.origin+"/auth/v1/user", nil)
 		if err != nil {
 			return HostedUser{}, err
 		}

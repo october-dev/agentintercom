@@ -36,14 +36,13 @@ func (s *Store) exportAttachments(ctx context.Context, tx sqlExecutor, scopeID s
 	if len(archive.Attachments) == 0 {
 		return nil
 	}
-	s.files.mu.Lock()
-	defer s.files.mu.Unlock()
-	if err := s.files.open(s.source); err != nil {
+	root, err := s.files.readable(s.source)
+	if err != nil {
 		return err
 	}
 	for i := range archive.Attachments {
 		a := &archive.Attachments[i]
-		data, err := s.readAttachmentFile(a.Attachment, 0, a.Size)
+		data, err := readAttachmentFile(root, a.Attachment, 0, a.Size)
 		if err != nil {
 			return err
 		}
@@ -132,7 +131,7 @@ func (s *Store) importAttachments(ctx context.Context, tx sqlExecutor, archive S
 		}
 		// A retry after a rolled-back import may find the already durable bytes.
 		if _, err := s.files.root.Lstat(a.ID); err == nil {
-			if _, err := s.readAttachmentFile(a.Attachment, 0, a.Size); err != nil {
+			if _, err := readAttachmentFile(s.files.root, a.Attachment, 0, a.Size); err != nil {
 				return err
 			}
 		} else if !os.IsNotExist(err) {

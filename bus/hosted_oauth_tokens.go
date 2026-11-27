@@ -2,7 +2,10 @@ package bus
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"mime"
 	"net/http"
@@ -111,22 +114,16 @@ func (h *HostedServer) oauthToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if record.Consumed != 0 {
-		if grantType == oauth2.Refreshing {
-			// A rotated refresh token was replayed. Retire the entire connection,
-			// including the current replacement token, before returning the error.
-			if retireHostedSessions(ctx, tx, record.ScopeID, "", record.DeviceID) != nil {
+		// A replayed refresh token or authorization code retires the entire
+		// connection, including tokens already issued from it (RFC 6749
+		// sections 4.1.2 and 10.4). A code replay must also prove possession of
+		// its PKCE verifier, so a party that only observed the code cannot use
+		// the replay to revoke someone else's connection.
+		if grantType == oauth2.Refreshing || pkceVerifierMatches(stored, r.PostForm.Get("code_verifier")) {
+			if !h.revokeReplayedGrant(ctx, tx, record) {
 				oauthFailure(w, 500, "server_error", "Could not revoke replayed grant")
 				return
 			}
-			if _, err := tx.ExecContext(ctx, "UPDATE hosted_devices SET revoked_at=? WHERE device_id=?", nowMillis(), record.DeviceID); err != nil {
-				oauthFailure(w, 500, "server_error", "Could not revoke replayed grant")
-				return
-			}
-			if tx.Commit() != nil {
-				oauthFailure(w, 500, "server_error", "Could not revoke replayed grant")
-				return
-			}
-			h.accounts.runtime.signals.notifyAllScope(record.ScopeID)
 		}
 		oauthFailure(w, 400, "invalid_grant", "Grant was already used; reconnect the application")
 		return
@@ -159,6 +156,30 @@ func (h *HostedServer) oauthToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, h.oauth.GetTokenData(issued))
+}
+
+// revokeReplayedGrant retires every session and token of the replayed grant's
+// connection and commits the transaction.
+func (h *HostedServer) revokeReplayedGrant(ctx context.Context, tx *sqlTransaction, record oauthTokenRecord) bool {
+	if retireHostedSessions(ctx, tx, record.ScopeID, "", record.DeviceID) != nil {
+		return false
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE hosted_devices SET revoked_at=? WHERE device_id=?", nowMillis(), record.DeviceID); err != nil {
+		return false
+	}
+	if tx.Commit() != nil {
+		return false
+	}
+	h.accounts.runtime.signals.notifyAllScope(record.ScopeID)
+	return true
+}
+
+func pkceVerifierMatches(token *models.Token, verifier string) bool {
+	if token == nil || token.CodeChallenge == "" || token.CodeChallengeMethod != string(oauth2.CodeChallengeS256) || !oauthVerifierPattern.MatchString(verifier) {
+		return false
+	}
+	sum := sha256.Sum256([]byte(verifier))
+	return subtle.ConstantTimeCompare([]byte(base64.RawURLEncoding.EncodeToString(sum[:])), []byte(token.CodeChallenge)) == 1
 }
 
 func (h *HostedServer) oauthRevoke(w http.ResponseWriter, r *http.Request) {
