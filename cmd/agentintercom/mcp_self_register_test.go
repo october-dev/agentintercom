@@ -93,7 +93,9 @@ func TestMCPStdioSelfRegisteredLifecycle(t *testing.T) {
 	replacement := connect()
 	defer replacement.Close()
 	stale, err := bridge.CallTool(ctx, &mcp.CallToolParams{Name: "list_peers", Arguments: map[string]any{}})
-	require(t, err != nil || stale.IsError, "replaced bridge retained authority")
+	// The first call after replacement, before the next heartbeat, already
+	// reports the ended execution with its recovery steps.
+	require(t, err == nil && isEndedBridgeResult(stale), "replaced bridge did not report its ended execution: %v %#v", err, stale)
 	requireNoError(t, replacement.Close())
 	agents, err := owner.ListAgents(ctx)
 	requireNoError(t, err)
