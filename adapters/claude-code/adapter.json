@@ -26,7 +26,8 @@
     "Configuration reviewed against upstream documentation; this adapter revision has no named-harness certification",
     "Pull-only: queued work does not start a model turn",
     "One MCP configuration is one execution; duplicate agent IDs replace earlier executions",
-    "When its execution ends (replacement, scope token rotation, lease expiry or a lost daemon connection) the server stays connected but every tool fails; reconnect it from /mcp or restart the window to register again"
+    "When its execution ends (replacement, scope token rotation, lease expiry or a lost daemon connection) the server stays connected but every tool fails; reconnect it from /mcp or restart the window to register again",
+    "claude mcp list and claude mcp get start a bridge with the configured agent ID for their health check, replacing a live session with that ID"
   ],
   "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
