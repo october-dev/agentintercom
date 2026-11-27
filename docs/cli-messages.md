@@ -4,7 +4,15 @@ A connected process can use CLI commands with the same execution credential as
 MCP. `agent run` supplies that credential and keeps its lease alive. It removes
 workspace and administrator tokens from the child environment.
 
-For example, start two shell sessions in a local workspace:
+For example, start two shell sessions in a local workspace. If the daemon is not
+already running as a login service, start it with `agentintercom start` in
+another terminal, then create the workspace once:
+
+```sh
+agentintercom workspace create project
+```
+
+Then start the two sessions:
 
 ```sh
 agentintercom agent run --scope project --id first --name 'First session' -- bash
