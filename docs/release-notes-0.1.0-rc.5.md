@@ -46,7 +46,7 @@ release. Existing `latest` remains unchanged; use the explicit version or `next`
 ## Qualification boundary
 
 The managed transport has automated Go race tests, actual Desktop Core transport
-tests and a check using Saturday's connection-file writer. Those checks do not
+tests and a check using the hosted service's connection-file writer. Those checks do not
 establish live SSH/model qualification or a production cloud deployment. Issue
 [#126](https://github.com/october-dev/october-bus/issues/126) still needs the consumer
 artifact pin and the live-host checks after publication. Cloud WebSocket support

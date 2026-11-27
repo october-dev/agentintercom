@@ -15,7 +15,7 @@ ownership, commands, artifacts, evidence and what remains on the Desktop side.
 | --- | --- |
 | Agent Intercom native helper (`agentintercom`) | MCP bridge over a controller-managed connection, per-request credential reread, next-call reconnect without replaying a failed mutation, Claude/Codex lifecycle hook, bounded setup check, hosted-gateway self-registration. |
 | October Desktop / Core | Canvas identity, execution credentials and their renewal/retirement, the connection file writer, SSH supervision and the loopback route, tmux ownership and foreground proof, safe input delivery, helper installation, Settings cards, readiness decisions. |
-| October Cloud controller | Hosted authority, HTTPS worker MCP/hook routes, worker admission and lifecycle while the laptop is off. Deployment and live qualification remain controller work. |
+| October hosted service | Hosted authority, HTTPS worker MCP/hook routes, worker admission and lifecycle while the laptop is off. Deployment and live qualification remain controller work. |
 
 There is one authority per collaboration scope. The helper never starts a second
 daemon or database for a Desktop workspace; it forwards Desktop Core's actual
@@ -29,7 +29,7 @@ All three read the same connection file, from `--connection-file` or
 | Command | Role | Exit |
 | --- | --- | --- |
 | `agentintercom mcp stdio --connection-file <path>` | Long-lived MCP bridge for the harness. Refuses if launcher credentials, local registration flags or `--remote` are also present. | Non-zero only on startup failure; runtime failures surface as tool errors plus one stderr line per failure class. |
-| `agentintercom hook [--connection-file <path>] <event> [claude\|codex]` | Per-event lifecycle reporter, invoked by the harness. Same argv shape as Desktop's `bus-hook.mjs` (`<event> [<flavor>]`). | Always 0. Silent and offline when no file is named. |
+| `agentintercom hook [--connection-file <path>] <event> [claude\|codex]` | Per-event lifecycle reporter, invoked by the harness. Same argv shape as Desktop's Node hook script (`<event> [<flavor>]`). | Always 0. Silent and offline when no file is named. |
 | `agentintercom mcp check [--connection-file <path>] [--json]` | Setup diagnostic: file validation plus one JSON-RPC `ping`. Never `initialize`, never touches the inbox. | 0 on `ok`, 1 otherwise. |
 | `agentintercom version [--json]` (or `--version`) | Version pin verification: `{"runtimeVersion","protocolVersion"}`. | 0 |
 
@@ -48,9 +48,8 @@ Failure classes for all of them: `invalid-configuration`, `expired-credential`,
   `canvas`/`node`/`launch` on hook routes. They are never authority; Core
   resolves identity from the Bearer and refuses conflicting labels.
 - **Credentials.** `agentToken` is the execution's MCP capability (the token
-  Desktop registers with `capability.bindMcp`, `terminal:<epoch>`). `hookToken`
-  is the execution's hook capability (the token `bindHookCapability` mints for
-  the same `terminal:<epoch>` binding). Both are 32 random bytes, unpadded
+  Desktop binds to the `terminal:<epoch>` execution). `hookToken` is the
+  execution's hook capability, minted for the same `terminal:<epoch>` binding. Both are 32 random bytes, unpadded
   base64url. Nothing else ever enters the file: not the Core desktop/CLI
   credential, not the process-lifetime `busHookToken()`, not a scope token.
 - **Renewal.** Write a new file and `rename(2)` it over the old one. The bridge
@@ -64,7 +63,7 @@ Failure classes for all of them: `invalid-configuration`, `expired-credential`,
 - **Route.** `endpoint` is HTTPS or literal-loopback HTTP; `httpHost` carries
   Core's real port when the SSH reverse-forward port differs. Redirects refuse.
   The standalone hosted Bus gateway uses HTTPS with `/bus/mcp` and no `httpHost`;
-  it does not serve hooks. Saturday cloud uses its existing HTTPS
+  it does not serve hooks. The October hosted service uses its HTTPS
   `/api/compute/workers/<environment>/mcp` and sibling `/hook/*` routes, with
   `gateway` binding the record to that origin. Unknown file fields still refuse.
   Neither mode sends `Origin` or `X-October-Caller-Pid`.
@@ -99,8 +98,8 @@ Verified by the tests listed under evidence:
 See [examples/desktop-remote](../examples/desktop-remote/) for complete files.
 
 - **Claude Code.** Per-launch `settings.json` hooks call
-  `"<helper>" hook <event>` with the same events and args as
-  `claudeLaunchSettings` today (`session-start`, `pre-prompt`, `stop`,
+  `"<helper>" hook <event>` with the same events and args as Desktop's
+  existing launch settings (`session-start`, `pre-prompt`, `stop`,
   `stop-failure`, `session-end`, `notify`, `permission-request`,
   `post-tool-use`, `post-tool-use-failure`, `ask-user-question`,
   `ask-user-question-resolved`). The per-launch `.mcp.json` runs
@@ -155,8 +154,7 @@ install -m 0755 "agentintercom_${VERSION}_linux_${ARCH}/agentintercom" \
 # {"protocolVersion":"0.1","runtimeVersion":"<pinned version>"}
 ```
 
-Copy the published `remote-bus-runtime.json` into Desktop's
-`src/shared/remote-bus-runtime.json`. Verify its archive and binary hashes and
+Pin the published `remote-bus-runtime.json` in the controller. Verify its archive and binary hashes and
 compare both versions after installation. `qualification: "release"` records
 the reviewed CI artifact path, not a claim of live model qualification. No daemon
 is started; no credential is copied by the installer.
@@ -192,7 +190,7 @@ Claude/Codex model, no cloud provisioning, no publication.
 | `go test ./cmd/october-bus ./internal/... -count=1 -race` | ok (20.4 s, 2.5 s) |
 | `go test ./... -count=1` | ok, all five packages |
 | `go vet ./cmd/october-bus ./internal/...`, `go build ./...`, `gofmt -l` | clean |
-| Desktop opt-in `OCTOBER_BUS_TEST_BINARY=… vitest run src/core/agent-api.integration.test.ts -t 'native Bus bridge'` | 1 passed, 36 skipped. Real helper ↔ temporary Core through a TCP forward: send, reply, inbox pull, receipt ack, renewed credential, refusal recovery, execution-change refusal. |
+| October Desktop opt-in native bridge integration test (`OCTOBER_BUS_TEST_BINARY=…`) | 1 passed, 36 skipped. Real helper ↔ temporary Core through a TCP forward: send, reply, inbox pull, receipt ack, renewed credential, refusal recovery, execution-change refusal. |
 | Linux cross-builds | `ELF 64-bit LSB executable, x86-64 … statically linked` and `… ARM aarch64 … statically linked`; archives 6.2 MB and 5.7 MB. |
 | Fixture exercise (`examples/desktop-remote`) | `mcp check` → `unreachable`, exit 1; bound hook → one stderr line, exit 0; unbound hook → silent, exit 0; `mcp stdio` without identity → refuses. |
 
@@ -215,14 +213,13 @@ hosted gateway with a live TLS endpoint, laptop-off operation.
 ### Integration follow-up (2026-09-24)
 
 - `go test -race -count=1 ./...` passed all ten packages; `go vet ./...` passed.
-- Desktop at `d5f7a0e2dbeb72cdd69b503e0f50367b79bfde88`: the opt-in native
-  bridge test passed against the built helper (1 passed, 40 skipped). It uses
+- October Desktop: the opt-in native bridge test passed against the built helper (1 passed, 40 skipped). It uses
   the real Core API and a local TCP forward for messaging, replies, inbox
   acknowledgement, credential renewal, refusal recovery and execution fencing.
-- Saturday PR #63 at `6c867ee3eae760f7616b7b6b8d507b5e509ef46b`: the actual
-  `ComputeController.heartbeat` writer, with synthetic store/authority dependencies,
-  produced a connection accepted unchanged by both `validateLease` and the built
-  helper. Against a deliberately closed HTTPS loopback endpoint, `mcp check`
+- October hosted service: its connection-file writer, with synthetic
+  store/authority dependencies,
+  produced a connection accepted unchanged by both the service's own lease
+  validation and the built helper. Against a deliberately closed HTTPS loopback endpoint, `mcp check`
   reports `unreachable`, resolving the previous `invalid-configuration` failure
   on `gateway`. This proves the writer/reader contract, not a live cloud service.
 - `TestManagedMCPCloudHTTPSConnection` exercises the full cloud-shaped record
@@ -232,8 +229,8 @@ hosted gateway with a live TLS endpoint, laptop-off operation.
 - Hook fixtures now reject `Origin` and `X-October-Caller-Pid`, matching Desktop's
   remote listener. Startup/discovery refusal tests verify that authority response
   bodies and tokens cannot appear in managed bridge diagnostics.
-- The setup probe requires a valid ping result. In particular, Saturday's HTTP
-  400 credential refusal cannot be mistaken for successful admission.
+- The setup probe requires a valid ping result. In particular, the hosted service's
+  HTTP 400 credential refusal cannot be mistaken for successful admission.
 - The Linux manifest test builds real clean fixture binaries for both
   architectures, verifies their archive/binary hashes and rejects wrong commits,
   dirty source, wrong architecture and absent VCS metadata. Release-policy tests
@@ -248,7 +245,7 @@ consumer's cloud integration.
 - Connection-file mode is Unix-only; Windows ACL checks are not implemented.
 - Hooks support `claude` and `codex` only; other flavors are refused on stderr.
 - Hooks use Desktop-compatible routes on the endpoint's origin and path prefix.
-  Desktop Core and Saturday compute serve them; the standalone Bus gateway does
+  Desktop Core and the hosted compute gateway serve them; the standalone Bus gateway does
   not.
 - `mcp check` proves route and credential admission, not agent readiness. Only
   the controller's process/foreground evidence can say the model is ready or
@@ -266,10 +263,10 @@ consumer's cloud integration.
 - `c6f66cc` merge of `feat/hosted-mcp-gateway` (`dba3ece`, PR #120).
 - The documentation, fixture and release-workflow commit that follows.
 
-## Required Desktop follow-ups
+## Controller integration requirements
 
-1. **Connection file writer.** Add `hookToken` (the `terminal:<epoch>` hook
-   capability from `bindHookCapability`) next to `agentToken`; renew both by
+1. **Connection file writer.** Write `hookToken` (the `terminal:<epoch>` hook
+   capability) next to `agentToken`; renew both by
    atomic rename; delete the file on retirement; never reuse labels for a
    replacement execution. Keep `scopeId`/`agentId`/`executionId` =
    canvas/node/epoch.
@@ -277,9 +274,8 @@ consumer's cloud integration.
    session environment for every managed launch (Codex needs it; Claude may use
    the explicit flag in its per-launch `.mcp.json`).
 3. **Hook installation.** Generate hook commands as `"<helper>" hook <arg>` with
-   the existing `arg` strings instead of `"<node>" "<script>" <arg>`; extend
-   `isOctoberBusHookCommand`/migration recognition and the Codex trust-hash
-   seeding to the helper form. Existing routes, bodies and envelopes are
+   the existing `arg` strings instead of a Node hook script; extend hook
+   command recognition, migration and Codex hook trust to the helper form. Existing routes, bodies and envelopes are
    unchanged, so Core needs no change for hooks.
 4. **Installer.** Install the pinned Linux `agentintercom` from the release
    archive (checksum + attestation verified on the laptop) under the existing
@@ -290,4 +286,4 @@ consumer's cloud integration.
    foreground proofs; the hook's `session`/`notify`/`stop` reports feed those
    decisions. `/hook/wake` is not used by Claude/Codex.
 6. **Cross-repository test.** Keep `OCTOBER_BUS_TEST_BINARY` pointing at a build
-   of this branch; the `native Bus bridge` test contract is unchanged.
+   of this repository; the native bridge test contract is unchanged.
