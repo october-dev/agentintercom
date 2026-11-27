@@ -59,7 +59,7 @@ func (h *HostedServer) registerOAuthRoutes() {
 }
 
 func (h *HostedServer) oauthRegister(w http.ResponseWriter, r *http.Request) {
-	if !h.oauthRegistration.Allow() {
+	if !h.oauthRegistration.allow(r) {
 		oauthFailure(w, 429, "temporarily_unavailable", "Client registration is busy; retry shortly")
 		return
 	}
@@ -148,7 +148,7 @@ func (h *HostedServer) oauthRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HostedServer) oauthAuthorize(w http.ResponseWriter, r *http.Request) {
-	if !h.oauthAuthorization.Allow() {
+	if !h.oauthAuthorization.allow(r) {
 		oauthFailure(w, 429, "temporarily_unavailable", "Authorization is busy; retry shortly")
 		return
 	}

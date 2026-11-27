@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"golang.org/x/time/rate"
 )
 
 type DevicePairing struct {
@@ -204,10 +202,8 @@ func (a *HostedAccounts) PollDevicePairing(ctx context.Context, secret string) (
 }
 
 func (h *HostedServer) registerDevicePairingRoutes() {
-	creation := rate.NewLimiter(1, 20)
-	polling := rate.NewLimiter(50, 100)
 	h.routes.HandleFunc("POST /api/device/authorizations", func(w http.ResponseWriter, r *http.Request) {
-		if !creation.Allow() {
+		if !h.pairingCreation.allow(r) {
 			writeFailure(w, Errorf(CodeBackpressure, "Device requests are busy; retry shortly"))
 			return
 		}
@@ -227,7 +223,7 @@ func (h *HostedServer) registerDevicePairingRoutes() {
 		writeResult(w, 201, result)
 	})
 	h.routes.HandleFunc("POST /api/device/authorizations/token", func(w http.ResponseWriter, r *http.Request) {
-		if !polling.Allow() {
+		if !h.pairingPolling.allow(r) {
 			writeFailure(w, Errorf(CodeBackpressure, "Device requests are busy; retry shortly"))
 			return
 		}

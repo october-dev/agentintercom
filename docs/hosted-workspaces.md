@@ -114,6 +114,23 @@ proxy. Additional trusted Auth issuers can be declared explicitly with repeated
 service can set one additional exact issuer through `OCTOBER_BUS_AUTH_ISSUER`.
 Verify that it belongs to the configured project; custom Auth domains can still
 issue tokens under the project's original Supabase URL.
+OAuth client registration and authorization and device pairing have global
+rate limits. To also limit each client separately, so one client cannot use up
+those endpoints for everyone, pass the forwarding header your TLS proxy sets:
+
+```sh
+agentintercom hosted serve --public-url https://bus.example.com \
+  --client-ip-header X-Forwarded-For
+```
+
+The client is the rightmost address in that header that is not a trusted proxy;
+IPv6 clients are grouped by /64. Proxies are trusted only from loopback unless
+you list them with repeated `--trusted-proxy <ip-or-cidr>` flags, and the header
+is ignored on connections from any other address. Enable this only when the
+proxy overwrites or appends to the header for every request (Caddy's
+`reverse_proxy` does by default); otherwise clients could choose their own
+limit key. Per-client limits are off when `--client-ip-header` is not set.
+
 The supplied systemd unit reads `OCTOBER_BUS_PUBLIC_URL` from its private
 environment file and uses a separate release directory and system account. See
 the [deployment and recovery runbook](../deploy/hosted/STANDALONE.md) for schema

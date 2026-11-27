@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-oauth2/oauth2/v4/server"
 	"golang.org/x/time/rate"
@@ -16,6 +17,9 @@ type HostedServerOptions struct {
 	AllowedOrigins []string
 	Identity       HostedIdentityVerifier
 	Billing        *HostedBilling
+	// ClientAddress enables per-client limits on unauthenticated OAuth and
+	// device-pairing endpoints. Nil keeps only the global limits.
+	ClientAddress *HostedClientAddress
 }
 
 type HostedServer struct {
@@ -28,8 +32,10 @@ type HostedServer struct {
 	origins            map[string]bool
 	requests           chan struct{}
 	oauth              *server.Server
-	oauthRegistration  *rate.Limiter
-	oauthAuthorization *rate.Limiter
+	oauthRegistration  *endpointLimit
+	oauthAuthorization *endpointLimit
+	pairingCreation    *endpointLimit
+	pairingPolling     *endpointLimit
 	oauthRequests      chan struct{}
 	billing            *HostedBilling
 }
@@ -38,6 +44,9 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 	u, err := url.Parse(options.PublicURL)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || options.Identity == nil || accounts == nil {
 		return nil, errors.New("hosted service requires an HTTPS public origin, accounts and identity verifier")
+	}
+	if err := options.ClientAddress.validate(); err != nil {
+		return nil, err
 	}
 	h := &HostedServer{accounts: accounts, identity: options.Identity, routes: http.NewServeMux(), publicURL: strings.TrimRight(options.PublicURL, "/"), host: u.Host, origins: map[string]bool{}, requests: make(chan struct{}, 64)}
 	if options.Billing != nil && (options.Billing.accounts != accounts || options.Billing.options.PublicURL != h.publicURL) {
@@ -142,8 +151,11 @@ func NewHostedServer(accounts *HostedAccounts, options HostedServerOptions) (*Ho
 		}
 		writeResult(w, http.StatusOK, result)
 	})
-	h.oauthRegistration = rate.NewLimiter(1, 30)
-	h.oauthAuthorization = rate.NewLimiter(5, 50)
+	client := options.ClientAddress
+	h.oauthRegistration = newEndpointLimit(client, 1, rate.Every(10*time.Second), 30, 5)
+	h.oauthAuthorization = newEndpointLimit(client, 5, 1, 50, 10)
+	h.pairingCreation = newEndpointLimit(client, 1, rate.Every(5*time.Second), 20, 5)
+	h.pairingPolling = newEndpointLimit(client, 50, 2, 100, 10)
 	h.oauthRequests = make(chan struct{}, 32)
 	h.registerOAuthRoutes()
 	h.registerDevicePairingRoutes()

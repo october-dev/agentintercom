@@ -35,6 +35,9 @@ before the next release.
 - Hosted: recover OAuth client registration capacity from abandoned clients,
   send the RFC 9207 `iss` authorization response parameter, and limit admins
   to revoking member invitations.
+- Hosted: optional per-client rate limits for OAuth registration and
+  authorization and device pairing, keyed on a proxy forwarding header
+  (`hosted serve --client-ip-header`, `--trusted-proxy`).
 - Hosted: replaying a redeemed OAuth authorization code with its PKCE verifier
   revokes the tokens issued from that code.
 
