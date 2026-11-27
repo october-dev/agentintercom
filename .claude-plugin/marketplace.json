@@ -1,5 +1,6 @@
 {
   "name": "october",
   "owner": { "name": "October" },
+  "metadata": { "description": "Agent Intercom plugins for connecting Claude Code sessions to other agents." },
   "plugins": [{ "name": "agent-intercom", "source": "./plugin", "description": "Messages, shared work and native inbox notifications for connected agents." }]
 }
