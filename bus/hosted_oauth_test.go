@@ -330,3 +330,28 @@ func TestHostedOAuthConsentAndRedirectBoundaries(t *testing.T) {
 	_, err = f.h.oauthExecution(f.ctx, issued.Access)
 	requireCode(t, err, CodeUnauthenticated)
 }
+
+func TestHostedOAuthRegistrationRecoversCapacityFromAbandonedClients(t *testing.T) {
+	f := newHostedOAuthFixture(t)
+	register := func() *httptest.ResponseRecorder {
+		return f.call("POST", "/oauth/register", "", `{"client_name":"Capacity","redirect_uris":["http://127.0.0.1:5555/callback"],"token_endpoint_auth_method":"none"}`)
+	}
+	_, err := f.h.accounts.store.db.ExecContext(f.ctx, "INSERT INTO oauth_clients(client_id,name,redirects_json,created_at,auth_method,secret_hash) VALUES(?,?,?,?,?,?)", "abandoned-capacity-client", "Abandoned", `["http://127.0.0.1:5555/callback"]`, 1, "none", oauthHash(""))
+	requireNoError(t, err)
+	var count int
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients").Scan(&count))
+	previous := hostedOAuthClientLimit
+	hostedOAuthClientLimit = count
+	t.Cleanup(func() { hostedOAuthClientLimit = previous })
+	response := register()
+	require(t, response.Code == 201, "registration at capacity did not evict an abandoned client: %d %s", response.Code, response.Body.String())
+	var remaining int
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients WHERE client_id=?", "abandoned-capacity-client").Scan(&remaining))
+	require(t, remaining == 0, "abandoned client was kept")
+	var active int
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients WHERE client_id=?", f.clientID).Scan(&active))
+	require(t, active == 1, "a recently registered client was evicted")
+	requireNoError(t, f.h.accounts.store.db.QueryRowContext(f.ctx, "SELECT COUNT(*) FROM oauth_clients").Scan(&count))
+	hostedOAuthClientLimit = count
+	require(t, register().Code == 503, "registration exceeded capacity without an evictable client")
+}
