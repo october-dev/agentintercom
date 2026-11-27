@@ -49,17 +49,17 @@ Commit before building artifacts. Changing source or HEAD requires a rebuild/rep
 
 ## Released-binary upgrade rehearsal
 
-Obtain the actual distributed rc.4 executable for the host platform and verify its release checksum independently. The script does not download or authenticate it, and an embedded version string alone does not prove artifact origin.
+Obtain the released executable users upgrade from (currently `0.2.0`, from the `@october-dev/agentintercom-*` platform package) for the host platform and verify its checksum independently. The script does not download or authenticate it, and an embedded version string alone does not prove artifact origin.
 
-Set `OCTOBER_BUS_RC4_BINARY` to that executable's absolute path, then add `--upgrade` to the combined command. The candidate executable is selected from the just-built host artifacts. To run only the rehearsal, also set `OCTOBER_BUS_BINARY` to a versioned candidate executable and run:
+Set `OCTOBER_BUS_PREVIOUS_BINARY` to that executable's absolute path, then add `--upgrade` to the combined command. The older `OCTOBER_BUS_RC4_BINARY` name is still accepted. The candidate executable is selected from the just-built host artifacts. To run only the rehearsal, also set `OCTOBER_BUS_BINARY` to a versioned candidate executable and run:
 
 ```sh
 node scripts/rehearse-upgrade.mjs
 ```
 
-The script creates a fresh private temporary directory, removes inherited Bus settings from child environments, and uses only its own PID-checked loopback endpoints. It never points either binary at the user's real data or runs both against the same database simultaneously. An old-binary schema-9 refusal is tested against a separate copy. Rollback starts rc.4 from the automatic schema-2 backup in another fresh directory, without copying WAL/SHM files from the upgraded database.
+The script needs a Node.js version with `node:sqlite` (22.13 or later). It creates a fresh private temporary directory, removes inherited Bus settings from child environments, and uses only its own PID-checked loopback endpoints. It never points either binary at the user's real data or runs both against the same database simultaneously. It records the SQLite schema version before and after the candidate runs. When the schema is unchanged, the previous release must run a copy of the upgraded database and see the work finished after the upgrade. When the schema changed, the previous release must refuse a copy, and an automatic pre-upgrade backup, if the migration made one, must restore the original work in another fresh directory, without copying WAL/SHM files from the upgraded database.
 
-Passing output includes both executable hashes and the exercised checks. Successful synthetic fixtures are removed; failures retain the fixture directory for investigation after child termination. Those files contain synthetic credentials: do not upload the directory or run-file contents. The rehearsal covers a finite representative workflow, not arbitrary customer data, interrupted migration, physical disk exhaustion, or a long-running soak. Existing fault/migration tests cover additional failure interleavings.
+Passing output includes both executable hashes, the schema versions and the exercised checks. Successful synthetic fixtures are removed; failures retain the fixture directory for investigation after child termination. Those files contain synthetic credentials: do not upload the directory or run-file contents. The rehearsal covers a finite representative workflow, not arbitrary customer data, interrupted migration, physical disk exhaustion, or a long-running soak. Existing fault/migration tests cover additional failure interleavings.
 
 ## Remaining human/external sign-offs
 
