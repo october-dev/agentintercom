@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import {
+  BusAbortError,
   BusError,
+  BusNetworkError,
+  BusTimeoutError,
+  BusTransportError,
   AgentIntercomAgentSession,
   AgentIntercomClient,
   AgentIntercomScopeClient,
@@ -23,6 +27,24 @@ async function expectInternal(work) {
 }
 
 await expectInternal(() => new AgentIntercomClient('not a url', 'token').listPeers())
+
+{
+  // Nothing listens on this port once its server is closed.
+  const closed = createServer()
+  closed.listen(0, '127.0.0.1')
+  await once(closed, 'listening')
+  const { port } = closed.address()
+  closed.close()
+  await once(closed, 'close')
+  await assert.rejects(() => new AgentIntercomClient(`http://127.0.0.1:${port}`, 'token').listPeers(), (error) => {
+    assert(error instanceof BusNetworkError && error instanceof BusTransportError)
+    assert.equal(error.transport, 'network')
+    assert.equal(error.code, 'INTERNAL')
+    assert.equal(error.status, 500)
+    assert(error.cause !== undefined)
+    return true
+  })
+}
 
 assert.equal(requiredEnvironmentValue({ OCTOBER_BUS_TOKEN: 'token' }, 'OCTOBER_BUS_TOKEN'), 'token')
 assert.throws(
@@ -119,10 +141,33 @@ try {
   const address = hangingServer.address()
   assert(address && typeof address === 'object')
   const client = new AgentIntercomClient(`http://127.0.0.1:${address.port}`, 'token')
-  await assert.rejects(() => client.listPeers({ timeoutMs: 10 }), /timed out after 10ms/)
+  await assert.rejects(() => client.listPeers({ timeoutMs: 10 }), (error) => {
+    assert(error instanceof BusTimeoutError && error instanceof BusTransportError && error instanceof BusError)
+    assert.match(error.message, /timed out after 10ms/)
+    assert.equal(error.transport, 'timeout')
+    assert.equal(error.timeoutMs, 10)
+    assert.equal(error.code, 'INTERNAL')
+    assert.equal(error.name, 'BusTimeoutError')
+    return true
+  })
   const cancelled = new AbortController()
-  cancelled.abort(new Error('cancelled by caller'))
-  await assert.rejects(() => client.listPeers({ signal: cancelled.signal }), /cancelled by caller/)
+  const reason = new Error('cancelled by caller')
+  cancelled.abort(reason)
+  await assert.rejects(() => client.listPeers({ signal: cancelled.signal }), (error) => {
+    assert(error instanceof BusAbortError && error instanceof BusError)
+    assert.match(error.message, /cancelled by caller/)
+    assert.equal(error.transport, 'aborted')
+    assert.equal(error.cause, reason)
+    return true
+  })
+  // Aborting while the request is in flight is also reported as an abort.
+  const inFlight = new AbortController()
+  setTimeout(() => inFlight.abort(new Error('stopped mid-request')), 20)
+  await assert.rejects(() => client.listPeers({ signal: inFlight.signal, timeoutMs: 5_000 }), (error) => {
+    assert(error instanceof BusAbortError)
+    assert.match(error.message, /stopped mid-request/)
+    return true
+  })
   await assert.rejects(() => client.listPeers({ timeoutMs: 0 }), (error) => {
     assert(error instanceof BusError)
     assert.equal(error.code, 'INVALID_ARGUMENT')

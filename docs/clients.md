@@ -193,3 +193,25 @@ try {
 ```
 
 The public error codes and HTTP mappings are defined in the [protocol specification](../spec/0.1/README.md).
+
+A TypeScript request that fails before the runtime responds throws a
+`BusTransportError`: `BusNetworkError` when the connection fails,
+`BusTimeoutError` when `timeoutMs` elapses, or `BusAbortError` when the caller's
+`signal` aborts it. Each subclass sets `transport` (`'network'`, `'timeout'` or
+`'aborted'`) and `cause`. A mutation's outcome is then unknown: retry it with the
+same idempotency key or read its receipt. For compatibility these errors still
+extend `BusError` with code `INTERNAL`, so check the class before the code:
+
+```ts
+import { BusError, BusTransportError } from 'agentintercom-cli'
+
+try {
+  await session.client.listPeers({ timeoutMs: 5_000 })
+} catch (error) {
+  if (error instanceof BusTransportError) {
+    // No response from the runtime; error.transport says why.
+  } else if (error instanceof BusError) {
+    // The runtime reported error.code.
+  }
+}
+```

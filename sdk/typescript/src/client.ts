@@ -1,4 +1,4 @@
-import { BusError } from './errors.js'
+import { BusAbortError, BusError, BusNetworkError, BusTimeoutError } from './errors.js'
 import type { BusErrorCode } from './errors.js'
 import type {
   Attachment, AttachmentPage, AttachmentContent, UploadAttachmentInput,
@@ -122,13 +122,17 @@ async function request<T>(
     throw new BusError('INVALID_ARGUMENT', 'timeoutMs must be a positive finite number')
   }
   const controller = new AbortController()
-  const onAbort = () => controller.abort(options.signal?.reason ?? new Error('Operation aborted'))
+  let failure: 'timeout' | 'aborted' | undefined
+  const onAbort = () => {
+    failure ??= 'aborted'
+    controller.abort(options.signal?.reason ?? new Error('Operation aborted'))
+  }
   if (options.signal?.aborted) onAbort()
   else options.signal?.addEventListener('abort', onAbort, { once: true })
-  const timeout = setTimeout(
-    () => controller.abort(new Error(`Agent Intercom request timed out after ${timeoutMs}ms`)),
-    timeoutMs
-  )
+  const timeout = setTimeout(() => {
+    failure ??= 'timeout'
+    controller.abort(new Error(`Agent Intercom request timed out after ${timeoutMs}ms`))
+  }, timeoutMs)
   let response: Response
   let text: string
   try {
@@ -146,8 +150,10 @@ async function request<T>(
     text = await response.text()
   } catch (error) {
     const cause = controller.signal.aborted ? controller.signal.reason : error
-    const message = cause instanceof Error ? cause.message : 'Network request failed'
-    throw new BusError('INTERNAL', `Agent Intercom request failed: ${message}`)
+    const message = `Agent Intercom request failed: ${cause instanceof Error ? cause.message : 'Network request failed'}`
+    if (failure === 'timeout') throw new BusTimeoutError(timeoutMs, message, { cause })
+    if (failure === 'aborted') throw new BusAbortError(message, { cause })
+    throw new BusNetworkError(message, { cause })
   } finally {
     clearTimeout(timeout)
     options.signal?.removeEventListener('abort', onAbort)
