@@ -38,6 +38,9 @@ before the next release.
 - Hosted: optional per-client rate limits for OAuth registration and
   authorization and device pairing, keyed on a proxy forwarding header
   (`hosted serve --client-ip-header`, `--trusted-proxy`).
+- Hosted: a member can no longer restore a connection that a workspace owner or
+  admin revoked by replacing it (migration `015_connection_revoker.sql`), and
+  one workspace's file deletion no longer stalls file access in others.
 - Hosted: replaying a redeemed OAuth authorization code with its PKCE verifier
   revokes the tokens issued from that code.
 

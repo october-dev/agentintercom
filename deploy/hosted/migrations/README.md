@@ -166,3 +166,11 @@ Drops the encrypted owner scope credential reserved by the original hosted
 schema. Hosted owner operations authorize verified membership directly; no code
 reads that credential. The opaque scope digest stays for the shared runtime's
 schema, while connection/session credentials keep their separate encryption.
+
+## Connection revoker: 015_connection_revoker.sql
+
+Adds `hosted_devices.revoked_by`, set to the revoking member when a workspace
+owner or admin revokes another member's connection. Replacing a connection
+otherwise restores it with its inbox; a connection revoked by someone else can
+no longer be restored that way, so its owner must create a new connection.
+Existing rows default to an empty value and keep their previous behavior.

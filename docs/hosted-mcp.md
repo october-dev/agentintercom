@@ -30,6 +30,8 @@ quotas as OAuth. Revoke it in **Members & devices**. **Replace key** immediately
 invalidates its old key and execution while preserving its inbox; update the
 app's saved secret afterward. Lost creation/rotation responses require another
 explicit replacement. Connection lists never return a saved key.
+A connection that a workspace owner or admin revoked cannot be restored by
+replacing it; its owner must create a new connection.
 
 For an OAuth reconnect, the consent screen lets you choose **Reconnect** for an
 existing app owned by your account. This retains its inbox and replaces its
