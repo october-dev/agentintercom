@@ -56,4 +56,11 @@ func TestAttachmentCLIUploadDownloadAndNoOverwrite(t *testing.T) {
 	if bytes.Contains(out.Bytes(), data) {
 		t.Fatal("binary bytes were printed to the terminal")
 	}
+
+	t.Setenv("OCTOBER_BUS_AGENT_TOKEN", "invalid-agent-token")
+	out.Reset()
+	err = attachmentCommand([]string{"upload", "--address", server.URL, "--file", "-", "--name", "rejected.bin"}, bytes.NewReader(data), &out)
+	if err == nil {
+		t.Fatalf("rejected upload reported success: %q", out.String())
+	}
 }
