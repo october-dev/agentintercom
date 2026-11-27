@@ -25,7 +25,9 @@
   "limitations": [
     "Configuration reviewed against upstream documentation; this adapter revision has no named-harness certification",
     "Pull-only: queued work does not start a model turn",
-    "One MCP configuration is one execution; duplicate agent IDs replace earlier executions"
+    "One MCP configuration is one execution; duplicate agent IDs replace earlier executions",
+    "opencode mcp list starts a bridge with the configured agent ID, replacing a live session with that ID",
+    "OpenCode allows MCP tools by default; add a permission block to require approval. Headless opencode run rejects tools set to ask"
   ],
   "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
