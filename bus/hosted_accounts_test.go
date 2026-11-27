@@ -227,3 +227,25 @@ func TestHostedAllowanceCountsDeliveriesNotRetriesOrReplies(t *testing.T) {
 	_, err = a.runtime.Heartbeat(ctx, x.AgentToken, HeartbeatInput{Lifecycle: LifecycleIdle})
 	requireCode(t, err, CodeUnauthenticated)
 }
+
+func TestHostedAdminsRevokeOnlyInvitationsTheyCanIssue(t *testing.T) {
+	ctx, a := hostedTestAccounts(t)
+	owner, admin := hostedTestUser(t, "invite-owner"), hostedTestUser(t, "invite-admin")
+	w, err := a.CreateWorkspace(ctx, owner, "Invitation roles")
+	requireNoError(t, err)
+	defer a.runtime.DeleteScope(context.Background(), w.ID)
+	promotion, err := a.Invite(ctx, owner, w.ID, admin.Email, "admin")
+	requireNoError(t, err)
+	_, err = a.AcceptInvite(ctx, admin, promotion.Token)
+	requireNoError(t, err)
+	adminInvite, err := a.Invite(ctx, owner, w.ID, "second-admin@example.test", "admin")
+	requireNoError(t, err)
+	memberInvite, err := a.Invite(ctx, admin, w.ID, "member@example.test", "member")
+	requireNoError(t, err)
+	requireCode(t, a.RevokeInvite(ctx, admin, w.ID, adminInvite.ID), CodePermissionDenied)
+	requireNoError(t, a.RevokeInvite(ctx, admin, w.ID, memberInvite.ID))
+	requireNoError(t, a.RevokeInvite(ctx, owner, w.ID, adminInvite.ID))
+	pending, err := a.Invites(ctx, owner, w.ID)
+	requireNoError(t, err)
+	require(t, len(pending) == 0, "revoked invitations remain pending: %#v", pending)
+}
