@@ -28,6 +28,8 @@ const (
 	activeTaskCap                = 5000
 	pendingEscalationCapPerAgent = 100
 	pendingEscalationCapPerScope = 1000
+	// maxActiveMessages bounds a backlog that includes escalation answers.
+	maxActiveMessages = messageBacklogCap + pendingEscalationCapPerScope
 )
 
 type Principal struct {
@@ -846,7 +848,14 @@ func sendMessageTx(ctx context.Context, tx sqlExecutor, scopeID string, senderKi
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE scope_id=? AND state NOT IN ('acknowledged','expired')`, scopeID).Scan(&backlog); err != nil {
 		return Message{}, err
 	}
-	if backlog >= messageBacklogCap {
+	// An answer to a pending escalation completes accepted work, so a full
+	// backlog must not leave the human unable to answer. Answers get bounded
+	// headroom of their own.
+	limit := messageBacklogCap
+	if ctx.Value(completionDeliveryKey{}) == true {
+		limit = maxActiveMessages
+	}
+	if backlog >= limit {
 		return Message{}, Errorf(CodeBackpressure, "Scope message backlog is full")
 	}
 	if err := consumeHostedDelivery(ctx, tx, scopeID, mode, now); err != nil {

@@ -518,6 +518,23 @@ func TestPendingEscalationsApplyPerAgentBackpressure(t *testing.T) {
 	}
 }
 
+func TestEscalationAnswersAreAcceptedWhenTheBacklogIsFull(t *testing.T) {
+	agents := setupAgents(t, ":memory:")
+	defer agents.runtime.Close()
+	ctx := context.Background()
+	escalation, err := agents.runtime.AskHuman(ctx, agents.plannerToken, AskHumanInput{Question: "Deploy?"})
+	requireNoError(t, err)
+	_, err = sqliteStore(t, agents.runtime).db.ExecContext(ctx, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<?)
+INSERT INTO messages(message_id,scope_id,from_kind,from_id,to_kind,to_id,mode,body,context_json,request_hash,state,created_at)
+SELECT 'msg_fill'||i,'test','agent','planner','agent','reviewer','notify','x','[]','h','queued',1 FROM n`, messageBacklogCap)
+	requireNoError(t, err)
+	_, err = agents.runtime.SendMessage(ctx, agents.plannerToken, SendMessageInput{To: "reviewer", Mode: MessageNotify, Body: "Over the cap"})
+	requireCode(t, err, CodeBackpressure)
+	resolved, err := agents.runtime.ResolveEscalation(ctx, agents.scope.ScopeToken, escalation.ID, "yes")
+	requireNoError(t, err)
+	require(t, resolved.Status == "resolved" && resolved.Answer == "yes", "escalation was not answered: %#v", resolved)
+}
+
 func TestSQLitePreservesAcceptedWorkAcrossRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bus.db")
 	agents := setupAgents(t, path)

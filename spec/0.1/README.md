@@ -118,7 +118,7 @@ A request that expires before delivery cannot receive a response. A request deli
 
 `expiresInMs=0` means no protocol expiry. A positive expiry can be at most 30 days. Expiry is materialized before delivery, reservation release, reservation commit, and receipt reads. An expired message cannot be delivered or resurrected.
 
-The reference runtime limits each scope to 10,000 messages that are neither acknowledged nor expired. It returns `BACKPRESSURE` when the limit is reached. Operators remain responsible for diagnostics and retention policy.
+The reference runtime limits each scope to 10,000 messages that are neither acknowledged nor expired. It returns `BACKPRESSURE` when the limit is reached. Answers to pending human escalations may use up to 1,000 further messages, so a full backlog does not prevent a human from answering. Operators remain responsible for diagnostics and retention policy.
 
 ### Bounded context
 
