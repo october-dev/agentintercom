@@ -13,7 +13,7 @@ ownership, commands, artifacts, evidence and what remains on the Desktop side.
 
 | Component | Owns |
 | --- | --- |
-| October Bus native helper (`october-bus`) | MCP bridge over a controller-managed connection, per-request credential reread, next-call reconnect without replaying a failed mutation, Claude/Codex lifecycle hook, bounded setup check, hosted-gateway self-registration. |
+| Agent Intercom native helper (`agentintercom`) | MCP bridge over a controller-managed connection, per-request credential reread, next-call reconnect without replaying a failed mutation, Claude/Codex lifecycle hook, bounded setup check, hosted-gateway self-registration. |
 | October Desktop / Core | Canvas identity, execution credentials and their renewal/retirement, the connection file writer, SSH supervision and the loopback route, tmux ownership and foreground proof, safe input delivery, helper installation, Settings cards, readiness decisions. |
 | October Cloud controller | Hosted authority, HTTPS worker MCP/hook routes, worker admission and lifecycle while the laptop is off. Deployment and live qualification remain controller work. |
 
@@ -28,10 +28,10 @@ All three read the same connection file, from `--connection-file` or
 
 | Command | Role | Exit |
 | --- | --- | --- |
-| `october-bus mcp stdio --connection-file <path>` | Long-lived MCP bridge for the harness. Refuses if launcher credentials, local registration flags or `--remote` are also present. | Non-zero only on startup failure; runtime failures surface as tool errors plus one stderr line per failure class. |
-| `october-bus hook [--connection-file <path>] <event> [claude\|codex]` | Per-event lifecycle reporter, invoked by the harness. Same argv shape as Desktop's `bus-hook.mjs` (`<event> [<flavor>]`). | Always 0. Silent and offline when no file is named. |
-| `october-bus mcp check [--connection-file <path>] [--json]` | Setup diagnostic: file validation plus one JSON-RPC `ping`. Never `initialize`, never touches the inbox. | 0 on `ok`, 1 otherwise. |
-| `october-bus version [--json]` (or `--version`) | Version pin verification: `{"runtimeVersion","protocolVersion"}`. | 0 |
+| `agentintercom mcp stdio --connection-file <path>` | Long-lived MCP bridge for the harness. Refuses if launcher credentials, local registration flags or `--remote` are also present. | Non-zero only on startup failure; runtime failures surface as tool errors plus one stderr line per failure class. |
+| `agentintercom hook [--connection-file <path>] <event> [claude\|codex]` | Per-event lifecycle reporter, invoked by the harness. Same argv shape as Desktop's `bus-hook.mjs` (`<event> [<flavor>]`). | Always 0. Silent and offline when no file is named. |
+| `agentintercom mcp check [--connection-file <path>] [--json]` | Setup diagnostic: file validation plus one JSON-RPC `ping`. Never `initialize`, never touches the inbox. | 0 on `ok`, 1 otherwise. |
+| `agentintercom version [--json]` (or `--version`) | Version pin verification: `{"runtimeVersion","protocolVersion"}`. | 0 |
 
 Failure classes for all of them: `invalid-configuration`, `expired-credential`,
 `retired-execution`, `unreachable`, `refused-credential`, `authority-unavailable`,
@@ -126,12 +126,12 @@ Release artifacts (`.github/workflows/release.yml`, tag `v<version>`):
 
 | Artifact | Contents |
 | --- | --- |
-| `october-bus_<version>_linux_amd64.tar.gz`, `october-bus_<version>_linux_arm64.tar.gz` | Directory `october-bus_<version>_linux_<arch>/` containing `october-bus`, `october-bus-conformance`, `LICENSE`, `README.md`, `docs/`, `spec/`, `adapters/`, `compatibility/`, `assets/`. |
+| `agentintercom_<version>_linux_amd64.tar.gz`, `agentintercom_<version>_linux_arm64.tar.gz` | Directory `agentintercom_<version>_linux_<arch>/` containing `agentintercom`, `agentintercom-conformance`, `LICENSE`, `README.md`, `docs/`, `spec/`, `adapters/`, `compatibility/`, `assets/`. |
 | `checksums.txt` | `sha256sum` lines for every release file; verify with `sha256sum -c`. |
 | `remote-bus-runtime.json` | Desktop's version-1 pin manifest: runtime/protocol versions, exact source commit, clean-build qualification, and archive/binary SHA-256 for both Linux architectures. |
 | `LICENSE` | Standalone license for redistributors, also included inside each archive. |
-| `october-bus_v<version>_linux_<arch>.spdx.json` | SPDX SBOM. |
-| GitHub build-provenance attestation | Verify with `gh attestation verify <archive> --repo october-dev/october-bus`. |
+| `agentintercom_v<version>_linux_<arch>.spdx.json` | SPDX SBOM. |
+| GitHub build-provenance attestation | Verify with `gh attestation verify <archive> --repo october-dev/agentintercom`. |
 
 The release workflow smoke-tests (`version`, `version --json`, `demo`) the Linux
 amd64 archive on `ubuntu-latest` and the Linux arm64 archive on
@@ -143,15 +143,15 @@ Install on a worker (the controller performs this over SSH; users do nothing):
 
 ```sh
 VERSION=<pinned version>; ARCH=<amd64|arm64>
-ARCHIVE="october-bus_${VERSION}_linux_${ARCH}.tar.gz"
+ARCHIVE="agentintercom_${VERSION}_linux_${ARCH}.tar.gz"
 # Download the archive and checksums.txt on the laptop from the GitHub release,
 # verify, then stream the archive over SSH stdin as the existing installer does.
 sha256sum --ignore-missing -c checksums.txt        # must print: ${ARCHIVE}: OK
-gh attestation verify "${ARCHIVE}" --repo october-dev/october-bus
-tar -xzf "${ARCHIVE}" "october-bus_${VERSION}_linux_${ARCH}/october-bus"
-install -m 0755 "october-bus_${VERSION}_linux_${ARCH}/october-bus" \
-  ~/.october/servers/<install>/versions/<digest>/bin/october-bus
-~/.october/servers/<install>/versions/<digest>/bin/october-bus version --json
+gh attestation verify "${ARCHIVE}" --repo october-dev/agentintercom
+tar -xzf "${ARCHIVE}" "agentintercom_${VERSION}_linux_${ARCH}/agentintercom"
+install -m 0755 "agentintercom_${VERSION}_linux_${ARCH}/agentintercom" \
+  ~/.october/servers/<install>/versions/<digest>/bin/agentintercom
+~/.october/servers/<install>/versions/<digest>/bin/agentintercom version --json
 # {"protocolVersion":"0.1","runtimeVersion":"<pinned version>"}
 ```
 
@@ -167,18 +167,18 @@ integration; not a release):
 ```sh
 VERSION=$(node -p "require('./sdk/typescript/package.json').version")
 for ARCH in amd64 arm64; do
-  DIR="october-bus_${VERSION}_linux_${ARCH}"; mkdir -p "dist/${DIR}"
+  DIR="agentintercom_${VERSION}_linux_${ARCH}"; mkdir -p "dist/${DIR}"
   CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} go build -trimpath \
-    -ldflags "-s -w -X github.com/october-dev/october-bus/bus.Version=${VERSION}" \
-    -o "dist/${DIR}/october-bus" ./cmd/october-bus
+    -ldflags "-s -w -X github.com/october-dev/agentintercom/bus.Version=${VERSION}" \
+    -o "dist/${DIR}/agentintercom" ./cmd/agentintercom
   tar -C dist -czf "dist/${DIR}.tar.gz" "${DIR}"
 done
 (cd dist && sha256sum *.tar.gz > checksums.txt)
 ```
 
-The optional npm route (`@october-dev/october-bus@0.1.0-next.15` with
-`@october-dev/october-bus-linux-{x64,arm64}` optional dependencies, launcher
-`cli/october-bus.cjs`) carries the same binary but requires Node 20+ on the
+The optional npm route (`agentintercom-cli` with
+`@october-dev/agentintercom-linux-{x64,arm64}` optional dependencies, launcher
+`cli/agentintercom.cjs`) carries the same binary but requires Node 20+ on the
 worker; it is documented in [releases.md](releases.md) and is not the managed
 install path. Nothing was published by this work.
 
@@ -281,7 +281,7 @@ consumer's cloud integration.
    `isOctoberBusHookCommand`/migration recognition and the Codex trust-hash
    seeding to the helper form. Existing routes, bodies and envelopes are
    unchanged, so Core needs no change for hooks.
-4. **Installer.** Install the pinned Linux `october-bus` from the release
+4. **Installer.** Install the pinned Linux `agentintercom` from the release
    archive (checksum + attestation verified on the laptop) under the existing
    `~/.october/servers/<install>/versions/<digest>/` layout; verify
    `version --json`; show installation, `mcp check` class and agent readiness
