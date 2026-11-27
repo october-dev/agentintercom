@@ -1,6 +1,6 @@
 # October Desktop remote integration contract
 
-The native helper implements the Agents Anywhere connection contract. Publication,
+The native helper implements the managed remote connection contract. Publication,
 consumer pin updates and real remote-host qualification remain separate steps;
 see the follow-ups below. The integration preserves the gateway authentication
 and readiness fixes from PR #125.
