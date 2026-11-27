@@ -24,6 +24,6 @@ Security reports may cover:
 - malicious protocol inputs or denial of service;
 - adapter behavior that bypasses a harness permission boundary.
 
-The current reference runtime is local-first and binds to loopback. Remote deployments need a separate authenticated transport and threat review.
+The local runtime binds to loopback. Self-hosted workspaces use the authenticated HTTPS service described in [hosted workspaces](docs/hosted-workspaces.md) and [production hardening](docs/production-hardening.md); reports about that service, its OAuth and account flows, and the browser workspace are in scope.
 
 See [the local threat model](docs/threat-model.md) for current assumptions and limits.
