@@ -20,3 +20,11 @@ func validateDatabaseLinks(_ string, info os.FileInfo) error {
 	}
 	return nil
 }
+
+// ownedByCurrentUser reports whether info describes a file owned by the
+// effective user. Discovery files may live under a shared temporary
+// directory, so another local account must not be able to plant them.
+func ownedByCurrentUser(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int(stat.Uid) == os.Geteuid()
+}

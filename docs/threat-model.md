@@ -37,7 +37,7 @@ Adapters and harnesses remain responsible for their own model access, files, too
 
 ## Local process risk
 
-The runtime and data directories request owner-only permissions where the operating system supports them. A malicious process already running as the same operating-system user may still be able to access local files, inspect memory, or control sibling processes. Agent Intercom is not a sandbox against the local user account.
+The runtime and data directories request owner-only permissions where the operating system supports them. Without `XDG_RUNTIME_DIR` or `OCTOBER_BUS_RUNTIME_DIR`, the Unix runtime directory falls back to the system temporary directory; the daemon refuses a runtime directory owned by another user, and clients ignore a discovery file that another user owns or could have replaced. A malicious process already running as the same operating-system user may still be able to access local files, inspect memory, or control sibling processes. Agent Intercom is not a sandbox against the local user account.
 
 Do not place scope or admin credentials in model context. Give a harness only its execution-bound agent token when possible.
 

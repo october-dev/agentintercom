@@ -36,3 +36,7 @@ func validateDatabaseLinks(path string, _ os.FileInfo) error {
 	}
 	return nil
 }
+
+// ownedByCurrentUser is not enforced on Windows, where the runtime directory
+// is created under the per-user temporary directory.
+func ownedByCurrentUser(os.FileInfo) bool { return true }
