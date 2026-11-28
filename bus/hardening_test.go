@@ -95,7 +95,7 @@ func TestA2ARotationFencesRetryReadAndStateChanges(t *testing.T) {
 	}
 	_, err = s.AcceptA2AMessage(ctx, p, a.runtime.a2aPrincipalLimits, input)
 	requireCode(t, err, CodeUnauthenticated)
-	_, err = s.A2ATask(ctx, p, task.ID)
+	_, _, err = s.A2ATaskHistory(ctx, p, task.ID)
 	requireCode(t, err, CodeUnauthenticated)
 	_, err = s.SetA2ATaskState(ctx, p, task.ID, A2ATaskFailed)
 	requireCode(t, err, CodeUnauthenticated)

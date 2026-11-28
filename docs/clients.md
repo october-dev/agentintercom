@@ -61,6 +61,13 @@ issued, err := owner.CreateA2APrincipal(ctx, bus.CreateA2APrincipalInput{
 // Use an A2A 1.0 HTTP+JSON client against publication.InterfaceURL.
 // Send the issued credential as a bearer token. The first write surface
 // accepts text-only SendMessage requests and returns a durable A2A Task.
+// Poll that task with GetTask until its state is terminal (completed, failed, canceled or rejected), then read the
+// agent's reply from the task history:
+//
+//   task, err := a2aClient.GetTask(ctx, &a2a.GetTaskRequest{ID: taskID}) // bearer credential, A2A-Version 1.0
+//   // task.Status.State transitions submitted -> working -> completed;
+//   // task.History holds each user turn followed by its agent reply.
+//   // Pass historyLength to keep only the most recent history messages.
 
 principalUsage, err := owner.ListA2APrincipalUsage(ctx)
 

@@ -111,26 +111,59 @@ func acceptA2AInput(request *a2a.SendMessageRequest) (AcceptA2AMessageInput, err
 	}, nil
 }
 
-func taskToA2A(task A2ATaskCorrelation, message *a2a.Message) *a2a.Task {
-	state := a2a.TaskStateSubmitted
-	switch task.State {
+func a2aTaskState(state A2ATaskState) a2a.TaskState {
+	switch state {
 	case A2ATaskWorking:
-		state = a2a.TaskStateWorking
+		return a2a.TaskStateWorking
 	case A2ATaskInputRequired:
-		state = a2a.TaskStateInputRequired
+		return a2a.TaskStateInputRequired
 	case A2ATaskCompleted:
-		state = a2a.TaskStateCompleted
+		return a2a.TaskStateCompleted
 	case A2ATaskFailed:
-		state = a2a.TaskStateFailed
+		return a2a.TaskStateFailed
 	case A2ATaskCanceled:
-		state = a2a.TaskStateCanceled
+		return a2a.TaskStateCanceled
 	case A2ATaskRejected:
-		state = a2a.TaskStateRejected
+		return a2a.TaskStateRejected
+	default:
+		return a2a.TaskStateSubmitted
 	}
+}
+
+func taskToA2A(task A2ATaskCorrelation, message *a2a.Message) *a2a.Task {
 	timestamp, _ := time.Parse(time.RFC3339Nano, task.UpdatedAt)
 	return &a2a.Task{
 		ID: a2a.TaskID(task.ID), ContextID: task.ContextID,
-		Status: a2a.TaskStatus{State: state, Timestamp: &timestamp}, History: []*a2a.Message{message},
+		Status: a2a.TaskStatus{State: a2aTaskState(task.State), Timestamp: &timestamp}, History: []*a2a.Message{message},
+	}
+}
+
+// taskHistoryToA2A renders one user message per correlated turn in acceptance
+// order, each followed by its agent reply when one exists. A negative
+// historyLength keeps the full history; otherwise only the most recent
+// historyLength messages are returned. Agent replies surface in history only;
+// status carries the state and timestamp without a duplicate message.
+func taskHistoryToA2A(task A2ATaskCorrelation, history []A2ATaskHistoryEntry, historyLength int) *a2a.Task {
+	timestamp, _ := time.Parse(time.RFC3339Nano, task.UpdatedAt)
+	messages := make([]*a2a.Message, 0, 2*len(history))
+	for _, entry := range history {
+		messages = append(messages, &a2a.Message{
+			ID: entry.ClientMessageID, ContextID: task.ContextID, TaskID: a2a.TaskID(task.ID),
+			Role: a2a.MessageRoleUser, Parts: a2a.ContentParts{a2a.NewTextPart(entry.RequestBody)},
+		})
+		if entry.ResponseMessageID != "" {
+			messages = append(messages, &a2a.Message{
+				ID: entry.ResponseMessageID, ContextID: task.ContextID, TaskID: a2a.TaskID(task.ID),
+				Role: a2a.MessageRoleAgent, Parts: a2a.ContentParts{a2a.NewTextPart(entry.ResponseBody)},
+			})
+		}
+	}
+	if historyLength >= 0 && historyLength < len(messages) {
+		messages = messages[len(messages)-historyLength:]
+	}
+	return &a2a.Task{
+		ID: a2a.TaskID(task.ID), ContextID: task.ContextID,
+		Status: a2a.TaskStatus{State: a2aTaskState(task.State), Timestamp: &timestamp}, History: messages,
 	}
 }
 
@@ -162,8 +195,25 @@ func (h *a2aRequestHandler) unsupported(ctx context.Context) error {
 	return a2a.ErrUnsupportedOperation
 }
 
-func (h *a2aRequestHandler) GetTask(ctx context.Context, _ *a2a.GetTaskRequest) (*a2a.Task, error) {
-	return nil, h.unsupported(ctx)
+func (h *a2aRequestHandler) GetTask(ctx context.Context, request *a2a.GetTaskRequest) (*a2a.Task, error) {
+	if err := h.authorize(ctx); err != nil {
+		return nil, err
+	}
+	if request == nil || request.ID == "" {
+		return nil, a2a.NewError(a2a.ErrInvalidParams, "A task ID is required")
+	}
+	historyLength := -1
+	if request.HistoryLength != nil {
+		if *request.HistoryLength < 0 {
+			return nil, a2a.NewError(a2a.ErrInvalidParams, "historyLength cannot be negative")
+		}
+		historyLength = *request.HistoryLength
+	}
+	task, history, err := h.runtime.A2ATaskHistory(ctx, h.credential, h.publicationID, string(request.ID))
+	if err != nil {
+		return nil, mapBusA2AError(err)
+	}
+	return taskHistoryToA2A(task, history, historyLength), nil
 }
 
 func (h *a2aRequestHandler) ListTasks(ctx context.Context, _ *a2a.ListTasksRequest) (*a2a.ListTasksResponse, error) {

@@ -109,6 +109,7 @@ The `health` object MAY include `features`, a unique array of feature identifier
 | `GET` | `/outputs/{streamId}/latest` | Scope or scoped read | Latest output value or `null` |
 | `GET` | `/a2a/agents/{publicationId}/.well-known/agent-card.json` | None | Enabled A2A Agent Card |
 | `POST` | `/a2a/agents/{publicationId}/message:send` | Scoped A2A | Durable A2A Task |
+| `GET` | `/a2a/agents/{publicationId}/tasks/{taskId}` | Scoped A2A | Durable A2A Task with correlated history |
 | `POST` | `/mcp` | Agent | MCP Streamable HTTP endpoint |
 
 `/health/live` returns HTTP 200 while the server process can answer requests. `/health` and `/health/ready` return HTTP 200 only when the runtime can reach its storage backend. An unavailable backend returns HTTP 503 with `status: not_ready`. Health responses expose the backend name and availability, never its address or credentials.
@@ -166,7 +167,7 @@ Agent Card publications are absent by default. A scope owner publishes one regis
 
 The reference runtime additionally limits the aggregate active A2A message backlog to 5,000 messages and 64 MiB of bodies per scope. Active means queued, reserved or delivered, not acknowledged or expired. Per-principal unfinished-task quotas apply independently. Already-accepted idempotent retries do not consume another slot and remain available at capacity.
 
-`POST /a2a/agents/{publicationId}/message:send` implements A2A 1.0 HTTP+JSON `SendMessage`. It accepts user messages made only of plain text parts and returns a durable A2A Task. The bearer credential must belong to the requested publication. The optional `A2A-Version` header must contain exactly `1.0`. Other A2A operations and content types return A2A protocol errors.
+`POST /a2a/agents/{publicationId}/message:send` implements A2A 1.0 HTTP+JSON `SendMessage`. It accepts user messages made only of plain text parts and returns a durable A2A Task. `GET /a2a/agents/{publicationId}/tasks/{taskId}` implements A2A 1.0 `GetTask` for the calling principal's own tasks. It returns the task state and a history of each accepted user message followed by the agent's response when one exists. The optional `historyLength` query parameter keeps only that many of the most recent messages; `0` returns none and a negative value is rejected. Unknown tasks and tasks owned by another principal return the same A2A task-not-found error. On both routes the bearer credential must belong to the requested publication and the optional `A2A-Version` header must contain exactly `1.0`. Other A2A operations and content types return A2A protocol errors.
 
 `POST /outputs/{streamId}/values` accepts `contentType`, `value`, and an optional URI reference. Agent credentials require an explicit publisher grant. Scoped output credentials require `publish` permission. `GET /outputs/{streamId}/values?after=0&limit=50` returns ordered values after the cursor. The limit is 1 through 100. Clients use `nextSequence` as their next cursor and rebuild from the latest value when `resyncRequired` is true.
 
