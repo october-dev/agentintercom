@@ -78,6 +78,7 @@ The `health` object MAY include `features`, a unique array of feature identifier
 | `GET` | `/v1/tasks/{taskId}/progress` | Scope or agent | Ordered task progress history |
 | `POST` | `/v1/escalations` | Agent | New escalation |
 | `GET` | `/v1/escalations/{escalationId}` | Agent | Escalation in the scope |
+| `POST` | `/v1/escalations/{escalationId}/cancel` | Agent | Cancelled escalation |
 | `GET` | `/v1/scope/escalations` | Scope | Escalations in the scope |
 | `POST` | `/v1/scope/escalations/{escalationId}/resolve` | Scope | Resolved escalation |
 | `GET` | `/v1/scope/storage` | Scope | Counts, estimated bytes, and oldest timestamps |

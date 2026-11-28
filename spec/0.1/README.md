@@ -166,7 +166,7 @@ Protocol 0.1 defines these event types:
 - `link.created`
 - `message.accepted`, `message.replied`, `message.reserved`, `message.released`, `message.delivered`, `message.acknowledged`, and `message.expired`
 - `task.created`, `task.claimed`, `task.released`, `task.completed`, and `task.progress_added`
-- `escalation.created` and `escalation.resolved`
+- `escalation.created`, `escalation.resolved`, and `escalation.cancelled`
 - `a2a.publication_created`, `a2a.publication_enabled`, and `a2a.publication_disabled`
 - `a2a.task_created`, `a2a.message_accepted`, and `a2a.task_state_changed`
 - `credential.created`, `credential.rotated`, `credential.enabled`, and `credential.disabled`
@@ -227,7 +227,7 @@ The reference runtime retains 1,000 values by default and permits a configured l
 
 An agent MAY create an escalation with a question and either no options or two to four options. Creating an escalation does not grant the agent permission or answer the question.
 
-Only scope authority resolves escalations. Agent authority can create and read escalations in its scope but cannot resolve them. The reference runtime limits pending escalations to 100 per agent and 1,000 per scope.
+Only scope authority resolves escalations. Agent authority can create and read escalations in its scope but cannot resolve them. An agent MAY cancel its own pending escalation; cancellation does not answer the question. The reference runtime limits pending escalations to 100 per agent and 1,000 per scope.
 
 ## Authority
 
@@ -235,7 +235,7 @@ Only scope authority resolves escalations. Agent authority can create and read e
 | --- | --- |
 | Admin token | Create, export, and import scopes and request local daemon shutdown |
 | Scope token | Register and list agents, create peer links, manage Agent Card publications and remote principals, manage output streams and readers, add and list tasks, follow scope events, inspect and prune storage, list and resolve escalations |
-| Agent token | Heartbeat, discover peers, message linked peers, use inboxes, coordinate tasks, publish to explicitly allowed output streams, create and read escalations |
+| Agent token | Heartbeat, discover peers, message linked peers, use inboxes, coordinate tasks, publish to explicitly allowed output streams, create, read, and cancel own escalations |
 | Scoped A2A credential | Invoke one published A2A agent interface when that operation is supported |
 | Scoped output credential | Read or publish one output stream according to its explicit permissions |
 

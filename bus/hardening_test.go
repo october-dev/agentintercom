@@ -44,7 +44,8 @@ func TestEveryProtectedAgentMutationFencesReplacedAndExpiredExecution(t *testing
 					_, err := s.AddTaskProgress(ctx, p, "missing", AddTaskProgressInput{Kind: "note", Text: "stale"})
 					return err
 				},
-				"ask": func() error { _, err := s.AskHuman(ctx, p, AskHumanInput{Question: "stale"}); return err },
+				"ask":    func() error { _, err := s.AskHuman(ctx, p, AskHumanInput{Question: "stale"}); return err },
+				"cancel": func() error { _, err := s.CancelEscalation(ctx, p, "missing"); return err },
 				"heartbeat": func() error {
 					_, _, err := s.Heartbeat(ctx, p, HeartbeatInput{Lifecycle: LifecycleReady, Ready: true, LeaseMS: 300000})
 					return err
@@ -52,6 +53,39 @@ func TestEveryProtectedAgentMutationFencesReplacedAndExpiredExecution(t *testing
 			}
 			for name, operation := range operations {
 				t.Run(name, func(t *testing.T) { requireCode(t, operation(), CodeUnauthenticated) })
+			}
+		})
+	}
+}
+
+func TestCancelEscalationFencesStaleExecutionsWithoutMutation(t *testing.T) {
+	for _, reason := range []string{"replacement", "expiry", "retirement"} {
+		t.Run(reason, func(t *testing.T) {
+			a := setupAgents(t, ":memory:")
+			defer a.runtime.Close()
+			ctx := context.Background()
+			s := sqliteStore(t, a.runtime)
+			escalation, err := a.runtime.AskHuman(ctx, a.plannerToken, AskHumanInput{Question: "Deploy?"})
+			requireNoError(t, err)
+			p, err := s.AuthenticateAgent(ctx, a.plannerToken)
+			requireNoError(t, err)
+			switch reason {
+			case "replacement":
+				_, err = s.RegisterAgent(ctx, p.ScopeID, RegisterAgentInput{ID: p.AgentID, DisplayName: "replacement", LeaseMS: 300000})
+			case "expiry":
+				_, err = s.db.Exec("UPDATE agents SET lease_expires_at=0 WHERE scope_id=? AND agent_id=?", p.ScopeID, p.AgentID)
+			case "retirement":
+				_, err = s.RetireAgent(ctx, a.plannerToken)
+			}
+			requireNoError(t, err)
+			_, err = s.CancelEscalation(ctx, p, escalation.ID)
+			requireCode(t, err, CodeUnauthenticated)
+			stored, err := s.Escalation(ctx, p.ScopeID, escalation.ID)
+			require(t, err == nil && stored.Status == "pending", "stale cancel mutated the escalation: %#v, %v", stored, err)
+			batch, err := s.Events(ctx, p.ScopeID, 0, 100)
+			requireNoError(t, err)
+			for _, event := range batch.Events {
+				require(t, event.Type != "escalation.cancelled", "stale cancel appended a cancellation event: %#v", event)
 			}
 		})
 	}
