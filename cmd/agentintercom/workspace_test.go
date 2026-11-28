@@ -37,6 +37,18 @@ func startWorkspaceTest(t *testing.T) (context.Context, bus.Client) {
 	return ctx, owner
 }
 
+func TestWorkspaceCreateExplainsExistingWorkspace(t *testing.T) {
+	startWorkspaceTest(t)
+	var output bytes.Buffer
+	err := workspaceCommand([]string{"create", "project"}, &output)
+	require(t, err != nil && strings.Contains(err.Error(), "connect --workspace project"), "existing workspace error = %v", err)
+	paths, err := bus.DefaultDaemonPaths()
+	requireNoError(t, err)
+	requireNoError(t, bus.RemoveScopeToken(paths.DataDir, "project"))
+	err = workspaceCommand([]string{"create", "project"}, &output)
+	require(t, err != nil && strings.Contains(err.Error(), "scope rotate-token --id project"), "missing credential error = %v", err)
+}
+
 func TestWorkspaceConnectionConfiguration(t *testing.T) {
 	_, owner := startWorkspaceTest(t)
 	binary, err := os.Executable()

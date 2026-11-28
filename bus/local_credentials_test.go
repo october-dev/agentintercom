@@ -1,6 +1,8 @@
 package bus
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -50,8 +52,11 @@ func TestLocalScopeCredentials(t *testing.T) {
 	if err := RemoveScopeToken(dir, "scope"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadScopeToken(dir, "scope"); err == nil {
-		t.Fatal("read deleted credential")
+	if _, err := ReadScopeToken(dir, "scope"); !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), "agentintercom workspace create scope") {
+		t.Fatalf("missing credential error = %v", err)
+	}
+	if _, err := ReadScopeToken(filepath.Join(dir, "never-created"), "scope"); !errors.Is(err, fs.ErrNotExist) || strings.Contains(err.Error(), ".token") {
+		t.Fatalf("missing data directory error = %v", err)
 	}
 	if err := RemoveScopeToken(dir, "scope"); err != nil {
 		t.Fatal(err)

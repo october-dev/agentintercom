@@ -159,6 +159,7 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	var endpoint string
 	var connectionSource func() (managedMCPConnection, error)
 	var sessionDone <-chan struct{}
+	var executionStatus func(context.Context) error
 	var readyExecution string
 	if *readyFile != "" && (resolveManagedConnectionPath(*connectionFile) == "" || !filepath.IsAbs(*readyFile) || filepath.Base(*readyFile) != "ready.json" || filepath.Dir(*readyFile) != filepath.Dir(resolveManagedConnectionPath(*connectionFile))) {
 		return errors.New("--ready-file must be ready.json beside a managed connection file")
@@ -271,6 +272,10 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		}()
 		ctx = bridgeCtx
 		sessionDone = session.Done()
+		executionStatus = func(ctx context.Context) error {
+			_, err := session.Client.NodeStatus(ctx)
+			return err
+		}
 		address, token = session.Address, session.Registration.AgentToken
 	} else if address == "" || token == "" {
 		return errors.New("mcp stdio requires managed agent credentials, --connection-file (or " + managedConnectionFileEnv + "), or --scope <scope-id> --agent <id>")
@@ -321,12 +326,30 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	if sessionDone != nil {
 		forward := callTool
 		callTool = func(ctx context.Context, params *mcp.CallToolParams) (*mcp.CallToolResult, error) {
+			ended := &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: mcpBridgeEndedMessage}}}
 			select {
 			case <-sessionDone:
-				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: mcpBridgeEndedMessage}}}, nil
+				return ended, nil
 			default:
-				return forward(ctx, params)
 			}
+			result, err := forward(ctx, params)
+			if err == nil && (result == nil || !result.IsError) {
+				return result, err
+			}
+			// A replaced or revoked execution is rejected upstream before the next
+			// heartbeat notices. Report the terminal state with its recovery steps
+			// instead of a bare authentication or transport error.
+			select {
+			case <-sessionDone:
+				return ended, nil
+			default:
+			}
+			statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+			defer cancel()
+			if statusErr := executionStatus(statusCtx); statusErr != nil && bus.AsBusError(statusErr).Code == bus.CodeUnauthenticated {
+				return ended, nil
+			}
+			return result, err
 		}
 	}
 

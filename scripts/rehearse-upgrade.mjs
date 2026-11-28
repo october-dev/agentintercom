@@ -7,6 +7,12 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
+export function releaseVersion(output) {
+  const match = /^(?:agentintercom|october-bus) v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?) \(protocol 0\.1\)$/.exec(output)
+  assert.ok(match && !/\bdev\b/.test(match[1]), `Expected a released version, got ${JSON.stringify(output)}`)
+  return match[1]
+}
+
 export function validateRunFile(run, pid) {
   const url = new URL(run.address)
   assert.ok(url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port &&
@@ -17,15 +23,24 @@ export function validateRunFile(run, pid) {
   return run
 }
 
+// Loaded on use so the exported helpers stay importable on Node versions without node:sqlite.
+async function schemaVersion(database) {
+  const { DatabaseSync } = await import('node:sqlite')
+  const db = new DatabaseSync(database, { readOnly: true })
+  try { return db.prepare('PRAGMA user_version').get().user_version } finally { db.close() }
+}
+
+const schemaBackups = directory => readdirSync(directory).filter(name => /^bus\.db\.schema\d+-backup-/.test(name))
+
 async function rehearse() {
-  assert.ok(process.env.OCTOBER_BUS_RC4_BINARY && process.env.OCTOBER_BUS_BINARY, 'Supply checksum-verified OCTOBER_BUS_RC4_BINARY and OCTOBER_BUS_BINARY; this script never downloads binaries')
-  const old = realpathSync(process.env.OCTOBER_BUS_RC4_BINARY)
+  assert.ok(process.env.OCTOBER_BUS_PREVIOUS_BINARY && process.env.OCTOBER_BUS_BINARY, 'Supply checksum-verified OCTOBER_BUS_PREVIOUS_BINARY (the released version users upgrade from) and OCTOBER_BUS_BINARY; this script never downloads binaries')
+  const old = realpathSync(process.env.OCTOBER_BUS_PREVIOUS_BINARY)
   const candidate = realpathSync(process.env.OCTOBER_BUS_BINARY)
-  assert.notEqual(old, candidate, 'Use distinct rc.4 and candidate executables')
+  assert.notEqual(old, candidate, 'Use distinct previous-release and candidate executables')
   const version = binary => execFileSync(binary, ['version'], { encoding: 'utf8', timeout: 5000 }).trim()
-  assert.match(version(old), /^agentintercom v?0\.1\.0-rc\.4 \(protocol 0\.1\)$/)
+  const oldVersion = releaseVersion(version(old))
   const candidateVersion = version(candidate)
-  assert.ok(!/\brc\.4\b|\bdev\b/.test(candidateVersion), 'Candidate must embed its release version')
+  releaseVersion(candidateVersion)
   const root = mkdtempSync(join(tmpdir(), 'october-upgrade-'))
   chmodSync(root, 0o700)
   const children = []
@@ -90,10 +105,12 @@ async function rehearse() {
     const reservation = await call(b.agentToken, 'POST', '/v1/inbox/reserve', { limit: 10, waitMs: 0 })
     const batch = await call(b.agentToken, 'POST', `/v1/inbox/${reservation.id}/commit`, {})
     assert.equal(batch[0].id, message.messageId)
-    const parent = await call(a.agentToken, 'POST', '/v1/tasks', { description: 'completed dependency' })
+    // 0.1.0 release candidates predate task titles and reject the field.
+    const newTask = (title, fields) => call(a.agentToken, 'POST', '/v1/tasks', oldVersion.startsWith('0.1.') ? fields : { title, ...fields })
+    const parent = await newTask('Completed dependency', { description: 'completed dependency' })
     await call(a.agentToken, 'POST', `/v1/tasks/${parent.id}/claim`, {})
     await call(a.agentToken, 'POST', `/v1/tasks/${parent.id}/complete`, { note: 'done before upgrade' })
-    const task = await call(a.agentToken, 'POST', '/v1/tasks', { description: 'preserve claimed task', dependencies: [parent.id] })
+    const task = await newTask('Claimed task', { description: 'preserve claimed task', dependencies: [parent.id] })
     await call(b.agentToken, 'POST', `/v1/tasks/${task.id}/claim`, {})
     const escalation = await call(b.agentToken, 'POST', '/v1/escalations', { question: 'Awaiting approval', options: ['yes', 'no'] })
     const verifyBaseline = async () => {
@@ -112,6 +129,8 @@ async function rehearse() {
       assert.equal((await call(b.agentToken, 'GET', `/v1/escalations/${escalation.id}`)).status, 'pending')
     }
     await stop(daemon)
+    const schemaBefore = await schemaVersion(join(data, 'bus.db'))
+    const backupsBefore = schemaBackups(data)
     daemon = await start(candidate, data, 'run-candidate')
     assert.ok((await call('', 'GET', '/health')).features?.includes('session-retirement'))
     await verifyBaseline()
@@ -120,27 +139,47 @@ async function rehearse() {
     await call(b.agentToken, 'POST', `/v1/tasks/${task.id}/complete`, { note: 'completed after migration' })
     await call(scope.scopeToken, 'POST', `/v1/scope/escalations/${escalation.id}/resolve`, { answer: 'yes' })
     await stop(daemon)
+    const schemaAfter = await schemaVersion(join(data, 'bus.db'))
+    const backups = schemaBackups(data).filter(name => !backupsBefore.includes(name))
+    const checks = ['original credentials and executions', 'outstanding request and idempotency', 'task dependency and claim', 'pending human escalation', 'continued work after migration']
 
-    // Test refusal on a COPY, never let the old binary touch the upgraded source.
-    const probeData = join(root, 'schema9-probe')
-    mkdirSync(probeData, { mode: 0o700 })
-    copyFileSync(join(data, 'bus.db'), join(probeData, 'bus.db'))
-    assert.throws(() => execFileSync(old, ['start'], {
-      env: env(probeData, join(root, 'run-probe')), encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'pipe']
-    }), error => error.status !== null && error.status !== 0 && /schema.*9|9.*schema/i.test(error.stderr ?? ''), 'rc.4 must explicitly reject schema 9, not just time out')
-
-    const backups = readdirSync(data).filter(name => name.startsWith('bus.db.schema2-backup-'))
-    assert.equal(backups.length, 1, 'Expected one automatic rc.4 snapshot')
-    const rollbackData = join(root, 'rollback')
-    mkdirSync(rollbackData, { mode: 0o700 })
-    copyFileSync(join(data, backups[0]), join(rollbackData, 'bus.db'))
-    chmodSync(join(rollbackData, 'bus.db'), 0o600)
-    daemon = await start(old, rollbackData, 'run-rollback')
-    await verifyBaseline()
-    await stop(daemon)
+    // Rollback runs only against copies; the old binary never touches the upgraded source.
+    const copyDatabase = (source, label) => {
+      const directory = join(root, label)
+      mkdirSync(directory, { mode: 0o700 })
+      copyFileSync(source, join(directory, 'bus.db'))
+      chmodSync(join(directory, 'bus.db'), 0o600)
+      return directory
+    }
+    if (schemaAfter === schemaBefore) {
+      // Same schema: the previous release can run the upgraded database as is.
+      assert.equal(backups.length, 0, 'Candidate created a schema backup without changing the schema')
+      daemon = await start(old, copyDatabase(join(data, 'bus.db'), 'rollback'), 'run-rollback')
+      const restored = (await call(a.agentToken, 'GET', '/v1/tasks')).find(value => value.id === task.id)
+      assert.equal(restored.status, 'done')
+      assert.ok((await call(a.agentToken, 'GET', `/v1/messages/${message.messageId}`)).responseMessageId)
+      assert.equal((await call(b.agentToken, 'GET', `/v1/escalations/${escalation.id}`)).status, 'resolved')
+      await stop(daemon)
+      checks.push(`schema ${schemaAfter} unchanged; ${oldVersion} runs the upgraded database`)
+    } else {
+      const probeData = copyDatabase(join(data, 'bus.db'), 'schema-probe')
+      assert.throws(() => execFileSync(old, ['start'], {
+        env: env(probeData, join(root, 'run-probe')), encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'pipe']
+      }), error => error.status !== null && error.status !== 0 && /schema/i.test(error.stderr ?? ''), `${oldVersion} must explicitly reject schema ${schemaAfter}, not just time out`)
+      checks.push(`${oldVersion} rejects schema ${schemaAfter} copy`)
+      if (backups.length > 0) {
+        assert.equal(backups.length, 1, 'Expected at most one automatic pre-upgrade snapshot')
+        daemon = await start(old, copyDatabase(join(data, backups[0]), 'rollback'), 'run-rollback')
+        await verifyBaseline()
+        await stop(daemon)
+        checks.push('automatic backup restores pre-upgrade work')
+      } else {
+        checks.push(`no automatic backup for schema ${schemaBefore} to ${schemaAfter}; rollback needs a manual backup`)
+      }
+    }
     passed = true
     const sha256 = binary => createHash('sha256').update(readFileSync(binary)).digest('hex')
-    console.log(JSON.stringify({ result: 'passed', old: version(old), candidate: candidateVersion, oldSHA256: sha256(old), candidateSHA256: sha256(candidate), checks: ['original credentials and executions', 'outstanding request and idempotency', 'task dependency and claim', 'pending human escalation', 'continued work after migration', 'rc.4 rejects schema 9 copy', 'automatic backup restores pre-upgrade work'] }, null, 2))
+    console.log(JSON.stringify({ result: 'passed', old: version(old), candidate: candidateVersion, oldSHA256: sha256(old), candidateSHA256: sha256(candidate), schema: { before: schemaBefore, after: schemaAfter }, checks }, null, 2))
   } finally {
     for (const state of children) {
       if (!state.closed) {

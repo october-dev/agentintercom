@@ -75,7 +75,7 @@ func lockLocalScopeCredentials(address string) (func(), error) {
 		return nil, err
 	}
 	run, err := bus.ReadRunFile(paths.RunFile)
-	if os.IsNotExist(err) || (err == nil && run.Address != address) {
+	if errors.Is(err, os.ErrNotExist) || (err == nil && run.Address != address) {
 		return func() {}, nil
 	}
 	if err != nil {
@@ -94,7 +94,7 @@ func updateLocalScopeCredential(address, scopeID, token string) error {
 		return err
 	}
 	run, err := bus.ReadRunFile(paths.RunFile)
-	if os.IsNotExist(err) || (err == nil && run.Address != address) {
+	if errors.Is(err, os.ErrNotExist) || (err == nil && run.Address != address) {
 		return nil
 	}
 	if err != nil {

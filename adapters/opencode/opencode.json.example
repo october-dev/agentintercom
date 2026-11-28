@@ -17,8 +17,7 @@
         "--runtime-dir",
         "{{runtimeDir}}"
       ],
-      "enabled": true,
-      "timeout": 10000
+      "enabled": true
     }
   }
 }

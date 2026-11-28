@@ -31,8 +31,15 @@ func harness(args []string) error {
 		}
 		return nil
 	}
+	const usage = "harness list or harness config <host> --scope <id> --agent <id> [--name <display>] [--output <new-file>]"
+	isHelp := func(arg string) bool { return arg == "-h" || arg == "-help" || arg == "--help" }
+	if (len(args) > 0 && isHelp(args[0])) || (len(args) > 1 && args[0] == "config" && isHelp(args[1])) {
+		fmt.Println("Usage:\n  agentintercom harness list\n  agentintercom harness config <host> --scope <id> --agent <id> [--name <display>] [--output <new-file>]")
+		fmt.Println("harness list prints the hosts that config accepts.")
+		return flag.ErrHelp
+	}
 	if len(args) < 2 || args[0] != "config" {
-		return errors.New("use harness list or harness config <host> --scope <id> --agent <id> [--name <display>] [--output <new-file>]")
+		return errors.New("use " + usage)
 	}
 	adapter, err := adapters.Lookup(args[1])
 	if err != nil {
@@ -85,6 +92,11 @@ func harness(args []string) error {
 	data, err := adapters.Render(adapter, map[string]string{"scope": *scope, "agent": *agent, "name": *name, "command": *command, "dataDir": dataDir, "runtimeDir": runtimeDir})
 	if err != nil {
 		return err
+	}
+	// The entry is still useful before the workspace exists, but the host's
+	// server cannot start until it does.
+	if _, err := bus.ReadScopeToken(dataDir, *scope); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v. The generated server fails to start until this is fixed.\n", err)
 	}
 	if *output == "" {
 		_, err = os.Stdout.Write(data)
@@ -226,6 +238,9 @@ func doctorHarness(host, scope string, jsonOutput bool) error {
 	return nil
 }
 
+// doctorProbeAgent is the agent ID used by doctor --harness for its temporary bridge.
+const doctorProbeAgent = "agentintercom-doctor"
+
 func probeLocalBridge(ctx context.Context, scope string) (count int, resultErr error) {
 	executable, err := os.Executable()
 	if err != nil {
@@ -235,8 +250,9 @@ func probeLocalBridge(ctx context.Context, scope string) (count int, resultErr e
 	if err != nil {
 		return 0, err
 	}
-	id := fmt.Sprintf("doctor-%d-%d", os.Getpid(), time.Now().UnixNano())
-	command := exec.CommandContext(ctx, executable, "mcp", "stdio", "--scope", scope, "--agent", id, "--data-dir", paths.DataDir, "--runtime-dir", paths.RuntimeDir)
+	// Agents cannot be deleted, so the probe reuses one ID: each run replaces the
+	// previous probe instead of leaving another offline session in the workspace.
+	command := exec.CommandContext(ctx, executable, "mcp", "stdio", "--scope", scope, "--agent", doctorProbeAgent, "--name", "Agent Intercom doctor", "--data-dir", paths.DataDir, "--runtime-dir", paths.RuntimeDir)
 	command.Env = removeEnvironment(os.Environ(), "OCTOBER_BUS_ADDRESS", "OCTOBER_BUS_ADMIN_TOKEN", "OCTOBER_BUS_SCOPE_TOKEN", "OCTOBER_BUS_AGENT_TOKEN")
 	command.Stderr = io.Discard
 	client := mcp.NewClient(&mcp.Implementation{Name: "agentintercom-doctor", Version: bus.Version}, nil)

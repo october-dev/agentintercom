@@ -17,10 +17,26 @@ import (
 	"github.com/october-dev/agentintercom/bus"
 )
 
+// existingWorkspaceError tells a user re-running setup how to continue with
+// the workspace they already have, or how to recover its local credential.
+func existingWorkspaceError(name string) error {
+	paths, err := bus.DefaultDaemonPaths()
+	if err == nil {
+		_, err = bus.ReadScopeToken(paths.DataDir, name)
+	}
+	if err != nil {
+		return fmt.Errorf("workspace %q already exists, but this data directory has no credential for it; recover it with agentintercom scope rotate-token --id %s", name, name)
+	}
+	return fmt.Errorf("workspace %q already exists; connect to it with agentintercom connect --workspace %s", name, name)
+}
+
 func workspaceCommand(args []string, out io.Writer) error {
 	if len(args) == 2 && args[0] == "create" {
 		result, err := createLocalScope(args[1])
 		if err != nil {
+			if bus.AsBusError(err).Code == bus.CodeConflict {
+				return existingWorkspaceError(args[1])
+			}
 			return err
 		}
 		// Owner credentials stay in the private data directory. Ordinary setup

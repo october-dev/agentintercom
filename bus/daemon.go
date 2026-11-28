@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/user"
@@ -73,6 +74,9 @@ func DefaultDaemonPaths() (DaemonPaths, error) {
 
 func ReadRunFile(path string) (RunFile, error) {
 	data, err := readPrivateRunFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return RunFile{}, daemonNotRunning(filepath.Dir(path))
+	}
 	if err != nil {
 		return RunFile{}, err
 	}
@@ -86,6 +90,15 @@ func ReadRunFile(path string) (RunFile, error) {
 	}
 	return run, nil
 }
+
+// daemonNotRunning reports a missing run file, which means no daemon is
+// using this runtime directory. It matches fs.ErrNotExist.
+type daemonNotRunning string
+
+func (d daemonNotRunning) Error() string {
+	return "Agent Intercom is not running (no daemon is using runtime directory " + string(d) + ")"
+}
+func (daemonNotRunning) Unwrap() error { return fs.ErrNotExist }
 
 // readPrivateRunFile reads the discovery file only when it and its directory
 // belong to the current user. Without this check another local account could

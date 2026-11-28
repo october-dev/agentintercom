@@ -43,6 +43,18 @@ before the next release.
   one workspace's file deletion no longer stalls file access in others.
 - Hosted: replaying a redeemed OAuth authorization code with its PKCE verifier
   revokes the tokens issued from that code.
+- Report the execution-ended message, with recovery steps, on the first tool
+  call rejected after another window takes the agent ID or the scope token is
+  rotated, instead of `Invalid agent token` or `Unauthorized`.
+- `doctor --harness` reuses one `agentintercom-doctor` agent ID instead of
+  leaving a new offline session on every run.
+- Say when the daemon is not running, name the workspace and how to create or
+  recover it when its local credential is missing, point a repeated
+  `workspace create` to `connect` or `scope rotate-token`, add
+  `harness --help`, and warn from `harness config` when the workspace does not
+  exist yet.
+- Let OpenCode use its own request timeouts so the generated entry does not
+  cancel the guide's inbox waits after 10 seconds.
 
 ## 0.2.0 (release candidate)
 

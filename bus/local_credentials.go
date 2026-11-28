@@ -3,7 +3,9 @@ package bus
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -105,18 +107,37 @@ func SaveScopeToken(dataDir, scopeID, token string) error {
 	return os.Rename(file.Name(), path)
 }
 
+// missingScopeCredential reports an absent local credential. It matches
+// fs.ErrNotExist without appending the hashed file path to the message.
+type missingScopeCredential string
+
+func (e missingScopeCredential) Error() string { return string(e) }
+func (e missingScopeCredential) Unwrap() error { return fs.ErrNotExist }
+
 // ReadScopeToken fails closed on missing, malformed, shared, or symlinked files.
 func ReadScopeToken(dataDir, scopeID string) (string, error) {
 	path, err := ScopeTokenPath(dataDir, scopeID)
 	if err != nil {
 		return "", err
 	}
+	// A missing file almost always means the workspace was never created on this
+	// machine (or under these data directories); say so instead of printing a
+	// hashed credential path.
+	missing := func() error {
+		return missingScopeCredential(fmt.Sprintf("workspace %q has no local credential in %s; create it with agentintercom workspace create %s, or recover an existing one with agentintercom scope rotate-token --id %s", scopeID, dataDir, scopeID, scopeID))
+	}
 	for _, directory := range []string{dataDir, filepath.Dir(path)} {
 		if err := checkPrivatePath(directory, true); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return "", missing()
+			}
 			return "", fmt.Errorf("cannot read local scope credential: %w", err)
 		}
 	}
 	if err := checkPrivatePath(path, false); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", missing()
+		}
 		return "", fmt.Errorf("cannot read local scope credential; create the scope locally or rotate its token: %w", err)
 	}
 	data, err := os.ReadFile(path)
