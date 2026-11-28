@@ -55,6 +55,31 @@ func TestEveryConfigurationRendersWithoutCredentials(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			full := maps.Clone(values)
+			full["toolProfile"] = "full"
+			explicit, err := Render(manifest, full)
+			if err != nil || string(explicit) != string(data) || strings.Contains(string(data), "--tool-profile") {
+				t.Fatalf("full profile changed the default configuration: %v", err)
+			}
+			lean := maps.Clone(values)
+			lean["toolProfile"] = "lean"
+			reduced, err := Render(manifest, lean)
+			if err != nil || strings.Count(string(reduced), `"--tool-profile"`) != 1 || !strings.Contains(string(reduced), `"lean"`) {
+				t.Fatalf("missing lean bridge arguments: %v", err)
+			}
+			if manifest.Directory == "copilot-cli" || manifest.Directory == "gemini-cli" {
+				var config struct {
+					Servers map[string]struct{ Tools, IncludeTools []string } `json:"mcpServers"`
+				}
+				if err := json.Unmarshal(reduced, &config); err != nil {
+					t.Fatal(err)
+				}
+				server := config.Servers["agent_intercom"]
+				names := append(server.Tools, server.IncludeTools...)
+				if !slices.Equal(names, []string{"intercom_peers", "intercom_send", "intercom_inbox", "intercom_task", "intercom_channel"}) {
+					t.Fatalf("unexpected host tool filter: %v", names)
+				}
+			}
 			for _, required := range []string{"--scope", "--agent", "--data-dir", "--runtime-dir"} {
 				if !strings.Contains(string(data), required) {
 					t.Fatalf("missing %s", required)
@@ -69,6 +94,11 @@ func TestEveryConfigurationRendersWithoutCredentials(t *testing.T) {
 		})
 	}
 	manifest, _ := Lookup("codex")
+	invalid := maps.Clone(values)
+	invalid["toolProfile"] = "unknown"
+	if _, err := Render(manifest, invalid); err == nil {
+		t.Fatal("rendered unknown tool profile")
+	}
 	values["name"] = "$(touch should-not-run)"
 	if _, err := Render(manifest, values); err == nil {
 		t.Fatal("accepted host-interpreted shell expansion")

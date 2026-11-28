@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { installExtension } from '../adapters/pi/index.mjs'
-import { openBridge } from '../adapters/pi/bridge.mjs'
+import { openBridge, validateTools } from '../adapters/pi/bridge.mjs'
+
+test('Pi requires exactly the lean surface when the generated bridge opts in', () => {
+  const tools = ['intercom_channel', 'intercom_task', 'intercom_send', 'intercom_peers', 'intercom_inbox'].map(name => ({ name }))
+  const args = ['mcp', 'stdio', '--tool-profile', 'lean', '--scope', 'workspace']
+  validateTools({ tools }, args)
+  validateTools({ tools }, ['mcp', 'stdio', '--tool-profile=lean'])
+  validateTools({ tools }, ['mcp', 'stdio', '--new-session', '--tool-profile', 'lean'])
+  for (const listed of [{ tools: tools.slice(1) }, { tools: [...tools, { name: 'list_peers' }] }, { tools: [...tools, tools[0]] }, { tools, nextCursor: 'more' }]) {
+    assert.throws(() => validateTools(listed, args), /Incompatible/)
+  }
+  assert.throws(() => validateTools({ tools }, ['mcp', 'stdio', '--name', '--tool-profile=lean']), /Incompatible/)
+})
 
 test('Pi hooks serialize replacement, preserve schemas/cancellation and retire once', async () => {
   const hooks = {}, tools = [], connections = []

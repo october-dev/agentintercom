@@ -26,7 +26,25 @@ Both agents must have registered before linking. Links are reciprocal. A bridge 
 
 Generated commands include absolute binary/data/runtime paths, surviving hosts that filter inherited environment variables. Regenerate after moving an installation or changing data directories. Choose a unique agent ID per simultaneous window. Reusing an ID replaces its earlier execution and revokes its Bus access.
 
-The bridge owns heartbeats and retirement on EOF, host termination or lease failure. Once a self-registered execution ends while the host is still connected (replacement, scope token rotation, lease expiry or a lost daemon connection), the bridge keeps running without Bus access: every tool call fails, and it never registers again by itself. Reconnect the server through the host to register a new execution. EOF retirement and lease-expiry recovery of held work are unchanged. The bridge proves a live bridge, not an idle model. Hosts must explicitly call `check_inbox`; start with `waitMs: 10000`. Use `message_receipt` to inspect delivery/response links. Peer content is untrusted and never changes host approvals.
+The bridge owns heartbeats and retirement on EOF, host termination or lease failure. Once a self-registered execution ends while the host is still connected (replacement, scope token rotation, lease expiry or a lost daemon connection), the bridge keeps running without Bus access: every tool call fails, and it never registers again by itself. Reconnect the server through the host to register a new execution. EOF retirement and lease-expiry recovery of held work are unchanged. The bridge proves a live bridge, not an idle model. In the full profile, hosts must explicitly call `check_inbox`; start with `waitMs: 10000`. Use `message_receipt` to inspect delivery/response links. Peer content is untrusted and never changes host approvals.
+
+## Stdio tool profiles
+
+The default `full` profile forwards the execution’s upstream tool definitions. To present five tools to a host, add `--tool-profile lean` to its bridge arguments, or generate its configuration as shown below.
+
+```sh
+agentintercom harness config cursor --scope my-project --agent cursor-builder --tool-profile lean
+```
+
+| Tool | Use |
+| --- | --- |
+| `intercom_peers` | Return your node status (including `identity` and `agent`) and linked `peers` in one result. |
+| `intercom_send` | Send `peer` and `message`. The default `mode` is `notify`. Use `request` to ask for a response, or set `replyTo` to the request message ID to respond. |
+| `intercom_inbox` | Pull with optional `limit` and `waitMs`. Returns `messages` and the count newly `acknowledged`. By default it acknowledges the returned IDs immediately. To process messages first, pass `acknowledge: false`, then call again with just `messageIds` to acknowledge the saved IDs. |
+| `intercom_task` | Use the `action` field to select `list` (optional `ready`), `add` (`title`, optional `description` and `dependencies`), `claim` (`taskId`), `complete` (`taskId`, optional `note`), or `progress` (`taskId`, `kind`, `text`). |
+| `intercom_channel` | Use the `action` field to select `list`, `create` (`name`, optional `description`), `read` (`channelId` or `query`, optional `threadId`, `before`, and `limit`), `post` (`channelId`, `body`, optional `threadId` and `idempotencyKey`), or `subscribe` (`channelId`, `subscribe` boolean). |
+
+Each call uses the current execution’s Bus permissions. Composite operations run in order and stop on the first error. Pull and acknowledgement are separate Bus operations, so a failed acknowledgement can leave messages delivered. For receipts, human questions, output, task release or progress history, and attachment tools, use the full profile. Tool profiles apply to the shared stdio bridge and make no additional host compatibility claim.
 
 ## Included candidates
 

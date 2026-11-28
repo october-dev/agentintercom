@@ -58,7 +58,7 @@ Usage:
   agentintercom doctor [--json]
   agentintercom doctor --harness <host> --scope <scope-id> [--json]
   agentintercom harness list
-  agentintercom harness config <host> --scope <scope-id> --agent <id> [--name <display>] [--output <new-file>]
+  agentintercom harness config <host> --scope <scope-id> --agent <id> [--name <display>] [--tool-profile full|lean] [--output <new-file>]
   agentintercom scope create [scope-id]
   agentintercom scope list [--address <addr>]
   agentintercom scope rotate-token --id <scope-id> [--address <addr>]
@@ -82,7 +82,7 @@ Usage:
   agentintercom task complete --id <task-id> [--note <text> | --note-file <file|->] [--json] [--address <addr>]
   agentintercom task progress add --id <task-id> [--kind progress|note|blocker] (--text <text> | --text-file <file|->) [--json] [--address <addr>]
   agentintercom task progress list --id <task-id> [--json] [--address <addr>]
-  agentintercom mcp stdio [--scope <scope-id> --agent <id> --name <display>]
+  agentintercom mcp stdio [--tool-profile full|lean] [--scope <scope-id> --agent <id> --name <display>]
   agentintercom mcp stdio --scope <scope-id> --new-session [--name <display>]
   agentintercom mcp stdio --connection-file </absolute/private/connection.json>
   agentintercom mcp stdio --remote <https-base-url> --scope-token-file <file> --agent <id> [--connect-to <peer>]

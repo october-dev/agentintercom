@@ -3,6 +3,30 @@
 import { spawn } from 'node:child_process'
 import { isAbsolute } from 'node:path'
 
+// Read the bridge's argv, skipping option values (a display name can look like a flag).
+function toolProfile(args) {
+  let profile = 'full'
+  for (let i = 2; i < args.length; i++) {
+    const [flag, inline] = args[i].split('=', 2)
+    if (/^--?new-session$/.test(flag)) continue
+    const value = inline ?? args[++i]
+    if (/^--?tool-profile$/.test(flag)) profile = value
+  }
+  return profile
+}
+
+export function validateTools(listed, args) {
+  const lean = toolProfile(args) === 'lean'
+  const required = lean
+    ? ['intercom_peers', 'intercom_send', 'intercom_inbox', 'intercom_task', 'intercom_channel']
+    : ['list_peers', 'message_peer', 'check_inbox', 'acknowledge_messages', 'message_receipt', 'add_task', 'claim_task', 'release_task', 'complete_task', 'add_task_progress', 'list_task_progress', 'list_tasks', 'publish_output', 'ask_user', 'get_node_status']
+  const names = new Set(Array.isArray(listed?.tools) ? listed.tools.map(tool => tool?.name) : [])
+  if (!Array.isArray(listed?.tools) || listed.tools.length > 128 || names.size !== listed.tools.length ||
+      !required.every(name => names.has(name)) || (lean && names.size !== required.length) || listed.nextCursor) {
+    throw new Error('Incompatible Agent Intercom tool list: required tools are missing or the list is invalid')
+  }
+}
+
 export async function openBridge(config) {
   if (!config || !isAbsolute(config.command ?? '') || !Array.isArray(config.args) ||
       config.args.some(value => typeof value !== 'string') ||
@@ -100,9 +124,7 @@ export async function openBridge(config) {
     if (initialized?.protocolVersion !== '2025-03-26' || !initialized.capabilities?.tools) throw new Error('Incompatible Agent Intercom MCP bridge')
     send({ jsonrpc: '2.0', method: 'notifications/initialized' })
     const listed = await request('tools/list', {}, undefined, 10_000)
-    const coreTools = ['list_peers', 'message_peer', 'check_inbox', 'acknowledge_messages', 'message_receipt', 'add_task', 'claim_task', 'release_task', 'complete_task', 'add_task_progress', 'list_task_progress', 'list_tasks', 'publish_output', 'ask_user', 'get_node_status']
-    const names = new Set(Array.isArray(listed?.tools) ? listed.tools.map(tool => tool.name) : [])
-    if (!Array.isArray(listed?.tools) || listed.tools.length > 128 || names.size !== listed.tools.length || !coreTools.every(name => names.has(name)) || listed.nextCursor) throw new Error('Incompatible Agent Intercom tool list: required core tools are missing or the list is invalid')
+    validateTools(listed, config.args)
     return { tools: listed.tools, instructions: initialized.instructions ?? '', close,
       call: (name, args, signal) => request('tools/call', { name, arguments: args }, signal) }
   } catch (error) {
