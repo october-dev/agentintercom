@@ -23,9 +23,10 @@
   "maintainer": "October",
   "repository": "https://github.com/october-dev/agentintercom",
   "limitations": [
-    "Configuration reviewed against upstream documentation; this adapter revision has no named-harness certification",
+    "Cursor Agent CLI observations are specific to the recorded build, platform and launch mode; editor behavior requires a separate run",
     "Pull-only: queued work does not start a model turn",
-    "One MCP configuration is one execution; duplicate agent IDs replace earlier executions"
+    "Self-registration treats each MCP process as an execution. A tool-listing process with the same agent ID replaces the live session",
+    "A normal Cursor print-mode exit can leave a self-registered claim held until lease expiry. Use the launcher configuration for retirement on child exit"
   ],
   "conformanceCommand": "agentintercom-conformance --profile mcp-adapter --start-runtime --adapter-command agentintercom --adapter-arg mcp --adapter-arg stdio --check-self-registration",
   "configuration": {
