@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/a2aproject/a2a-go/v2/a2a"
 )
@@ -263,4 +266,52 @@ func TestA2AGetTaskHidesForeignTasksAndEnforcesCredentialState(t *testing.T) {
 	require(t, errors.Is(err, a2a.ErrVersionNotSupported), "bad version lookup error = %v", err)
 	_, err = transport.GetTask(ctx, a2aTestParams(rotated.Credential, string(a2a.Version)), &a2a.GetTaskRequest{ID: "!!! not an id !!!"})
 	require(t, errors.Is(err, a2a.ErrInvalidParams), "invalid task ID lookup error = %v", err)
+}
+
+func TestPostgresA2AGetTaskHistory(t *testing.T) {
+	dsn := os.Getenv("OCTOBER_BUS_TEST_POSTGRES_URL")
+	if dsn == "" {
+		t.Skip("set OCTOBER_BUS_TEST_POSTGRES_URL to an isolated local october_bus_test database")
+	}
+	u, err := url.Parse(dsn)
+	require(t, err == nil && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost") && u.Path == "/october_bus_test", "PostgreSQL tests require an isolated loopback october_bus_test database")
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	requireNoError(t, MigratePostgres(ctx, dsn))
+	runtime, err := OpenPostgres(ctx, dsn)
+	requireNoError(t, err)
+	defer runtime.Close()
+	id, err := randomID("pg_")
+	requireNoError(t, err)
+	scope, err := runtime.CreateScope(ctx, CreateScopeInput{ID: id})
+	requireNoError(t, err)
+	defer runtime.DeleteScope(context.Background(), scope.ScopeID)
+	planner, err := runtime.RegisterAgent(ctx, scope.ScopeToken, RegisterAgentInput{ID: "planner", DisplayName: "Planner"})
+	requireNoError(t, err)
+	reviewer, err := runtime.RegisterAgent(ctx, scope.ScopeToken, RegisterAgentInput{ID: "reviewer", DisplayName: "Reviewer", ConnectTo: []string{"planner"}})
+	requireNoError(t, err)
+	agents := testAgents{runtime: runtime, scope: scope, planner: planner, reviewer: reviewer, plannerToken: planner.AgentToken, reviewerToken: reviewer.AgentToken}
+	publication, issued := setupA2APrincipal(t, agents)
+
+	task, err := runtime.AcceptA2AMessage(ctx, issued.Credential, publication.ID, AcceptA2AMessageInput{ClientMessageID: "remote-message-1", Body: "Review this"})
+	requireNoError(t, err)
+	polled, history, err := runtime.A2ATaskHistory(ctx, issued.Credential, publication.ID, task.ID)
+	requireNoError(t, err)
+	require(t, polled.State == A2ATaskSubmitted && len(history) == 1 && history[0].RequestBody == "Review this" && history[0].ResponseMessageID == "", "unexpected submitted history: %#v %#v", polled, history)
+
+	reservation, err := runtime.ReserveInbox(ctx, reviewer.AgentToken, 10, 0)
+	require(t, err == nil && reservation != nil && len(reservation.Messages) == 1, "unexpected inbox: %#v, %v", reservation, err)
+	if _, err := runtime.CommitInbox(ctx, reviewer.AgentToken, reservation.ID); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := runtime.SendMessage(ctx, reviewer.AgentToken, SendMessageInput{
+		To: issued.Principal.ID, Mode: MessageResponse, ResponseTo: reservation.Messages[0].ID, Body: "Found one issue", IdempotencyKey: "pg-review-reply",
+	})
+	requireNoError(t, err)
+	polled, history, err = runtime.A2ATaskHistory(ctx, issued.Credential, publication.ID, task.ID)
+	requireNoError(t, err)
+	require(t, polled.State == A2ATaskCompleted && len(history) == 1 && history[0].ResponseMessageID == reply.MessageID && history[0].ResponseBody == "Found one issue", "unexpected completed history: %#v %#v", polled, history)
+
+	_, _, err = runtime.A2ATaskHistory(ctx, issued.Credential, publication.ID, "a2a_missing")
+	requireCode(t, err, CodeNotFound)
 }
