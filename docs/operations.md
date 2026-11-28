@@ -211,7 +211,9 @@ Startup also refuses a run file naming a possibly live process, to avoid taking 
 
 The daemon handles interrupt and termination signals and shuts down active HTTP requests before closing SQLite. A service supervisor should restart unexpected exits with bounded backoff.
 
-The repository does not yet ship platform service definitions. Keep credentials out of service arguments and logs when adding one.
+`agentintercom service install` writes the managed user-service definition
+(systemd user unit on Linux, LaunchAgent plist on macOS). Keep credentials
+out of service arguments and logs.
 
 ## Recovery
 

@@ -98,6 +98,38 @@ Linux startup before login additionally requires administrator-enabled linger;
 macOS LaunchAgents start with the user's GUI login. This command does not change
 system-wide login policy or install a root service.
 
+## Upgrading the login service
+
+After upgrading the package, re-run `agentintercom service install` (or
+`agentintercom install`, which upgrades a managed daemon that is not provably
+on the invoking build instead of reusing it). The flow replaces the stable
+executable, records a pending activation, reactivates the user service, and
+restarts unless the managed daemon is provably already on this build: healthy,
+reporting this version, with matching installed bytes and unit and no pending
+activation. On Linux it runs `daemon-reload` and `enable`, then
+`restart` (`restart` also starts an inactive unit, so an unhealthy managed
+daemon is recovered rather than skipped, and a stopped service is started
+exactly once); on macOS it re-bootstraps unless
+everything is already current. Reinstalling an unchanged build never restarts
+a healthy running daemon when the installed unit is unchanged and no
+activation is pending.
+
+Every restart is verified before success is reported: the replacement must
+answer health on the new version with a new process identity. A failed or
+interrupted activation keeps its pending marker, so running the same command
+again reactivates and verifies instead of falsely reporting "already
+current" — including same-version rebuilds whose files already match. A
+managed daemon that is unhealthy or unreachable is restarted and verified, or
+the install fails with a non-zero error; it is never silently reused as a
+success. Manually started daemons (no managed unit) keep the existing reuse
+behavior, and platforms without login-service support are unaffected.
+
+The restart keeps the same data directory, preserving workspaces, accepted
+messages, credentials, and unrelated app settings; reconnect MCP in your apps
+(or restart them) after an upgrade restart so they attach to the new daemon
+process. Running an older copy can instead downgrade the service; a daemon
+that cannot read the current database schema refuses to start.
+
 ## Monitor without consuming messages
 
 Inside an execution with agent credentials, `agentintercom inbox --follow`

@@ -164,7 +164,20 @@ func installCommand(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if _, err = bus.ReadRunFile(p.RunFile); err != nil && !*noService {
+		needsService := false
+		if _, err = bus.ReadRunFile(p.RunFile); err != nil {
+			needsService = !*noService
+		} else if !*noService {
+			// A managed daemon that is not provably on this build must be
+			// upgraded instead of silently reused; an unevaluated managed
+			// installation fails loudly rather than reporting success.
+			stale, serr := managedDaemonNeedsUpgrade(p)
+			if serr != nil {
+				return fmt.Errorf("could not inspect the managed login service; refusing to reuse an unevaluated daemon: %w", serr)
+			}
+			needsService = stale
+		}
+		if needsService {
 			if err = manageService("install", out); err != nil {
 				return err
 			}
