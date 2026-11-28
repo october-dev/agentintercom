@@ -13,6 +13,9 @@
   attachment, non-consuming inbox monitoring and MCP tool metadata.
 - Preserve existing protocol 0.1 health/archive identifiers, local data paths,
   `OCTOBER_BUS_*` configuration, applied migrations and hosted deployment paths.
+- Add opt-in `mcp stdio --unread-digest` for pull-only MCP hosts: other tools'
+  results end with a bounded, quoted preview of new waiting messages. Previews
+  never acknowledge messages and cannot wake an idle model.
 
 These changes are not a claim that an npm release or hosted launch has occurred.
 See [releases](https://github.com/october-dev/agentintercom/releases) for published

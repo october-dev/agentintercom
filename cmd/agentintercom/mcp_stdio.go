@@ -123,6 +123,8 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	readyFile := flags.String("ready-file", "", "optional private ready.json beside a managed connection; written after the host discovers tools")
 	remote := flags.String("remote", "", "HTTPS remote Bus base URL, including /bus for a hosted gateway")
 	scopeTokenFile := flags.String("scope-token-file", "", "private remote scope credential file, kept outside model context")
+	unreadDigestOn := flags.Bool("unread-digest", false, "end other tools' results with a bounded preview of new waiting messages, for pull-only hosts; never acknowledges them")
+	unreadMS := flags.Int("unread-ms", 500, "minimum milliseconds between --unread-digest inbox checks; 0 turns the previews off")
 	var peers stringList
 	flags.Var(&peers, "connect-to", "existing peer ID to link, repeatable")
 	if err := flags.Parse(args); err != nil {
@@ -130,6 +132,9 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	}
 	if flags.NArg() != 0 {
 		return errors.New("mcp stdio does not accept positional arguments")
+	}
+	if *unreadMS < 0 {
+		return errors.New("--unread-ms must be 0 or more")
 	}
 	if *native != "" && *native != "claude" && *native != "codex" {
 		return errors.New("--native must be claude or codex")
@@ -330,7 +335,15 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		}
 	}
 
-	server := newMCPBridgeServer(mcpBridgeInstructions)
+	instructions := mcpBridgeInstructions
+	var digest *unreadDigest
+	if *unreadDigestOn {
+		instructions += " " + mcpUnreadDigestInstructions
+		if *unreadMS > 0 {
+			digest = newUnreadDigest(callTool, time.Duration(*unreadMS)*time.Millisecond)
+		}
+	}
+	server := newMCPBridgeServer(instructions)
 	if *native != "" {
 		server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 			return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
@@ -375,9 +388,13 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 			tool := *upstreamTool
 			toolName := tool.Name
 			coerce := structuredArgumentTypes(tool.InputSchema)
+			call := mcpToolCaller(callTool)
+			if digest != nil {
+				call = digest.wrap(toolName, call)
+			}
 			server.AddTool(&tool, func(callContext context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				params := request.Params
-				return callTool(callContext, &mcp.CallToolParams{
+				return call(callContext, &mcp.CallToolParams{
 					Meta:           params.Meta,
 					Name:           toolName,
 					Arguments:      coerceStructuredArguments(params.Arguments, coerce),
