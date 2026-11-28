@@ -68,11 +68,15 @@ func mcpBridgeCommand(address, token string, stderr io.Writer) *exec.Cmd {
 	return command
 }
 
-func connectMCPBridge(t *testing.T, ctx context.Context, address, token string) (*mcp.ClientSession, *bytes.Buffer) {
+func connectMCPBridge(t *testing.T, ctx context.Context, address, token string, args ...string) (*mcp.ClientSession, *bytes.Buffer) {
 	t.Helper()
 	stderr := new(bytes.Buffer)
 	client := mcp.NewClient(&mcp.Implementation{Name: "bridge-test", Version: "1"}, nil)
-	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: mcpBridgeCommand(address, token, stderr)}, nil)
+	command := mcpBridgeCommand(address, token, stderr)
+	raw, err := json.Marshal(args)
+	requireNoError(t, err)
+	command.Env = setEnvironment(command.Env, "OCTOBER_BUS_MCP_STDIO_TEST_ARGS", string(raw))
+	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: command}, nil)
 	if err != nil {
 		t.Fatalf("connect to stdio bridge: %v; stderr: %s", err, stderr.String())
 	}
@@ -116,6 +120,15 @@ func TestMCPStdioBridgeForwardsDaemonTools(t *testing.T) {
 	directJSON, err := json.Marshal(directTools.Tools)
 	requireNoError(t, err)
 	require(t, bytes.Equal(forwardedJSON, directJSON), "stdio bridge changed the daemon tool definitions\nforwarded: %s\ndirect: %s", forwardedJSON, directJSON)
+	explicit, _ := connectMCPBridge(t, ctx, address, senderToken, "--tool-profile", "full")
+	defer explicit.Close()
+	full, err := explicit.ListTools(ctx, nil)
+	requireNoError(t, err)
+	fullJSON, err := json.Marshal(full)
+	requireNoError(t, err)
+	defaultJSON, err := json.Marshal(tools)
+	requireNoError(t, err)
+	require(t, bytes.Equal(fullJSON, defaultJSON), "explicit full profile changed tools/list")
 	callMCPBridgeTool(t, ctx, session, "list_peers", map[string]any{})
 	callMCPBridgeTool(t, ctx, session, "message_peer", map[string]any{"peer": "receiver", "message": "Forwarded over stdio"})
 	messages, err := (bus.Client{Address: address, Token: receiverToken}).PullInbox(ctx, 10, 0)

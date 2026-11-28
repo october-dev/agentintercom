@@ -72,6 +72,14 @@ func Lookup(host string) (Manifest, error) {
 	return Manifest{}, fmt.Errorf("no reviewed configuration for %q; use agentintercom harness list", host)
 }
 
+// ValidateToolProfile checks the stdio bridge's presentation setting.
+func ValidateToolProfile(profile string) error {
+	if profile != "full" && profile != "lean" {
+		return fmt.Errorf("--tool-profile must be full or lean")
+	}
+	return nil
+}
+
 // Render substitutes entire string values, not shell fragments. JSON quoting
 // also works for the simple TOML and YAML string values in these templates.
 func Render(manifest Manifest, values map[string]string) ([]byte, error) {
@@ -86,6 +94,18 @@ func Render(manifest Manifest, values map[string]string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	template := string(data)
+	if profile, ok := values["toolProfile"]; ok {
+		if err := ValidateToolProfile(profile); err != nil {
+			return nil, err
+		}
+		if profile == "lean" {
+			template, err = leanConfigTemplate(manifest.Directory, template)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	replacements := make([]string, 0, len(values)*2)
 	for _, key := range []string{"command", "scope", "agent", "name", "dataDir", "runtimeDir"} {
 		value := values[key]
@@ -97,7 +117,7 @@ func Render(manifest Manifest, values map[string]string) ([]byte, error) {
 		encoded, _ := json.Marshal(value)
 		replacements = append(replacements, `"{{`+key+`}}"`, string(encoded))
 	}
-	result := []byte(strings.NewReplacer(replacements...).Replace(string(data)))
+	result := []byte(strings.NewReplacer(replacements...).Replace(template))
 	if strings.Contains(string(result), "{{") {
 		return nil, fmt.Errorf("unresolved configuration placeholder")
 	}
@@ -105,4 +125,36 @@ func Render(manifest Manifest, values map[string]string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid rendered JSON")
 	}
 	return result, nil
+}
+
+// All embedded formats use a quoted bridge argument array. Change the template
+// before substituting values so a display name cannot match a flag.
+func leanConfigTemplate(host, template string) (string, error) {
+	const anchor = `"--scope"`
+	if strings.Count(template, anchor) != 1 {
+		return "", fmt.Errorf("expected one bridge --scope argument in %s configuration", host)
+	}
+	template = strings.Replace(template, anchor, `"--tool-profile", "lean", "--scope"`, 1)
+
+	// Copilot and Gemini also filter the tools returned by the bridge.
+	var key string
+	switch host {
+	case "copilot-cli":
+		key = "tools"
+	case "gemini-cli":
+		key = "includeTools"
+	default:
+		return template, nil
+	}
+	var config map[string]map[string]map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(template), &config); err != nil {
+		return "", err
+	}
+	server := config["mcpServers"]["agent_intercom"]
+	if server[key] == nil {
+		return "", fmt.Errorf("missing %s in %s configuration", key, host)
+	}
+	server[key] = json.RawMessage(`["intercom_peers","intercom_send","intercom_inbox","intercom_task","intercom_channel"]`)
+	formatted, err := json.MarshalIndent(config, "", "  ")
+	return string(formatted) + "\n", err
 }

@@ -39,6 +39,7 @@ func harness(args []string) error {
 		return err
 	}
 	flags := flag.NewFlagSet("harness config", flag.ContinueOnError)
+	profile := flags.String("tool-profile", "full", "stdio tool presentation: full or lean")
 	scope := flags.String("scope", "", "local scope ID")
 	agent := flags.String("agent", "", "unique agent ID per window/project")
 	name := flags.String("name", "", "display name (defaults to agent ID)")
@@ -82,7 +83,7 @@ func harness(args []string) error {
 	if err != nil {
 		return err
 	}
-	data, err := adapters.Render(adapter, map[string]string{"scope": *scope, "agent": *agent, "name": *name, "command": *command, "dataDir": dataDir, "runtimeDir": runtimeDir})
+	data, err := adapters.Render(adapter, map[string]string{"scope": *scope, "agent": *agent, "name": *name, "command": *command, "dataDir": dataDir, "runtimeDir": runtimeDir, "toolProfile": *profile})
 	if err != nil {
 		return err
 	}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/october-dev/agentintercom/adapters"
 	"github.com/october-dev/agentintercom/bus"
 )
 
@@ -111,6 +112,7 @@ func (transport agentTokenTransport) roundTrip(request *http.Request) (*http.Res
 func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	var nativeReady atomic.Bool
 	flags := flag.NewFlagSet("mcp stdio", flag.ContinueOnError)
+	profile := flags.String("tool-profile", "full", "tool presentation: full or lean")
 	native := flags.String("native", "", "enable attachment for claude or codex")
 	scope := flags.String("scope", "", "local scope ID (no token in configuration)")
 	hosted := flags.String("hosted", "", "saved hosted device profile")
@@ -130,6 +132,9 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 	}
 	if flags.NArg() != 0 {
 		return errors.New("mcp stdio does not accept positional arguments")
+	}
+	if err := adapters.ValidateToolProfile(*profile); err != nil {
+		return err
 	}
 	if *native != "" && *native != "claude" && *native != "codex" {
 		return errors.New("--native must be claude or codex")
@@ -330,7 +335,11 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		}
 	}
 
-	server := newMCPBridgeServer(mcpBridgeInstructions)
+	instructions := mcpBridgeInstructions
+	if *profile == "lean" {
+		instructions = leanBridgeInstructions
+	}
+	server := newMCPBridgeServer(instructions)
 	if *native != "" {
 		server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 			return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
@@ -360,6 +369,10 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 			}
 		})
 	}
+	var leanUpstream map[string]*mcp.Tool
+	if *profile == "lean" {
+		leanUpstream = make(map[string]*mcp.Tool)
+	}
 	for cursor := ""; ; {
 		listCtx, listOutcome := withCallOutcome(connectContext)
 		result, err := upstream.ListTools(listCtx, &mcp.ListToolsParams{Cursor: cursor})
@@ -372,6 +385,10 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 			return fmt.Errorf("could not discover Agent Intercom tools: %w", err)
 		}
 		for _, upstreamTool := range result.Tools {
+			if leanUpstream != nil {
+				leanUpstream[upstreamTool.Name] = upstreamTool
+				continue
+			}
 			tool := *upstreamTool
 			toolName := tool.Name
 			coerce := structuredArgumentTypes(tool.InputSchema)
@@ -396,6 +413,11 @@ func runMCPStdio(ctx context.Context, args ...string) (runErr error) {
 		cursor = result.NextCursor
 	}
 	cancelConnect()
+	if leanUpstream != nil {
+		if err := addLeanTools(server, leanUpstream, callTool); err != nil {
+			return err
+		}
+	}
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 
