@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -216,14 +217,13 @@ func TestMCPStdioManagedConnectionForwardsWithoutLocalDaemon(t *testing.T) {
 	require(t, err == nil && len(messages) == 0, "replacement message escaped")
 }
 
-func TestMCPStdioManagedConnectionDoesNotReplayLostMutation(t *testing.T) {
-	path, connection := connectionFixture(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	address, _, senderToken, receiverToken, cleanup := startTestServer(t, ctx, "managed-lost-reply")
-	defer cleanup()
-	var mutations atomic.Int32
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// lossyProxy forwards to the test daemon but drops the first response whose
+// request body names the given tool, after the daemon has committed it.
+// calls counts how often that tool reached the daemon.
+func lossyProxy(t *testing.T, address, tool string, calls *atomic.Int32) *httptest.Server {
+	t.Helper()
+	match := []byte(`"` + tool + `"`)
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Error("could not read proxy request")
@@ -241,8 +241,8 @@ func TestMCPStdioManagedConnectionDoesNotReplayLostMutation(t *testing.T) {
 			return
 		}
 		defer response.Body.Close()
-		if bytes.Contains(body, []byte(`"message_peer"`)) && mutations.Add(1) == 1 {
-			// The authority has accepted the message; lose only its response.
+		if bytes.Contains(body, match) && calls.Add(1) == 1 {
+			// The authority has committed the call; lose only its response.
 			_, _ = io.Copy(io.Discard, response.Body)
 			socket, _, err := w.(http.Hijacker).Hijack()
 			if err != nil {
@@ -258,6 +258,16 @@ func TestMCPStdioManagedConnectionDoesNotReplayLostMutation(t *testing.T) {
 		w.WriteHeader(response.StatusCode)
 		_, _ = io.Copy(w, response.Body)
 	}))
+}
+
+func TestMCPStdioManagedConnectionDoesNotReplayLostMutation(t *testing.T) {
+	path, connection := connectionFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	address, _, senderToken, receiverToken, cleanup := startTestServer(t, ctx, "managed-lost-reply")
+	defer cleanup()
+	var mutations atomic.Int32
+	proxy := lossyProxy(t, address, "message_peer", &mutations)
 	defer proxy.Close()
 	connection.Endpoint, connection.AgentToken = proxy.URL+"/mcp", senderToken
 	saveTestConnection(t, path, connection)
@@ -281,6 +291,56 @@ func TestMCPStdioManagedConnectionDoesNotReplayLostMutation(t *testing.T) {
 	require(t, messageID != "" && mutations.Load() == 2, "explicit retry did not return a receipt: %#v", retry.StructuredContent)
 	messages, err := (bus.Client{Address: address, Token: receiverToken}).PullInbox(ctx, 10, 0)
 	require(t, err == nil && len(messages) == 1 && messages[0].Body == "accepted once" && messages[0].ID == messageID, "lost response duplicated or dropped committed message")
+}
+
+// Committing an acknowledgement and then losing its response must leave the
+// outcome for the caller to reconcile: no automatic replay, no redelivery, and
+// a repeat or unknown ID counts 0, so only the receipt tells them apart.
+func TestMCPStdioManagedConnectionDoesNotReplayLostAcknowledgement(t *testing.T) {
+	path, connection := connectionFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	address, _, senderToken, receiverToken, cleanup := startTestServer(t, ctx, "managed-lost-ack")
+	defer cleanup()
+	receiver := bus.Client{Address: address, Token: receiverToken}
+	sent, err := (bus.Client{Address: address, Token: senderToken}).SendMessage(ctx, bus.SendMessageInput{To: "receiver", Body: "acknowledge once"})
+	requireNoError(t, err)
+	delivered, err := receiver.PullInbox(ctx, 10, 0)
+	require(t, err == nil && len(delivered) == 1 && delivered[0].ID == sent.MessageID, "message was not delivered: %#v, %v", delivered, err)
+
+	var acknowledgements atomic.Int32
+	proxy := lossyProxy(t, address, "acknowledge_messages", &acknowledgements)
+	defer proxy.Close()
+	connection.Endpoint, connection.AgentToken = proxy.URL+"/mcp", receiverToken
+	saveTestConnection(t, path, connection)
+	session, stderr := managedBridge(t, ctx, path)
+	defer session.Close()
+
+	acknowledge := func(messageID string) float64 {
+		t.Helper()
+		result := callMCPBridgeTool(t, ctx, session, "acknowledge_messages", map[string]any{"messageIds": []any{messageID}})
+		value, _ := result.StructuredContent.(map[string]any)
+		count, ok := value["acknowledged"].(float64)
+		require(t, ok, "acknowledgement returned no count: %#v", result.StructuredContent)
+		return count
+	}
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "acknowledge_messages", Arguments: map[string]any{"messageIds": []any{sent.MessageID}}})
+	require(t, err != nil || result.IsError, "lost acknowledgement response reported success; %s", stderr.String())
+	callMCPBridgeTool(t, ctx, session, "list_peers", map[string]any{})
+	require(t, acknowledgements.Load() == 1, "replayed acknowledgement while reconnecting")
+
+	committed, err := receiver.Receipt(ctx, sent.MessageID)
+	require(t, err == nil && committed.State == bus.DeliveryAcknowledged && committed.AcknowledgedAt != "", "acknowledgement was not committed: %#v, %v", committed, err)
+	require(t, acknowledge(sent.MessageID) == 0 && acknowledgements.Load() == 2, "explicit repeat acknowledged again")
+	repeated, err := receiver.Receipt(ctx, sent.MessageID)
+	require(t, err == nil && repeated.State == bus.DeliveryAcknowledged && repeated.AcknowledgedAt == committed.AcknowledgedAt, "repeat changed the receipt: %#v, %v", repeated, err)
+	redelivered, err := receiver.PullInbox(ctx, 10, 0)
+	require(t, err == nil && len(redelivered) == 0, "acknowledged message was redelivered: %#v, %v", redelivered, err)
+
+	require(t, acknowledge("msg_unknown") == 0, "unknown message was acknowledged")
+	_, err = receiver.Receipt(ctx, "msg_unknown")
+	var busErr *bus.BusError
+	require(t, errors.As(err, &busErr) && busErr.Code == bus.CodeNotFound, "unknown message receipt: %v", err)
 }
 
 // The helper forwards fields an upstream authority defines, not only the
