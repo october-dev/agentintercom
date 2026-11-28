@@ -7,12 +7,6 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
-// The previous release is the published baseline users upgrade from. The
-// older OCTOBER_BUS_RC4_BINARY name is still accepted.
-export function previousBinaryPath(env = process.env) {
-  return env.OCTOBER_BUS_PREVIOUS_BINARY || env.OCTOBER_BUS_RC4_BINARY
-}
-
 export function releaseVersion(output) {
   const match = /^(?:agentintercom|october-bus) v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?) \(protocol 0\.1\)$/.exec(output)
   assert.ok(match && !/\bdev\b/.test(match[1]), `Expected a released version, got ${JSON.stringify(output)}`)
@@ -39,8 +33,8 @@ async function schemaVersion(database) {
 const schemaBackups = directory => readdirSync(directory).filter(name => /^bus\.db\.schema\d+-backup-/.test(name))
 
 async function rehearse() {
-  assert.ok(previousBinaryPath() && process.env.OCTOBER_BUS_BINARY, 'Supply checksum-verified OCTOBER_BUS_PREVIOUS_BINARY (the released version users upgrade from) and OCTOBER_BUS_BINARY; this script never downloads binaries')
-  const old = realpathSync(previousBinaryPath())
+  assert.ok(process.env.OCTOBER_BUS_PREVIOUS_BINARY && process.env.OCTOBER_BUS_BINARY, 'Supply checksum-verified OCTOBER_BUS_PREVIOUS_BINARY (the released version users upgrade from) and OCTOBER_BUS_BINARY; this script never downloads binaries')
+  const old = realpathSync(process.env.OCTOBER_BUS_PREVIOUS_BINARY)
   const candidate = realpathSync(process.env.OCTOBER_BUS_BINARY)
   assert.notEqual(old, candidate, 'Use distinct previous-release and candidate executables')
   const version = binary => execFileSync(binary, ['version'], { encoding: 'utf8', timeout: 5000 }).trim()

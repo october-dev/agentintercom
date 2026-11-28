@@ -4,7 +4,6 @@ import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { artifacts, platformPackage, root, sdk } from './npm-distribution.mjs'
-import { previousBinaryPath } from './rehearse-upgrade.mjs'
 
 export function validationPlan({ allPlatforms = false, upgrade = false, scriptsOnly = false } = {}) {
   const node = (label, args, extra = {}) => ({ label, command: process.execPath, args, cwd: root, ...extra })
@@ -50,7 +49,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log('Dry run only; no checks executed, no dependencies installed.')
   } else {
     assert.ok(process.env.npm_execpath, 'Use npm run validate:launch from sdk/typescript')
-    if (args.includes('--upgrade')) assert.ok(previousBinaryPath(), 'Supply an already downloaded, checksum-verified previous-release binary using OCTOBER_BUS_PREVIOUS_BINARY')
+    if (args.includes('--upgrade')) assert.ok(process.env.OCTOBER_BUS_PREVIOUS_BINARY, 'Supply an already downloaded, checksum-verified previous-release binary using OCTOBER_BUS_PREVIOUS_BINARY')
     process.exitCode = runValidation(plan)
   }
 }

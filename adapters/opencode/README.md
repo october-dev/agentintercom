@@ -2,6 +2,8 @@
 
 Status: experimental, adapter 0.2.0, pull delivery. No named-harness versions or platforms are certified for this revision. Refs [#34](https://github.com/october-dev/agentintercom/issues/34).
 
+This guide and the generated entry use OpenCode's V1 configuration format, observed with 1.19.6. OpenCode 2 supports V1 configuration, but no live run of this adapter on OpenCode 2 has been recorded.
+
 OpenCode runs the Agent Intercom bridge as a local MCP server from the project's `opencode.json`. The bridge registers one execution, keeps its lease alive outside the model loop and retires it when OpenCode closes the server. A [Linux run of OpenCode 1.19.6](../../compatibility/observations/opencode-1.19.6-linux-x86_64.md) completed the two-host scenario with Claude Code in both directions in headless `opencode run`; it is partial and unreviewed. The [earlier 1.18.25 observation](../../compatibility/observations/opencode-1.18.25-macos-arm64.md) reported a stringified `messageIds` array, which the 1.19.6 run did not reproduce.
 
 ## Walkthrough with the public daemon
@@ -26,7 +28,7 @@ This connects OpenCode to a local Agent Intercom daemon, with no October Desktop
    agentintercom harness config opencode --scope my-project --agent opencode-builder --name "OpenCode Builder" --output agentintercom.opencode.json
    ```
 
-   `--output` only creates a new file. If the project has no `opencode.json`, rename this file to `opencode.json`. Otherwise copy only its `mcp.agent_intercom` entry into the existing `mcp` object. The entry holds an absolute executable path, IDs and directories, never a token. It sets a 10-second MCP startup timeout; that is not a tool-call timeout.
+   `--output` only creates a new file. If the project has no `opencode.json`, rename this file to `opencode.json`. Otherwise copy only its `mcp.agent_intercom` entry into the existing `mcp` object. The entry holds an absolute executable path, IDs and directories, never a token. The entry uses OpenCode's default request timeouts. An explicit server timeout also limits tool calls, so keep it above any `check_inbox` wait.
 
 4. Decide which tools need approval (see [Permissions](#permissions)), then check the setup. `doctor` starts its own temporary bridge under a separate ID:
 
@@ -78,4 +80,4 @@ Use `check_inbox` with `waitMs` between work steps; start with 10000. Each simul
 
 The execution can end while OpenCode is still open: another session registered the same ID, the workspace token was rotated, the lease expired (for example after a long sleep), or the daemon stopped. Every tool call then fails with "Agent Intercom execution ended", and the bridge never registers again by itself, so an older session cannot take the ID back from a newer one. Resolve any duplicate ID, then restart OpenCode to register a new execution. A killed OpenCode closes the bridge's input and retires the execution at once; if the bridge itself is killed, held work returns when the 30-second lease expires.
 
-Before promotion, run the full [compatibility runbook](../../compatibility/RUNBOOK.md), including the interactive TUI, other platforms and independent review. [Upstream configuration documentation](https://opencode.ai/docs/mcp-servers/).
+Before promotion, run the full [compatibility runbook](../../compatibility/RUNBOOK.md), including the interactive TUI, other platforms and independent review. [Upstream configuration documentation](https://opencode.ai/v1/docs/mcp-servers/).

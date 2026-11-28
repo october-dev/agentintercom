@@ -51,7 +51,7 @@ Commit before building artifacts. Changing source or HEAD requires a rebuild/rep
 
 Obtain the released executable users upgrade from (currently `0.2.0`, from the `@october-dev/agentintercom-*` platform package) for the host platform and verify its checksum independently. The script does not download or authenticate it, and an embedded version string alone does not prove artifact origin.
 
-Set `OCTOBER_BUS_PREVIOUS_BINARY` to that executable's absolute path, then add `--upgrade` to the combined command. The older `OCTOBER_BUS_RC4_BINARY` name is still accepted. The candidate executable is selected from the just-built host artifacts. To run only the rehearsal, also set `OCTOBER_BUS_BINARY` to a versioned candidate executable and run:
+Set `OCTOBER_BUS_PREVIOUS_BINARY` to that executable's absolute path, then add `--upgrade` to the combined command. The candidate executable is selected from the just-built host artifacts. To run only the rehearsal, also set `OCTOBER_BUS_BINARY` to a versioned candidate executable and run:
 
 ```sh
 node scripts/rehearse-upgrade.mjs
